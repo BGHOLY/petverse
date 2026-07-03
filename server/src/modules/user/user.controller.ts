@@ -8,9 +8,8 @@ export class UserController {
     private readonly userService:UserService
   ) {}
 
-  @Get("info")
-  getInfo() {
-    return this.userService.getCurrentUser();
-  }
-
+  @Get('info')
+async getInfo() {
+  return await this.userService.getCurrentUser();
+}
 }

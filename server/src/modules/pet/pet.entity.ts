@@ -1,47 +1,75 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
+
+@Entity('pets')
 export class Pet {
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  id:number;
+  @Column()
+  ownerId: number;
 
-  ownerId:number;
+  @Column()
+  nickname: string;
 
-  nickname:string;
+  @Column()
+  species: string;
 
-  species:string;
+  @Column({ default: 1 })
+  rarity: number;
 
-  rarity:number;
+  @Column({ default: 1 })
+  level: number;
 
-  level:number;
+  @Column({ default: 0 })
+  exp: number;
 
-  exp:number;
+  @Column({ default: 100 })
+  hp: number;
 
-  hp:number;
+  @Column({ default: 20 })
+  attack: number;
 
-  attack:number;
+  @Column({ default: 20 })
+  defense: number;
 
-  defense:number;
+  @Column({ default: 20 })
+  agility: number;
 
-  agility:number;
+  @Column({ default: 20 })
+  intelligence: number;
 
-  intelligence:number;
+  @Column({ default: 100 })
+  hunger: number;
 
-  hunger:number;
+  @Column({ default: 100 })
+  happiness: number;
 
-  happiness:number;
+  @Column({ default: 100 })
+  cleanliness: number;
 
-  cleanliness:number;
+  @Column({ default: 100 })
+  stamina: number;
 
-  stamina:number;
+  @Column({ default: 'AAAA' })
+  geneCode: string;
 
-  geneCode:string;
+  @Column({ default: 0 })
+  fatherId: number;
 
-  fatherId:number;
+  @Column({ default: 0 })
+  motherId: number;
 
-  motherId:number;
+  @Column({ default: false })
+  married: boolean;
 
-  married:boolean;
+  @Column({ default: 0 })
+  partnerId: number;
 
-  partnerId:number;
-
-  createTime:Date;
-
+  @CreateDateColumn()
+  createTime: Date;
 }

@@ -1,13 +1,15 @@
-import { Module } from "@nestjs/common";
-import { PetController } from "./pet.controller";
-import { PetService } from "./pet.service";
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { PetController } from './pet.controller';
+import { PetService } from './pet.service';
+import { Pet } from './pet.entity';
 
 @Module({
-
-    controllers:[PetController],
-
-    providers:[PetService]
-
+  imports: [
+    TypeOrmModule.forFeature([Pet]),
+  ],
+  controllers: [PetController],
+  providers: [PetService],
 })
-
-export class PetModule{}
+export class PetModule {}
