@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { User } from '../user/user.entity';
 import { Pet } from '../pet/pet.entity';
 import { LoginDto } from './dto/login.dto';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +15,7 @@ export class AuthService {
 
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -77,7 +79,10 @@ export class AuthService {
     return {
       success: true,
       isNewUser,
-      token: `demo-token-${user.id}`,
+      token: this.jwtService.sign({
+  sub: user.id,
+  openid: user.openid,
+}),
       user,
       pets,
     };
