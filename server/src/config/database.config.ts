@@ -1,6 +1,11 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as dotenv from 'dotenv';
 
+import { User } from '../modules/user/user.entity';
+import { Pet } from '../modules/pet/pet.entity';
+import { Item } from '../modules/item/item.entity';
+import { Inventory } from '../modules/inventory/inventory.entity';
+
 dotenv.config();
 
 export const databaseConfig: TypeOrmModuleOptions = {
@@ -10,6 +15,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   username: process.env.DB_USERNAME || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || 'petverse',
-  autoLoadEntities: true,
+
+  entities: [User, Pet, Item, Inventory],
   synchronize: true,
 };
