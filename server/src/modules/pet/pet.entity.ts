@@ -72,4 +72,10 @@ export class Pet {
 
   @CreateDateColumn()
   createTime: Date;
+
+  @Column({
+  type: 'timestamp',
+  default: () => 'CURRENT_TIMESTAMP',
+})
+lastStatusUpdate: Date;
 }

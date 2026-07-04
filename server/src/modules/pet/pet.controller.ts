@@ -26,13 +26,8 @@ export class PetController {
 
   @Post('feed')
   @UseGuards(JwtAuthGuard)
-  async feedPet(
-    @Req() req: any,
-    @Body() feedDto: FeedPetDto,
-  ) {
-    const pet = await this.petService.getPetById(
-      feedDto.petId,
-    );
+  async feedPet(@Req() req: any, @Body() feedDto: FeedPetDto) {
+    const pet = await this.petService.getPetById(feedDto.petId);
 
     if (!pet) {
       return {
@@ -41,11 +36,10 @@ export class PetController {
       };
     }
 
-    const consume =
-      await this.inventoryService.consumeItem(
-        req.user.sub,
-        feedDto.itemCode,
-      );
+    const consume = await this.inventoryService.consumeItem(
+      req.user.sub,
+      feedDto.itemCode,
+    );
 
     if (!consume) {
       return {
@@ -56,27 +50,27 @@ export class PetController {
 
     switch (feedDto.itemCode) {
       case 'apple':
-        pet.hunger = Math.min(
-          100,
-          pet.hunger + 20,
-        );
+        pet.hunger = Math.min(100, pet.hunger + 20);
         break;
 
       case 'fish':
-        pet.hunger = Math.min(
-          100,
-          pet.hunger + 15,
-        );
-        pet.happiness = Math.min(
-          100,
-          pet.happiness + 10,
-        );
+        pet.hunger = Math.min(100, pet.hunger + 15);
+        pet.happiness = Math.min(100, pet.happiness + 10);
         break;
+
+      case 'exp_potion_small':
+        await this.petService.addExp(pet, 50);
+
+        return {
+          success: true,
+          message: '使用经验药水成功',
+          pet,
+        };
 
       default:
         return {
           success: false,
-          message: '该物品不能喂食',
+          message: '该物品不能使用',
         };
     }
 
