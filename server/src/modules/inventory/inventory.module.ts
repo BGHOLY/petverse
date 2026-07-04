@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { Inventory } from './inventory.entity';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
+import { ItemModule } from '../item/item.module';
 
 @Module({
   imports: [
@@ -15,8 +16,13 @@ import { InventoryService } from './inventory.service';
         expiresIn: '7d',
       },
     }),
+    ItemModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],
+  exports: [
+    TypeOrmModule,
+    InventoryService,
+  ],
 })
 export class InventoryModule {}

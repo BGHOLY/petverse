@@ -16,4 +16,31 @@ export class InventoryService {
       where: { userId },
     });
   }
+
+  async addItem(
+    userId: number,
+    itemId: number,
+    itemCode: string,
+    quantity: number,
+  ) {
+    let inventory = await this.inventoryRepository.findOne({
+      where: {
+        userId,
+        itemId,
+      },
+    });
+
+    if (!inventory) {
+      inventory = this.inventoryRepository.create({
+        userId,
+        itemId,
+        itemCode,
+        quantity,
+      });
+    } else {
+      inventory.quantity += quantity;
+    }
+
+    return this.inventoryRepository.save(inventory);
+  }
 }
