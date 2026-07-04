@@ -10,8 +10,11 @@ import {
 import { PetService } from './pet.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
 import { FeedPetDto } from './dto/feed-pet.dto';
 import { MarryPetDto } from './dto/marry-pet.dto';
+import { BreedPetDto } from './dto/breed-pet.dto';
+import { HatchPetDto } from './dto/hatch-pet.dto';
 
 @Controller('pet')
 export class PetController {
@@ -92,5 +95,17 @@ export class PetController {
       marryDto.petId,
       marryDto.targetPetId,
     );
+  }
+
+  @Post('breed')
+  @UseGuards(JwtAuthGuard)
+  async breedPet(@Req() req: any, @Body() breedDto: BreedPetDto) {
+    return this.petService.breedPet(req.user.sub, breedDto.petId);
+  }
+
+  @Post('hatch')
+  @UseGuards(JwtAuthGuard)
+  async hatchPet(@Req() req: any, @Body() hatchDto: HatchPetDto) {
+    return this.petService.hatchPet(req.user.sub, hatchDto.petId);
   }
 }

@@ -3,6 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Pet } from './pet.entity';
+import {
+  generateGeneCode,
+  calculateGeneScore,
+} from './utils/gene.util';
+import {
+  calculateRarityByScore,
+  getRarityName,
+} from './utils/rarity.util';
 
 @Injectable()
 export class PetService {
@@ -58,7 +66,10 @@ export class PetService {
       return this.petRepository.save(pet);
     }
 
-    const diff = now.getTime() - new Date(pet.lastStatusUpdate).getTime();
+    const diff =
+      now.getTime() -
+      new Date(pet.lastStatusUpdate).getTime();
+
     const hours = Math.floor(diff / (1000 * 60 * 60));
 
     if (hours <= 0) {
@@ -74,7 +85,11 @@ export class PetService {
     return this.petRepository.save(pet);
   }
 
-  async marryPets(userId: number, petId: number, targetPetId: number) {
+  async marryPets(
+    userId: number,
+    petId: number,
+    targetPetId: number,
+  ) {
     if (petId === targetPetId) {
       return {
         success: false,
@@ -99,6 +114,13 @@ export class PetService {
       };
     }
 
+    if (pet.isEgg || targetPet.isEgg) {
+      return {
+        success: false,
+        message: '宠物蛋不能结婚',
+      };
+    }
+
     if (pet.married || targetPet.married) {
       return {
         success: false,
@@ -119,6 +141,154 @@ export class PetService {
       success: true,
       message: '结婚成功',
       pets: [pet, targetPet],
+    };
+  }
+
+  async breedPet(userId: number, petId: number) {
+    const father = await this.getPetById(petId);
+
+    if (!father) {
+      return {
+        success: false,
+        message: '宠物不存在',
+      };
+    }
+
+    if (father.ownerId !== userId) {
+      return {
+        success: false,
+        message: '只能操作自己的宠物',
+      };
+    }
+
+    if (father.isEgg) {
+      return {
+        success: false,
+        message: '宠物蛋不能生蛋',
+      };
+    }
+
+    if (!father.married || !father.partnerId) {
+      return {
+        success: false,
+        message: '宠物还没有结婚',
+      };
+    }
+
+    const mother = await this.getPetById(father.partnerId);
+
+    if (!mother) {
+      return {
+        success: false,
+        message: '配偶不存在',
+      };
+    }
+
+    if (father.stamina < 20 || mother.stamina < 20) {
+      return {
+        success: false,
+        message: '宠物体力不足',
+      };
+    }
+
+    father.stamina -= 20;
+    mother.stamina -= 20;
+
+    const geneCode = generateGeneCode(
+      father.geneCode,
+      mother.geneCode,
+    );
+
+    const geneScore = calculateGeneScore(geneCode);
+    const rarity = calculateRarityByScore(geneScore);
+    const rarityName = getRarityName(rarity);
+
+    const egg = this.petRepository.create({
+      ownerId: userId,
+      nickname: '宠物蛋',
+      species: 'Egg',
+      rarity,
+      rarityName,
+      level: 1,
+      exp: 0,
+      hp: 80 + rarity * 10,
+      attack: 10 + rarity * 3,
+      defense: 10 + rarity * 3,
+      agility: 10 + rarity * 2,
+      intelligence: 10 + rarity * 2,
+      hunger: 100,
+      happiness: 100,
+      cleanliness: 100,
+      stamina: 100,
+      geneCode,
+      geneScore,
+      fatherId: father.id,
+      motherId: mother.id,
+      married: false,
+      partnerId: 0,
+      isEgg: true,
+      hatchTime: new Date(Date.now() + 60 * 1000),
+      lastStatusUpdate: new Date(),
+    });
+
+    await this.petRepository.save(father);
+    await this.petRepository.save(mother);
+
+    const savedEgg = await this.petRepository.save(egg);
+
+    return {
+      success: true,
+      message: '生蛋成功',
+      egg: savedEgg,
+      parents: [father, mother],
+    };
+  }
+
+  async hatchPet(userId: number, petId: number) {
+    const egg = await this.getPetById(petId);
+
+    if (!egg) {
+      return {
+        success: false,
+        message: '宠物蛋不存在',
+      };
+    }
+
+    if (egg.ownerId !== userId) {
+      return {
+        success: false,
+        message: '只能孵化自己的宠物蛋',
+      };
+    }
+
+    if (!egg.isEgg) {
+      return {
+        success: false,
+        message: '这不是宠物蛋',
+      };
+    }
+
+    const now = new Date();
+
+    if (egg.hatchTime && now < new Date(egg.hatchTime)) {
+      return {
+        success: false,
+        message: '孵化时间未到',
+        hatchTime: egg.hatchTime,
+      };
+    }
+
+    egg.isEgg = false;
+    egg.species = 'Cat';
+    egg.nickname = `${egg.rarityName}小萌宠`;
+    egg.lastStatusUpdate = new Date();
+
+    const savedPet = await this.petRepository.save(egg);
+
+    return {
+      success: true,
+      message: '孵化成功',
+      pet: savedPet,
     };
   }
 }

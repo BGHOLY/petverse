@@ -22,6 +22,9 @@ export class Pet {
   @Column({ default: 1 })
   rarity: number;
 
+  @Column({ default: '普通' })
+  rarityName: string;
+
   @Column({ default: 1 })
   level: number;
 
@@ -58,6 +61,9 @@ export class Pet {
   @Column({ default: 'AAAA' })
   geneCode: string;
 
+  @Column({ default: 12 })
+  geneScore: number;
+
   @Column({ default: 0 })
   fatherId: number;
 
@@ -70,12 +76,21 @@ export class Pet {
   @Column({ default: 0 })
   partnerId: number;
 
-  @CreateDateColumn()
-  createTime: Date;
+  @Column({ default: false })
+  isEgg: boolean;
 
   @Column({
-  type: 'timestamp',
-  default: () => 'CURRENT_TIMESTAMP',
-})
-lastStatusUpdate: Date;
+    type: 'timestamp',
+    nullable: true,
+  })
+  hatchTime: Date;
+
+  @Column({
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  lastStatusUpdate: Date;
+
+  @CreateDateColumn()
+  createTime: Date;
 }
