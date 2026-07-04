@@ -11,7 +11,19 @@ export class PetService {
     private readonly petRepository: Repository<Pet>,
   ) {}
 
-  async getAllPets(): Promise<Pet[]> {
+  async getAllPets() {
     return this.petRepository.find();
+  }
+
+  async getPetById(id: number) {
+    return this.petRepository.findOne({
+      where: {
+        id,
+      },
+    });
+  }
+
+  async savePet(pet: Pet) {
+    return this.petRepository.save(pet);
   }
 }
