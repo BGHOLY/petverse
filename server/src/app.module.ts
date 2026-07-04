@@ -12,6 +12,8 @@ import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ItemModule } from './modules/item/item.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { BattleModule } from './modules/battle/battle.module';
+import { TowerModule } from './modules/tower/tower.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     AuthModule,
     ItemModule,
     InventoryModule,
+    TowerModule,
+    BattleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
