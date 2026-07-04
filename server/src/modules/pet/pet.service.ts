@@ -33,10 +33,7 @@ export class PetService {
     return this.petRepository.save(pet);
   }
 
-  async addExp(
-    pet: Pet,
-    exp: number,
-  ) {
+  async addExp(pet: Pet, exp: number) {
     pet.exp += exp;
 
     while (pet.exp >= 100) {
@@ -56,42 +53,72 @@ export class PetService {
   async updatePetStatus(pet: Pet) {
     const now = new Date();
 
-    const diff =
-      now.getTime() -
-      new Date(
-        pet.lastStatusUpdate,
-      ).getTime();
+    if (!pet.lastStatusUpdate) {
+      pet.lastStatusUpdate = now;
+      return this.petRepository.save(pet);
+    }
 
-    const hours = Math.floor(
-      diff / (1000 * 60 * 60),
-    );
+    const diff = now.getTime() - new Date(pet.lastStatusUpdate).getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
 
     if (hours <= 0) {
       return pet;
     }
 
-    pet.hunger = Math.max(
-      0,
-      pet.hunger - hours,
-    );
-
-    pet.happiness = Math.max(
-      0,
-      pet.happiness - hours,
-    );
-
-    pet.cleanliness = Math.max(
-      0,
-      pet.cleanliness - hours,
-    );
-
-    pet.stamina = Math.max(
-      0,
-      pet.stamina - hours,
-    );
-
+    pet.hunger = Math.max(0, pet.hunger - hours);
+    pet.happiness = Math.max(0, pet.happiness - hours);
+    pet.cleanliness = Math.max(0, pet.cleanliness - hours);
+    pet.stamina = Math.max(0, pet.stamina - hours);
     pet.lastStatusUpdate = now;
 
     return this.petRepository.save(pet);
+  }
+
+  async marryPets(userId: number, petId: number, targetPetId: number) {
+    if (petId === targetPetId) {
+      return {
+        success: false,
+        message: '不能和自己结婚',
+      };
+    }
+
+    const pet = await this.getPetById(petId);
+    const targetPet = await this.getPetById(targetPetId);
+
+    if (!pet || !targetPet) {
+      return {
+        success: false,
+        message: '宠物不存在',
+      };
+    }
+
+    if (pet.ownerId !== userId) {
+      return {
+        success: false,
+        message: '只能操作自己的宠物',
+      };
+    }
+
+    if (pet.married || targetPet.married) {
+      return {
+        success: false,
+        message: '其中一只宠物已经结婚',
+      };
+    }
+
+    pet.married = true;
+    pet.partnerId = targetPet.id;
+
+    targetPet.married = true;
+    targetPet.partnerId = pet.id;
+
+    await this.petRepository.save(pet);
+    await this.petRepository.save(targetPet);
+
+    return {
+      success: true,
+      message: '结婚成功',
+      pets: [pet, targetPet],
+    };
   }
 }

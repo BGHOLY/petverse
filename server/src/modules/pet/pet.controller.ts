@@ -11,6 +11,7 @@ import { PetService } from './pet.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FeedPetDto } from './dto/feed-pet.dto';
+import { MarryPetDto } from './dto/marry-pet.dto';
 
 @Controller('pet')
 export class PetController {
@@ -81,5 +82,15 @@ export class PetController {
       message: '喂食成功',
       pet,
     };
+  }
+
+  @Post('marry')
+  @UseGuards(JwtAuthGuard)
+  async marryPet(@Req() req: any, @Body() marryDto: MarryPetDto) {
+    return this.petService.marryPets(
+      req.user.sub,
+      marryDto.petId,
+      marryDto.targetPetId,
+    );
   }
 }
