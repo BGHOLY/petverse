@@ -9,6 +9,7 @@ import { Battle } from '../modules/battle/battle.entity';
 import { TowerRecord } from '../modules/tower/tower-record.entity';
 import { SignRecord } from '../modules/sign/sign-record.entity';
 import { DailyTask } from '../modules/daily-task/daily-task.entity';
+import { OfflineReward } from '../modules/offline-reward/offline-reward.entity';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   TowerRecord,
   SignRecord,
   DailyTask,
+  OfflineReward,
 ],
   synchronize: true,
 };
