@@ -6,6 +6,7 @@ import { Pet } from './pet.entity';
 import { PetController } from './pet.controller';
 import { PetService } from './pet.service';
 import { InventoryModule } from '../inventory/inventory.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { InventoryModule } from '../inventory/inventory.module';
       },
     }),
     InventoryModule,
+    DailyTaskModule,
   ],
   controllers: [PetController],
   providers: [PetService],

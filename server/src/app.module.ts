@@ -16,6 +16,7 @@ import { BattleModule } from './modules/battle/battle.module';
 import { TowerModule } from './modules/tower/tower.module';
 import { RankingModule } from './modules/ranking/ranking.module';
 import { SignModule } from './modules/sign/sign.module';
+import { DailyTaskModule } from './modules/daily-task/daily-task.module';
 
 
 @Module({
@@ -36,6 +37,7 @@ import { SignModule } from './modules/sign/sign.module';
     RankingModule,
     RankingModule,
     SignModule,
+    DailyTaskModule,
   ],
   controllers: [AppController],
   providers: [AppService],

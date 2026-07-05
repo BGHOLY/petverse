@@ -6,6 +6,7 @@ import { SignRecord } from './sign-record.entity';
 import { User } from '../user/user.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { ItemService } from '../item/item.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 
 @Injectable()
 export class SignService {
@@ -18,6 +19,7 @@ export class SignService {
 
     private readonly inventoryService: InventoryService,
     private readonly itemService: ItemService,
+    private readonly dailyTaskService: DailyTaskService,
   ) {}
 
   private isSameDay(a: Date, b: Date) {
@@ -81,12 +83,17 @@ export class SignService {
       record.lastSignTime &&
       this.isSameDay(new Date(record.lastSignTime), now)
     ) {
-      return {
-        success: false,
-        message: '今天已经签到过了',
-        record,
-      };
-    }
+      await this.dailyTaskService.completeTask(
+        userId,
+    'signCompleted',
+  );
+
+  return {
+    success: false,
+    message: '今天已经签到过了',
+    record,
+  };
+}
 
     if (
       record.lastSignTime &&
@@ -185,6 +192,10 @@ export class SignService {
     }
 
     const saved = await this.signRecordRepository.save(record);
+    await this.dailyTaskService.completeTask(
+        userId,
+        'signCompleted',
+    );
 
     return {
       success: true,

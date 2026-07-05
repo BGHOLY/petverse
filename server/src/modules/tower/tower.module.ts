@@ -7,6 +7,7 @@ import { TowerController } from './tower.controller';
 import { TowerService } from './tower.service';
 
 import { PetModule } from '../pet/pet.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PetModule } from '../pet/pet.module';
       },
     }),
     PetModule,
+    DailyTaskModule,
   ],
   controllers: [TowerController],
   providers: [TowerService],

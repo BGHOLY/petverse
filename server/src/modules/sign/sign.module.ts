@@ -7,9 +7,9 @@ import { SignController } from './sign.controller';
 import { SignService } from './sign.service';
 
 import { User } from '../user/user.entity';
-import { UserModule } from '../user/user.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ItemModule } from '../item/item.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 
 @Module({
   imports: [
@@ -20,9 +20,9 @@ import { ItemModule } from '../item/item.module';
         expiresIn: '7d',
       },
     }),
-    UserModule,
     InventoryModule,
     ItemModule,
+    DailyTaskModule,
   ],
   controllers: [SignController],
   providers: [SignService],

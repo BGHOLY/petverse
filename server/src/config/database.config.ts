@@ -8,6 +8,7 @@ import { Inventory } from '../modules/inventory/inventory.entity';
 import { Battle } from '../modules/battle/battle.entity';
 import { TowerRecord } from '../modules/tower/tower-record.entity';
 import { SignRecord } from '../modules/sign/sign-record.entity';
+import { DailyTask } from '../modules/daily-task/daily-task.entity';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   Battle,
   TowerRecord,
   SignRecord,
+  DailyTask,
 ],
   synchronize: true,
 };

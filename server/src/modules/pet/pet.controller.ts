@@ -9,6 +9,7 @@ import {
 
 import { PetService } from './pet.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 import { FeedPetDto } from './dto/feed-pet.dto';
@@ -21,6 +22,7 @@ export class PetController {
   constructor(
     private readonly petService: PetService,
     private readonly inventoryService: InventoryService,
+    private readonly dailyTaskService: DailyTaskService,
   ) {}
 
   @Get()
@@ -65,6 +67,11 @@ export class PetController {
       case 'exp_potion_small':
         await this.petService.addExp(pet, 50);
 
+        await this.dailyTaskService.completeTask(
+          req.user.sub,
+          'feedCompleted',
+        );
+
         return {
           success: true,
           message: '使用经验药水成功',
@@ -79,6 +86,11 @@ export class PetController {
     }
 
     await this.petService.savePet(pet);
+
+    await this.dailyTaskService.completeTask(
+      req.user.sub,
+      'feedCompleted',
+    );
 
     return {
       success: true,

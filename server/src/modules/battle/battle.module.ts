@@ -7,6 +7,7 @@ import { BattleController } from './battle.controller';
 import { BattleService } from './battle.service';
 
 import { PetModule } from '../pet/pet.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PetModule } from '../pet/pet.module';
       },
     }),
     PetModule,
+    DailyTaskModule,
   ],
   controllers: [BattleController],
   providers: [BattleService],
