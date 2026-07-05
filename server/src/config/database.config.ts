@@ -12,6 +12,9 @@ import { DailyTask } from '../modules/daily-task/daily-task.entity';
 import { OfflineReward } from '../modules/offline-reward/offline-reward.entity';
 import { Friend } from '../modules/friend/friend.entity';
 import { FriendRequest } from '../modules/friend/friend-request.entity';
+import { Mail } from '../modules/mail/mail.entity';
+import { ShopItem } from '../modules/shop/shop-item.entity';
+import { Achievement } from '../modules/achievement/achievement.entity';
 
 dotenv.config();
 
@@ -35,6 +38,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
   OfflineReward,
   Friend,
   FriendRequest,
+  Mail,
+  ShopItem,
+  Achievement,
 ],
   synchronize: true,
 };

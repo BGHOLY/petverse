@@ -19,6 +19,9 @@ import { SignModule } from './modules/sign/sign.module';
 import { DailyTaskModule } from './modules/daily-task/daily-task.module';
 import { OfflineRewardModule } from './modules/offline-reward/offline-reward.module';
 import { FriendModule } from './modules/friend/friend.module';
+import { MailModule } from './modules/mail/mail.module';
+import { ShopModule } from './modules/shop/shop.module';
+import { AchievementModule } from './modules/achievement/achievement.module';
 
 
 @Module({
@@ -42,6 +45,9 @@ import { FriendModule } from './modules/friend/friend.module';
     DailyTaskModule,
     OfflineRewardModule,
     FriendModule,
+    MailModule,
+    ShopModule,
+    AchievementModule,
   ],
   controllers: [AppController],
   providers: [AppService],
