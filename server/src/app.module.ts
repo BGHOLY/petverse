@@ -15,6 +15,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { BattleModule } from './modules/battle/battle.module';
 import { TowerModule } from './modules/tower/tower.module';
 import { RankingModule } from './modules/ranking/ranking.module';
+import { SignModule } from './modules/sign/sign.module';
 
 
 @Module({
@@ -33,6 +34,8 @@ import { RankingModule } from './modules/ranking/ranking.module';
     TowerModule,
     BattleModule,
     RankingModule,
+    RankingModule,
+    SignModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -7,6 +7,7 @@ import { Item } from '../modules/item/item.entity';
 import { Inventory } from '../modules/inventory/inventory.entity';
 import { Battle } from '../modules/battle/battle.entity';
 import { TowerRecord } from '../modules/tower/tower-record.entity';
+import { SignRecord } from '../modules/sign/sign-record.entity';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   Inventory,
   Battle,
   TowerRecord,
+  SignRecord,
 ],
   synchronize: true,
 };
