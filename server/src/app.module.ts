@@ -14,6 +14,8 @@ import { ItemModule } from './modules/item/item.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { BattleModule } from './modules/battle/battle.module';
 import { TowerModule } from './modules/tower/tower.module';
+import { RankingModule } from './modules/ranking/ranking.module';
+
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { TowerModule } from './modules/tower/tower.module';
     InventoryModule,
     TowerModule,
     BattleModule,
+    RankingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
