@@ -10,6 +10,8 @@ import { TowerRecord } from '../modules/tower/tower-record.entity';
 import { SignRecord } from '../modules/sign/sign-record.entity';
 import { DailyTask } from '../modules/daily-task/daily-task.entity';
 import { OfflineReward } from '../modules/offline-reward/offline-reward.entity';
+import { Friend } from '../modules/friend/friend.entity';
+import { FriendRequest } from '../modules/friend/friend-request.entity';
 
 dotenv.config();
 
@@ -31,6 +33,8 @@ export const databaseConfig: TypeOrmModuleOptions = {
   SignRecord,
   DailyTask,
   OfflineReward,
+  Friend,
+  FriendRequest,
 ],
   synchronize: true,
 };

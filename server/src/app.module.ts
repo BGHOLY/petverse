@@ -18,6 +18,7 @@ import { RankingModule } from './modules/ranking/ranking.module';
 import { SignModule } from './modules/sign/sign.module';
 import { DailyTaskModule } from './modules/daily-task/daily-task.module';
 import { OfflineRewardModule } from './modules/offline-reward/offline-reward.module';
+import { FriendModule } from './modules/friend/friend.module';
 
 
 @Module({
@@ -40,6 +41,7 @@ import { OfflineRewardModule } from './modules/offline-reward/offline-reward.mod
     SignModule,
     DailyTaskModule,
     OfflineRewardModule,
+    FriendModule,
   ],
   controllers: [AppController],
   providers: [AppService],
