@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Pet } from './pet.entity';
+import { InventoryService } from '../inventory/inventory.service';
 import {
   generateGeneCode,
   calculateGeneScore,
@@ -17,10 +18,36 @@ export class PetService {
   constructor(
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async getAllPets() {
     return this.petRepository.find();
+  }
+
+  async getUserPets(userId: number) {
+    const pets = await this.petRepository.find({
+      where: {
+        ownerId: userId,
+      },
+      order: {
+        isEgg: 'ASC',
+        id: 'ASC',
+      },
+    });
+
+    for (const pet of pets) {
+      if (!pet.isEgg) {
+        await this.updatePetStatus(pet);
+      }
+    }
+
+    return {
+      success: true,
+      pets,
+      data: pets,
+    };
   }
 
   async getPetById(id: number) {
@@ -83,6 +110,79 @@ export class PetService {
     pet.lastStatusUpdate = now;
 
     return this.petRepository.save(pet);
+  }
+
+  async hatchStarterEgg(userId: number) {
+    const consumed = await this.inventoryService.consumeItem(
+      userId,
+      'starter_egg',
+      1,
+    );
+
+    if (!consumed) {
+      return {
+        success: false,
+        message: '暂无可孵化的宠物蛋',
+      };
+    }
+
+    const geneCode = generateGeneCode('AAAA', 'AAAA');
+    const geneScore = calculateGeneScore(geneCode);
+    const rarity = calculateRarityByScore(geneScore);
+    const rarityName = getRarityName(rarity);
+
+    const speciesPool = ['Cat', 'Dog', 'Rabbit'];
+    const species = speciesPool[
+      Math.floor(Math.random() * speciesPool.length)
+    ];
+
+    const pet = this.petRepository.create({
+      ownerId: userId,
+      nickname: `${rarityName}小萌宠`,
+      species,
+      rarity,
+      rarityName,
+      level: 1,
+      exp: 0,
+      hp: 90 + rarity * 10,
+      attack: 15 + rarity * 3,
+      defense: 12 + rarity * 3,
+      agility: 12 + rarity * 2,
+      intelligence: 12 + rarity * 2,
+      hunger: 100,
+      happiness: 100,
+      cleanliness: 100,
+      stamina: 100,
+      geneCode,
+      geneScore,
+      fatherId: 0,
+      motherId: 0,
+      married: false,
+      partnerId: 0,
+      isEgg: false,
+      hatchTime: null,
+      lastStatusUpdate: new Date(),
+    });
+
+    const savedPet = await this.petRepository.save(pet);
+    const pets = await this.petRepository.find({
+      where: {
+        ownerId: userId,
+      },
+      order: {
+        isEgg: 'ASC',
+        id: 'ASC',
+      },
+    });
+    const inventory = await this.inventoryService.getUserInventory(userId);
+
+    return {
+      success: true,
+      message: '孵化成功',
+      pet: savedPet,
+      pets,
+      inventory,
+    };
   }
 
   async marryPets(

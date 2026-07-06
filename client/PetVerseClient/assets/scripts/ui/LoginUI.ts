@@ -6,13 +6,10 @@ const { ccclass } = _decorator;
 
 @ccclass('LoginUI')
 export class LoginUI extends Component {
-
     async onClickLogin() {
-
         console.log('点击登录');
 
         try {
-
             const res = await NetworkManager.post(
                 '/auth/login',
                 {
@@ -25,19 +22,16 @@ export class LoginUI extends Component {
                 return;
             }
 
-            PlayerData.token =
-                res.token || res.access_token;
+            PlayerData.token = res.token || res.access_token;
+            PlayerData.user = res.user;
 
-            PlayerData.user =
-                res.user;
+            if (PlayerData.user) {
+                PlayerData.user.pets = res.pets || res.user?.pets || [];
+            }
 
-            director.loadScene(
-                'MainScene',
-            );
-
+            director.loadScene('MainScene');
         } catch (e) {
             console.error(e);
         }
     }
 }
-

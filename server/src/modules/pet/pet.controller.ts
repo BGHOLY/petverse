@@ -30,6 +30,12 @@ export class PetController {
     return this.petService.getAllPets();
   }
 
+  @Get('my')
+  @UseGuards(JwtAuthGuard)
+  async getMyPets(@Req() req: any) {
+    return this.petService.getUserPets(req.user.sub);
+  }
+
   @Post('feed')
   @UseGuards(JwtAuthGuard)
   async feedPet(@Req() req: any, @Body() feedDto: FeedPetDto) {
@@ -119,5 +125,11 @@ export class PetController {
   @UseGuards(JwtAuthGuard)
   async hatchPet(@Req() req: any, @Body() hatchDto: HatchPetDto) {
     return this.petService.hatchPet(req.user.sub, hatchDto.petId);
+  }
+
+  @Post('hatch-starter')
+  @UseGuards(JwtAuthGuard)
+  async hatchStarterEgg(@Req() req: any) {
+    return this.petService.hatchStarterEgg(req.user.sub);
   }
 }

@@ -73,15 +73,14 @@ export class HatcheryPanel extends Component {
             this.eggCount = eggItem?.quantity ?? eggItem?.count ?? 0;
 
             if (this.eggCount <= 0) {
-                this.showEmpty('暂无宠物蛋\n可以后续从商店购买 starter_egg');
+                this.showEmpty('暂无宠物蛋\n可以先去商店购买 starter_egg');
                 return;
             }
 
             this.showEggInfo(
                 `宠物蛋：starter_egg\n` +
                 `数量：${this.eggCount}\n\n` +
-                `当前版本暂未开放正式孵化\n` +
-                `后续点击开始孵化后会消耗 1 个宠物蛋并生成宠物`
+                `点击开始孵化，会消耗 1 个宠物蛋并生成一只宠物`
             );
         } catch (error) {
             console.error('加载宠物蛋失败:', error);
@@ -89,19 +88,43 @@ export class HatcheryPanel extends Component {
         }
     }
 
-    onClickHatch() {
+    async onClickHatch() {
         if (this.eggCount <= 0) {
             console.log('没有宠物蛋，无法孵化');
             this.showEmpty('暂无宠物蛋\n请先去商店购买宠物蛋');
             return;
         }
 
-        console.log('点击开始孵化，后续这里会请求后端孵化接口');
-        this.showEggInfo(
-            `检测到宠物蛋数量：${this.eggCount}\n\n` +
-            `孵化功能后续开放\n` +
-            `下一阶段会接入真正的孵化接口`
-        );
+        try {
+            const result = await this.apiPost('/pet/hatch-starter', {});
+
+            if (!result || result.success === false) {
+                const message = result?.message || '孵化失败';
+                console.warn(message, result);
+                this.showEggInfo(message);
+                return;
+            }
+
+            if (PlayerData.user) {
+                PlayerData.user.pets = result.pets || [];
+            }
+
+            const pet = result.pet;
+            const petName = pet?.nickname || '新宠物';
+            const rarity = pet?.rarityName || pet?.rarity || '普通';
+
+            this.showEggInfo(
+                `孵化成功！\n\n` +
+                `获得宠物：${petName}\n` +
+                `稀有度：${rarity}\n\n` +
+                `请前往“宠物”页面查看详情`
+            );
+
+            await this.refreshEggInfo();
+        } catch (error) {
+            console.error('孵化失败:', error);
+            this.showEggInfo('孵化失败，请查看控制台');
+        }
     }
 
     private normalizeInventory(result: any): InventoryItem[] {
@@ -159,6 +182,16 @@ export class HatcheryPanel extends Component {
         const response = await fetch(this.baseUrl + path, {
             method: 'GET',
             headers: this.getHeaders(),
+        });
+
+        return this.parseResponse(response);
+    }
+
+    private async apiPost(path: string, body: any) {
+        const response = await fetch(this.baseUrl + path, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(body),
         });
 
         return this.parseResponse(response);

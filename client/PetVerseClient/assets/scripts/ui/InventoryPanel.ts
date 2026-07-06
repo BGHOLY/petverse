@@ -137,6 +137,10 @@ export class InventoryPanel extends Component {
 
             console.log('使用道具成功:', itemCode, result);
 
+            if (result?.pet) {
+                PlayerData.updatePet(result.pet);
+            }
+
             await this.loadInventory();
         } catch (error) {
             console.error('使用道具失败:', error);

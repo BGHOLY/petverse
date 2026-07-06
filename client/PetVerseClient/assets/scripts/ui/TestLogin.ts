@@ -6,13 +6,10 @@ const { ccclass } = _decorator;
 
 @ccclass('TestLogin')
 export class TestLogin extends Component {
-
     async start() {
-
         console.log('开始登录测试');
 
         try {
-
             const res = await NetworkManager.post(
                 '/auth/login',
                 {
@@ -23,24 +20,16 @@ export class TestLogin extends Component {
             console.log('登录结果', res);
 
             if (res && res.success !== false) {
+                PlayerData.token = res.access_token || res.token;
+                PlayerData.user = res.user;
 
-                PlayerData.token =
-                    res.access_token || res.token;
+                if (PlayerData.user) {
+                    PlayerData.user.pets = res.pets || res.user?.pets || [];
+                }
 
-                PlayerData.user =
-                    res.user;
-
-                console.log(
-                    'Token:',
-                    PlayerData.token,
-                );
-
-                console.log(
-                    'User:',
-                    PlayerData.user,
-                );
+                console.log('Token:', PlayerData.token);
+                console.log('User:', PlayerData.user);
             }
-
         } catch (e) {
             console.error(e);
         }
