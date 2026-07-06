@@ -22,10 +22,10 @@ export class TestLogin extends Component {
 
             console.log('登录结果', res);
 
-            if (res.access_token) {
+            if (res && res.success !== false) {
 
                 PlayerData.token =
-                    res.access_token;
+                    res.access_token || res.token;
 
                 PlayerData.user =
                     res.user;

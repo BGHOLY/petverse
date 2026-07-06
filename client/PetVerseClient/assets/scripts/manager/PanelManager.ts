@@ -11,10 +11,6 @@ export class PanelManager extends Component {
     @property(Node)
     shopPanel: Node | null = null;
 
-    start() {
-        this.hideAll();
-    }
-
     hideAll() {
         if (this.inventoryPanel) {
             this.inventoryPanel.active = false;
@@ -30,6 +26,9 @@ export class PanelManager extends Component {
 
         if (this.inventoryPanel) {
             this.inventoryPanel.active = true;
+            this.inventoryPanel.setSiblingIndex(
+                Math.max(0, (this.inventoryPanel.parent?.children.length || 1) - 1),
+            );
         }
     }
 
@@ -38,6 +37,9 @@ export class PanelManager extends Component {
 
         if (this.shopPanel) {
             this.shopPanel.active = true;
+            this.shopPanel.setSiblingIndex(
+                Math.max(0, (this.shopPanel.parent?.children.length || 1) - 1),
+            );
         }
     }
 }

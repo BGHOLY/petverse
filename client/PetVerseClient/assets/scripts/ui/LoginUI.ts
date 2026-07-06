@@ -20,13 +20,13 @@ export class LoginUI extends Component {
                 },
             );
 
-            console.log(
-                '登录成功',
-                JSON.stringify(res),
-            );
+            if (!res || res.success === false) {
+                console.warn('登录失败');
+                return;
+            }
 
             PlayerData.token =
-                res.token;
+                res.token || res.access_token;
 
             PlayerData.user =
                 res.user;
