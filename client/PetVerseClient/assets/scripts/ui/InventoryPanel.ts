@@ -1,248 +1,199 @@
 import {
     _decorator,
+    Button,
     Component,
-    instantiate,
+    find,
     Label,
     Node,
-    Prefab,
     UITransform,
-    isValid,
 } from 'cc';
-import NetworkManager from '../network/NetworkManager';
 import PlayerData from '../data/PlayerData';
-import { InventoryItemSlot } from './InventoryItemSlot';
-import UIEventCenter from '../manager/UIEventCenter';
 
 const { ccclass, property } = _decorator;
 
+type InventoryItem = {
+    itemCode?: string;
+    code?: string;
+    name?: string;
+    quantity?: number;
+    count?: number;
+};
+
 @ccclass('InventoryPanel')
 export class InventoryPanel extends Component {
-
-    @property(Prefab)
-    itemSlotPrefab: Prefab | null = null;
-
     @property(Node)
     content: Node | null = null;
 
-    private templateSlot: Node | null = null;
-    private loading = false;
-    private refreshPending = false;
+    @property(Label)
+    emptyLabel: Label | null = null;
 
-    onLoad() {
-        this.resolveReferences();
-    }
+    private readonly baseUrl = 'http://127.0.0.1:3000/api';
 
     onEnable() {
-        this.resolveReferences();
-        this.node.on('INVENTORY_REFRESH', this.onInventoryRefresh, this);
-        UIEventCenter.on('INVENTORY_REFRESH', this.onInventoryRefreshGlobal);
-        void this.loadInventory();
+        this.loadInventory();
     }
-
-    onDisable() {
-        this.node.off('INVENTORY_REFRESH', this.onInventoryRefresh, this);
-        UIEventCenter.off('INVENTORY_REFRESH', this.onInventoryRefreshGlobal);
-    }
-
-    private onInventoryRefresh() {
-        void this.refreshInventory();
-    }
-
-    private onInventoryRefreshGlobal = () => {
-        void this.refreshInventory();
-    };
 
     async loadInventory() {
-        if (this.loading) {
-            this.refreshPending = true;
-            return;
-        }
-
-        this.loading = true;
-
         try {
-            this.resolveReferences();
-
-            const res = await NetworkManager.get('/inventory', PlayerData.token);
-            const list = this.normalizeList(res);
+            const result = await this.apiGet('/inventory');
+            const items = this.normalizeInventory(result);
 
             this.clearContent();
 
-            if (!this.content) {
-                console.warn('InventoryPanel 缺少 Content 节点');
+            if (!items.length) {
+                this.setEmptyVisible(true);
                 return;
             }
 
-            if (list.length === 0) {
-                this.showEmptyText();
-                return;
-            }
+            this.setEmptyVisible(false);
 
-            for (const item of list) {
-                const node = this.createItemNode();
-
-                if (!node) {
-                    this.createTextItem(item);
-                    continue;
-                }
-
-                node.name = 'GeneratedItemSlot';
-                node.active = true;
-
-                const slot = node.getComponent(InventoryItemSlot);
-
-                if (slot) {
-                    slot.setData(item, () => {
-                        void this.refreshInventory();
-                    });
-                } else {
-                    this.fillLabelNode(node, item);
-                }
-
-                this.content.addChild(node);
+            for (const item of items) {
+                this.createItemSlot(item);
             }
         } catch (error) {
-            console.error('加载背包失败', error);
-        } finally {
-            this.loading = false;
-
-            if (this.refreshPending) {
-                this.refreshPending = false;
-                void this.loadInventory();
-            }
+            console.error('加载背包失败:', error);
+            this.setEmptyVisible(true);
         }
     }
 
-    async refreshInventory() {
-        await this.loadInventory();
+    private normalizeInventory(result: any): InventoryItem[] {
+        if (Array.isArray(result)) {
+            return result;
+        }
+
+        if (Array.isArray(result?.inventory)) {
+            return result.inventory;
+        }
+
+        if (Array.isArray(result?.items)) {
+            return result.items;
+        }
+
+        if (Array.isArray(result?.data)) {
+            return result.data;
+        }
+
+        return [];
     }
 
-    private resolveReferences() {
-        if (!this.content) {
-            this.content =
-                this.node.getChildByName('Content') ||
-                this.node.getChildByName('InventoryContent') ||
-                this.node;
+    private getContent(): Node {
+        if (this.content) {
+            return this.content;
         }
 
-        if (!this.templateSlot) {
-            this.templateSlot = this.node.getChildByName('ItemSlot') || null;
+        const found = find('Content', this.node);
+        if (found) {
+            this.content = found;
+            return found;
         }
 
-        if (this.templateSlot && isValid(this.templateSlot)) {
-            this.templateSlot.active = false;
-        }
-    }
-
-    private normalizeList(res: any): any[] {
-        const list =
-            res?.items ||
-            res?.data ||
-            res?.inventory ||
-            (Array.isArray(res) ? res : []);
-
-        return Array.isArray(list) ? list : [];
+        return this.node;
     }
 
     private clearContent() {
-        this.resolveReferences();
+        const content = this.getContent();
 
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
-
-        const children = [...this.content.children];
-
-        for (const child of children) {
-            if (!child || !isValid(child)) {
-                continue;
-            }
-
-            if (
-                child === this.templateSlot ||
-                child.name === 'ItemSlot' ||
-                child.name === 'InventoryContentLabel'
-            ) {
-                continue;
-            }
-
-            child.removeFromParent();
-
-            if (isValid(child)) {
-                child.destroy();
-            }
+        for (const child of [...content.children]) {
+            child.destroy();
         }
     }
 
-    private createItemNode(): Node | null {
-        if (this.itemSlotPrefab) {
-            return instantiate(this.itemSlotPrefab);
-        }
+    private createItemSlot(item: InventoryItem) {
+        const content = this.getContent();
 
-        if (this.templateSlot && isValid(this.templateSlot)) {
-            return instantiate(this.templateSlot);
-        }
+        const itemCode = item.itemCode || item.code || 'unknown';
+        const itemName = item.name || itemCode;
+        const quantity = item.quantity ?? item.count ?? 0;
 
-        return null;
-    }
+        const slot = new Node('InventoryItemSlot');
+        const transform = slot.addComponent(UITransform);
+        transform.setContentSize(180, 90);
 
-    private createTextItem(item: any) {
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
+        const button = slot.addComponent(Button);
+        button.transition = Button.Transition.NONE;
 
-        const node = new Node('GeneratedItemSlot');
-        const transform = node.addComponent(UITransform);
-        transform.setContentSize(160, 40);
+        const labelNode = new Node('Label');
+        const labelTransform = labelNode.addComponent(UITransform);
+        labelTransform.setContentSize(180, 90);
 
-        const label = node.addComponent(Label);
-        label.string = this.getItemText(item);
-        label.fontSize = 20;
-        label.lineHeight = 32;
-
-        this.content.addChild(node);
-    }
-
-    private fillLabelNode(node: Node, item: any) {
-        const nameLabel =
-            node.getChildByName('NameLabel')?.getComponent(Label) ||
-            node.getChildByName('ItemCodeLabel')?.getComponent(Label) ||
-            null;
-
-        const countLabel =
-            node.getChildByName('CountLabel')?.getComponent(Label) ||
-            node.getChildByName('QuantityLabel')?.getComponent(Label) ||
-            null;
-
-        if (nameLabel) {
-            nameLabel.string = String(item?.itemCode || item?.name || 'unknown');
-        }
-
-        if (countLabel) {
-            countLabel.string = 'x' + String(item?.quantity ?? item?.count ?? 0);
-        }
-    }
-
-    private showEmptyText() {
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
-
-        const node = new Node('GeneratedItemSlot');
-        const transform = node.addComponent(UITransform);
-        transform.setContentSize(200, 40);
-
-        const label = node.addComponent(Label);
-        label.string = '背包为空';
+        const label = labelNode.addComponent(Label);
+        label.string = `${itemName}\n数量：${quantity}`;
         label.fontSize = 22;
-        label.lineHeight = 36;
+        label.lineHeight = 30;
 
-        this.content.addChild(node);
+        slot.addChild(labelNode);
+        content.addChild(slot);
+
+        button.node.on(Button.EventType.CLICK, () => {
+            this.useItem(itemCode);
+        });
     }
 
-    private getItemText(item: any): string {
-        const itemCode = item?.itemCode || item?.name || 'unknown';
-        const quantity = item?.quantity ?? item?.count ?? 0;
-        return `${itemCode} x${quantity}`;
+    private async useItem(itemCode: string) {
+        try {
+            const result = await this.apiPost('/inventory/use', {
+                itemCode,
+            });
+
+            console.log('使用道具成功:', itemCode, result);
+
+            await this.loadInventory();
+        } catch (error) {
+            console.error('使用道具失败:', error);
+        }
+    }
+
+    private setEmptyVisible(visible: boolean) {
+        if (this.emptyLabel) {
+            this.emptyLabel.node.active = visible;
+            return;
+        }
+
+        const found = find('EmptyLabel', this.node);
+        if (found) {
+            found.active = visible;
+        }
+    }
+
+    private async apiGet(path: string) {
+        const response = await fetch(this.baseUrl + path, {
+            method: 'GET',
+            headers: this.getHeaders(),
+        });
+
+        return this.parseResponse(response);
+    }
+
+    private async apiPost(path: string, body: any) {
+        const response = await fetch(this.baseUrl + path, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(body),
+        });
+
+        return this.parseResponse(response);
+    }
+
+    private getHeaders(): Record<string, string> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+
+        if (PlayerData.token) {
+            headers.Authorization = `Bearer ${PlayerData.token}`;
+        }
+
+        return headers;
+    }
+
+    private async parseResponse(response: Response) {
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+
+        if (!response.ok) {
+            throw data || new Error(`HTTP ${response.status}`);
+        }
+
+        return data;
     }
 }
