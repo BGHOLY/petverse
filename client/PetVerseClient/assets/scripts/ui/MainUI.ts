@@ -79,11 +79,27 @@ export class MainUI extends Component {
         this.panelManager?.showShop();
     }
 
-    onClickRanking() {
-        console.log('排行榜功能暂未开放');
+    onClickHatchery() {
+        this.panelManager?.showHatchery();
     }
 
-    onClickTask() {
-        console.log('任务功能暂未开放');
+    onClickPet() {
+        this.panelManager?.showPet();
+    }
+
+    onClickSkill() {
+        this.panelManager?.showSkill();
+    }
+
+    onClickRanking() {
+        this.panelManager?.showRanking();
+    }
+
+    onClickBattle() {
+        this.panelManager?.showBattle();
+    }
+
+    onClickFriend() {
+        this.panelManager?.showFriend();
     }
 }
