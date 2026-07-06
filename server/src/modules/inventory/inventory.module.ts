@@ -6,10 +6,11 @@ import { Inventory } from './inventory.entity';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 import { ItemModule } from '../item/item.module';
+import { Pet } from '../pet/pet.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Inventory]),
+    TypeOrmModule.forFeature([Inventory, Pet]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'petverse_dev_secret',
       signOptions: {
