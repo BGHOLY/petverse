@@ -14,6 +14,7 @@ export class InventoryService {
   async getUserInventory(userId: number) {
     return this.inventoryRepository.find({
       where: { userId },
+      order: { id: 'ASC' },
     });
   }
 
@@ -49,13 +50,12 @@ export class InventoryService {
     itemCode: string,
     quantity = 1,
   ) {
-    const inventory =
-      await this.inventoryRepository.findOne({
-        where: {
-          userId,
-          itemCode,
-        },
-      });
+    const inventory = await this.inventoryRepository.findOne({
+      where: {
+        userId,
+        itemCode,
+      },
+    });
 
     if (!inventory) {
       return false;
@@ -68,15 +68,60 @@ export class InventoryService {
     inventory.quantity -= quantity;
 
     if (inventory.quantity <= 0) {
-      await this.inventoryRepository.remove(
-        inventory,
-      );
+      await this.inventoryRepository.remove(inventory);
     } else {
-      await this.inventoryRepository.save(
-        inventory,
-      );
+      await this.inventoryRepository.save(inventory);
     }
 
     return true;
+  }
+
+  async useItem(userId: number, itemCode: string, quantity = 1) {
+    if (!itemCode) {
+      return {
+        success: false,
+        message: '缺少 itemCode',
+      };
+    }
+
+    const inventory = await this.inventoryRepository.findOne({
+      where: {
+        userId,
+        itemCode,
+      },
+    });
+
+    if (!inventory || inventory.quantity <= 0) {
+      return {
+        success: false,
+        message: '道具数量不足',
+      };
+    }
+
+    if (inventory.quantity < quantity) {
+      return {
+        success: false,
+        message: '道具数量不足',
+      };
+    }
+
+    inventory.quantity -= quantity;
+
+    if (inventory.quantity <= 0) {
+      await this.inventoryRepository.remove(inventory);
+    } else {
+      await this.inventoryRepository.save(inventory);
+    }
+
+    const inventoryList = await this.getUserInventory(userId);
+
+    return {
+      success: true,
+      message: '使用成功',
+      itemCode,
+      quantityUsed: quantity,
+      inventory: inventoryList,
+      data: inventoryList,
+    };
   }
 }
