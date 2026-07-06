@@ -23,7 +23,6 @@ import { MailModule } from './modules/mail/mail.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { AchievementModule } from './modules/achievement/achievement.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -39,7 +38,6 @@ import { AchievementModule } from './modules/achievement/achievement.module';
     InventoryModule,
     TowerModule,
     BattleModule,
-    RankingModule,
     RankingModule,
     SignModule,
     DailyTaskModule,

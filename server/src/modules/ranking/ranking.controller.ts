@@ -6,6 +6,11 @@ import { RankingService } from './ranking.service';
 export class RankingController {
   constructor(private readonly rankingService: RankingService) {}
 
+  @Get()
+  getRanking() {
+    return this.rankingService.getMainRanking();
+  }
+
   @Get('tower')
   getTowerRanking() {
     return this.rankingService.getTowerRanking();

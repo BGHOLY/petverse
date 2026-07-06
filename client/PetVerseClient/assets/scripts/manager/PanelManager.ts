@@ -1,4 +1,5 @@
 import { _decorator, Component, Node } from 'cc';
+import { RankingPanel } from '../ui/RankingPanel';
 
 const { ccclass, property } = _decorator;
 
@@ -62,6 +63,21 @@ export class PanelManager extends Component {
         page.active = true;
     }
 
+    private ensureRankingPanel() {
+        if (!this.rankingPage) {
+            console.warn('RankingPage 页面节点没有绑定');
+            return;
+        }
+
+        let rankingPanel = this.rankingPage.getComponent(RankingPanel);
+
+        if (!rankingPanel) {
+            rankingPanel = this.rankingPage.addComponent(RankingPanel);
+        }
+
+        rankingPanel.refreshRanking();
+    }
+
     showInventory() {
         this.showPage(this.inventoryPage);
     }
@@ -84,6 +100,7 @@ export class PanelManager extends Component {
 
     showRanking() {
         this.showPage(this.rankingPage);
+        this.ensureRankingPanel();
     }
 
     showBattle() {
