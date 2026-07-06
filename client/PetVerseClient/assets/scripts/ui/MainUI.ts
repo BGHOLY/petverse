@@ -1,6 +1,7 @@
 import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import { PanelManager } from '../manager/PanelManager';
+import { FriendPanel } from './FriendPanel';
 import UIEventCenter from '../manager/UIEventCenter';
 
 const { ccclass, property } = _decorator;
@@ -101,5 +102,18 @@ export class MainUI extends Component {
 
     onClickFriend() {
         this.panelManager?.showFriend();
+
+        const friendPage = this.panelManager?.friendPage;
+        if (!friendPage) {
+            console.warn('FriendPage 未绑定');
+            return;
+        }
+
+        let panel = friendPage.getComponent(FriendPanel);
+        if (!panel) {
+            panel = friendPage.addComponent(FriendPanel);
+        }
+
+        panel.refreshFriendPage();
     }
 }
