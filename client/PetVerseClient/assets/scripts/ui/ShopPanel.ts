@@ -1,5 +1,7 @@
-import { _decorator, Component, instantiate, Label, Node, Prefab, UITransform } from 'cc';
+import { _decorator, Component, instantiate, Label, Node, Prefab, UITransform, isValid } from 'cc';
 import NetworkManager from '../network/NetworkManager';
+import UIEventCenter from '../manager/UIEventCenter';
+import { InventoryItemSlot } from './InventoryItemSlot';
 
 const { ccclass, property } = _decorator;
 
@@ -14,6 +16,7 @@ export class ShopPanel extends Component {
 
     private templateSlot: Node | null = null;
     private loading = false;
+    private refreshPending = false;
 
     onLoad() {
         this.resolveReferences();
@@ -21,11 +24,21 @@ export class ShopPanel extends Component {
 
     onEnable() {
         this.resolveReferences();
+        UIEventCenter.on('SHOP_UPDATED', this.onShopUpdated);
         void this.loadShop();
     }
 
+    onDisable() {
+        UIEventCenter.off('SHOP_UPDATED', this.onShopUpdated);
+    }
+
+    private onShopUpdated = () => {
+        void this.refreshShop();
+    };
+
     async loadShop() {
         if (this.loading) {
+            this.refreshPending = true;
             return;
         }
 
@@ -55,7 +68,17 @@ export class ShopPanel extends Component {
                 if (node) {
                     node.name = 'GeneratedShopItem';
                     node.active = true;
-                    this.fillShopItem(node, item);
+
+                    const slot = node.getComponent(InventoryItemSlot);
+
+                    if (slot) {
+                        slot.setShopData(item, () => {
+                            void this.refreshShop();
+                        });
+                    } else {
+                        this.fillShopItem(node, item);
+                    }
+
                     this.content.addChild(node);
                 } else {
                     this.createTextItem(item);
@@ -65,11 +88,16 @@ export class ShopPanel extends Component {
             console.error('加载商店失败', error);
         } finally {
             this.loading = false;
+
+            if (this.refreshPending) {
+                this.refreshPending = false;
+                void this.loadShop();
+            }
         }
     }
 
-    refreshShop() {
-        void this.loadShop();
+    async refreshShop() {
+        await this.loadShop();
     }
 
     private resolveReferences() {
@@ -87,7 +115,7 @@ export class ShopPanel extends Component {
                 null;
         }
 
-        if (this.templateSlot) {
+        if (this.templateSlot && isValid(this.templateSlot)) {
             this.templateSlot.active = false;
         }
     }
@@ -105,11 +133,17 @@ export class ShopPanel extends Component {
     private clearContent() {
         this.resolveReferences();
 
-        if (!this.content) {
+        if (!this.content || !isValid(this.content)) {
             return;
         }
 
-        for (const child of [...this.content.children]) {
+        const children = [...this.content.children];
+
+        for (const child of children) {
+            if (!child || !isValid(child)) {
+                continue;
+            }
+
             if (
                 child === this.templateSlot ||
                 child.name === 'ItemSlot' ||
@@ -118,7 +152,11 @@ export class ShopPanel extends Component {
                 continue;
             }
 
-            child.destroy();
+            child.removeFromParent();
+
+            if (isValid(child)) {
+                child.destroy();
+            }
         }
     }
 
@@ -127,7 +165,7 @@ export class ShopPanel extends Component {
             return instantiate(this.itemPrefab);
         }
 
-        if (this.templateSlot) {
+        if (this.templateSlot && isValid(this.templateSlot)) {
             return instantiate(this.templateSlot);
         }
 
@@ -156,7 +194,7 @@ export class ShopPanel extends Component {
     }
 
     private createTextItem(item: any) {
-        if (!this.content) {
+        if (!this.content || !isValid(this.content)) {
             return;
         }
 
@@ -173,7 +211,7 @@ export class ShopPanel extends Component {
     }
 
     private showEmptyText() {
-        if (!this.content) {
+        if (!this.content || !isValid(this.content)) {
             return;
         }
 

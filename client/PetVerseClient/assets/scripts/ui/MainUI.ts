@@ -1,6 +1,7 @@
 import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import { PanelManager } from '../manager/PanelManager';
+import UIEventCenter from '../manager/UIEventCenter';
 
 const { ccclass, property } = _decorator;
 
@@ -22,9 +23,21 @@ export class MainUI extends Component {
     @property(PanelManager)
     panelManager: PanelManager | null = null;
 
+    onEnable() {
+        UIEventCenter.on('USER_UPDATED', this.onUserUpdated);
+    }
+
+    onDisable() {
+        UIEventCenter.off('USER_UPDATED', this.onUserUpdated);
+    }
+
     start() {
         this.refreshUI();
     }
+
+    private onUserUpdated = () => {
+        this.refreshUI();
+    };
 
     refreshUI() {
         const user = PlayerData.user;

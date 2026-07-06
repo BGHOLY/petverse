@@ -11,6 +11,7 @@ import {
 import NetworkManager from '../network/NetworkManager';
 import PlayerData from '../data/PlayerData';
 import { InventoryItemSlot } from './InventoryItemSlot';
+import UIEventCenter from '../manager/UIEventCenter';
 
 const { ccclass, property } = _decorator;
 
@@ -34,16 +35,22 @@ export class InventoryPanel extends Component {
     onEnable() {
         this.resolveReferences();
         this.node.on('INVENTORY_REFRESH', this.onInventoryRefresh, this);
+        UIEventCenter.on('INVENTORY_REFRESH', this.onInventoryRefreshGlobal);
         void this.loadInventory();
     }
 
     onDisable() {
         this.node.off('INVENTORY_REFRESH', this.onInventoryRefresh, this);
+        UIEventCenter.off('INVENTORY_REFRESH', this.onInventoryRefreshGlobal);
     }
 
     private onInventoryRefresh() {
         void this.refreshInventory();
     }
+
+    private onInventoryRefreshGlobal = () => {
+        void this.refreshInventory();
+    };
 
     async loadInventory() {
         if (this.loading) {

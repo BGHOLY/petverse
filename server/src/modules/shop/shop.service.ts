@@ -6,6 +6,7 @@ import { ShopItem } from './shop-item.entity';
 import { User } from '../user/user.entity';
 import { Item } from '../item/item.entity';
 import { InventoryService } from '../inventory/inventory.service';
+import { BuyItemDto } from './dto/buy-item.dto';
 
 @Injectable()
 export class ShopService {
@@ -44,6 +45,24 @@ export class ShopService {
           }),
         );
       }
+
+      const itemExists = await this.itemRepository.findOne({
+        where: { itemCode: data.itemCode },
+      });
+
+      if (!itemExists) {
+        await this.itemRepository.save(
+          this.itemRepository.create({
+            itemCode: data.itemCode,
+            name: data.name,
+            description: data.name,
+            type: 'consumable',
+            rarity: 1,
+            maxStack: 999999,
+            usable: true,
+          }),
+        );
+      }
     }
 
     return this.getShopItems();
@@ -56,10 +75,15 @@ export class ShopService {
     });
   }
 
-  async buyItem(userId: number, shopItemId: number) {
-    const shopItem = await this.shopItemRepository.findOne({
-      where: { id: shopItemId, enabled: true },
-    });
+  async buyItem(userId: number, dto: BuyItemDto) {
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return {
+        success: false,
+        message: '用户身份无效',
+      };
+    }
+
+    const shopItem = await this.findShopItem(dto);
 
     if (!shopItem) {
       return {
@@ -84,36 +108,86 @@ export class ShopService {
         return {
           success: false,
           message: '金币不足',
+          user,
         };
       }
 
       user.gold -= shopItem.price;
-      await this.userRepository.save(user);
+    } else if (shopItem.currencyType === 'diamond') {
+      if (user.diamond < shopItem.price) {
+        return {
+          success: false,
+          message: '钻石不足',
+          user,
+        };
+      }
+
+      user.diamond -= shopItem.price;
     }
 
-    const item = await this.itemRepository.findOne({
-      where: { itemCode: shopItem.itemCode },
-    });
+    await this.userRepository.save(user);
 
-    if (!item) {
-      return {
-        success: false,
-        message: '物品配置不存在',
-      };
-    }
+    const item = await this.ensureItemExists(shopItem);
 
     await this.inventoryService.addItem(
       userId,
       item.id,
       item.itemCode,
-      shopItem.quantity,
+      shopItem.quantity || 1,
     );
+
+    const inventory = await this.inventoryService.getUserInventory(userId);
 
     return {
       success: true,
       message: '购买成功',
       shopItem,
       user,
+      inventory,
     };
+  }
+
+  private async findShopItem(dto: BuyItemDto) {
+    if (dto.shopItemId) {
+      return this.shopItemRepository.findOne({
+        where: {
+          id: dto.shopItemId,
+          enabled: true,
+        },
+      });
+    }
+
+    if (dto.itemCode) {
+      return this.shopItemRepository.findOne({
+        where: {
+          itemCode: dto.itemCode,
+          enabled: true,
+        },
+      });
+    }
+
+    return null;
+  }
+
+  private async ensureItemExists(shopItem: ShopItem) {
+    let item = await this.itemRepository.findOne({
+      where: { itemCode: shopItem.itemCode },
+    });
+
+    if (!item) {
+      item = this.itemRepository.create({
+        itemCode: shopItem.itemCode,
+        name: shopItem.name,
+        description: shopItem.name,
+        type: 'consumable',
+        rarity: 1,
+        maxStack: 999999,
+        usable: true,
+      });
+
+      item = await this.itemRepository.save(item);
+    }
+
+    return item;
   }
 }

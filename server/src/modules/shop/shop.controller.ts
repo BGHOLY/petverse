@@ -28,6 +28,12 @@ export class ShopController {
   @Post('buy')
   @UseGuards(JwtAuthGuard)
   async buyItem(@Req() req: any, @Body() dto: BuyItemDto) {
-    return this.shopService.buyItem(req.user.sub, dto.shopItemId);
+    const userId = Number(
+      req?.user?.sub ??
+      req?.user?.id ??
+      req?.user?.userId,
+    );
+
+    return this.shopService.buyItem(userId, dto);
   }
 }
