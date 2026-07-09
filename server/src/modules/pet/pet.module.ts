@@ -5,8 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { Pet } from './pet.entity';
 import { PetController } from './pet.controller';
 import { PetService } from './pet.service';
-import { InventoryModule } from '../inventory/inventory.module';
-import { DailyTaskModule } from '../daily-task/daily-task.module';
+import { SkillModule } from '../skill/skill.module';
 
 @Module({
   imports: [
@@ -17,8 +16,7 @@ import { DailyTaskModule } from '../daily-task/daily-task.module';
         expiresIn: '7d',
       },
     }),
-    InventoryModule,
-    DailyTaskModule,
+    SkillModule,
   ],
   controllers: [PetController],
   providers: [PetService],

@@ -8,6 +8,7 @@ import { FriendController } from './friend.controller';
 import { FriendService } from './friend.service';
 
 import { User } from '../user/user.entity';
+import { PetModule } from '../pet/pet.module';
 
 @Module({
   imports: [
@@ -24,8 +25,10 @@ import { User } from '../user/user.entity';
         expiresIn: '7d',
       },
     }),
+    PetModule,
   ],
   controllers: [FriendController],
   providers: [FriendService],
+  exports: [FriendService],
 })
 export class FriendModule {}

@@ -1,14 +1,14 @@
 import { _decorator, Component, find, Label, Node } from 'cc';
 import PlayerData from '../data/PlayerData';
 import { PanelManager } from '../manager/PanelManager';
-import { FriendPanel } from './FriendPanel';
 import UIEventCenter from '../manager/UIEventCenter';
+import ApiClient from '../network/ApiClient';
+import { getOrCreateButton } from './UiKit';
 
 const { ccclass, property } = _decorator;
 
 @ccclass('MainUI')
 export class MainUI extends Component {
-
     @property(Label)
     nicknameLabel: Label | null = null;
 
@@ -31,6 +31,8 @@ export class MainUI extends Component {
     onLoad() {
         this.bindLayoutNodes();
         this.bindLabels();
+        this.ensurePanelManager();
+        this.ensureTowerButton();
     }
 
     onEnable() {
@@ -43,13 +45,99 @@ export class MainUI extends Component {
 
     start() {
         this.showMainLayout();
+        void this.bootstrap();
+    }
+
+    async bootstrap() {
+        const seed = await ApiClient.post('/dev/seed-all', {});
+        console.log('[MainUI] seed-all result:', seed);
+        await this.loadUserAndPets();
         this.panelManager?.showPet();
+    }
+
+    async loadUserAndPets() {
+        const userResult = await ApiClient.get('/user');
+        const petResult = await ApiClient.get('/pet');
+        const user = userResult?.user || userResult?.data || userResult;
+        const pets = petResult?.pets || petResult?.data || [];
+
+        PlayerData.user = {
+            ...(PlayerData.user || {}),
+            ...(user || {}),
+            pets,
+        };
+
+        console.log('[MainUI] render top bar:', PlayerData.user);
         this.refreshUI();
     }
 
-    private onUserUpdated = () => {
+    refreshUI() {
         this.showMainLayout();
-        this.refreshUI();
+        const user = PlayerData.user || {
+            nickname: 'PetVerse Tester',
+            gold: 0,
+            diamond: 0,
+            pets: [],
+        };
+
+        if (this.nicknameLabel) {
+            this.nicknameLabel.string = `Player: ${user.nickname || 'PetVerse Tester'}`;
+        }
+
+        if (this.goldLabel) {
+            this.goldLabel.string = `Gold: ${user.gold ?? 0}`;
+        }
+
+        if (this.diamondLabel) {
+            this.diamondLabel.string = `Diamond: ${user.diamond ?? 0}`;
+        }
+
+        if (this.petInfoLabel) {
+            const pet = user.pets?.find((item: any) => !item.isEgg) || user.pets?.[0];
+            this.petInfoLabel.string = pet
+                ? `Pet: ${pet.nickname}\nLv.${pet.level}  ${pet.rarityName || pet.rarity}`
+                : 'No pet';
+        }
+    }
+
+    onClickInventory() {
+        this.panelManager?.showInventory();
+    }
+
+    onClickShop() {
+        this.panelManager?.showShop();
+    }
+
+    onClickHatchery() {
+        this.panelManager?.showHatchery();
+    }
+
+    onClickPet() {
+        this.panelManager?.showPet();
+    }
+
+    onClickSkill() {
+        this.panelManager?.showSkill();
+    }
+
+    onClickBattle() {
+        this.panelManager?.showBattle();
+    }
+
+    onClickTower() {
+        this.panelManager?.showTower();
+    }
+
+    onClickFriend() {
+        this.panelManager?.showFriend();
+    }
+
+    onClickRanking() {
+        this.panelManager?.showRanking();
+    }
+
+    private onUserUpdated = () => {
+        void this.loadUserAndPets();
     };
 
     private bindLayoutNodes() {
@@ -59,121 +147,35 @@ export class MainUI extends Component {
     }
 
     private bindLabels() {
-        if (!this.nicknameLabel) {
-            this.nicknameLabel = find('Canvas/TopBar/NicknameLabel')?.getComponent(Label) || null;
-        }
-
-        if (!this.goldLabel) {
-            this.goldLabel = find('Canvas/TopBar/GoldLabel')?.getComponent(Label) || null;
-        }
-
-        if (!this.diamondLabel) {
-            this.diamondLabel = find('Canvas/TopBar/DiamondLabel')?.getComponent(Label) || null;
-        }
+        this.nicknameLabel = this.nicknameLabel || find('Canvas/TopBar/NicknameLabel')?.getComponent(Label) || null;
+        this.goldLabel = this.goldLabel || find('Canvas/TopBar/GoldLabel')?.getComponent(Label) || null;
+        this.diamondLabel = this.diamondLabel || find('Canvas/TopBar/DiamondLabel')?.getComponent(Label) || null;
     }
 
     private showMainLayout() {
-        if (!this.topBar || !this.pageRoot || !this.bottomMenu) {
-            this.bindLayoutNodes();
-        }
-
-        if (this.topBar) {
-            this.topBar.active = true;
-        }
-
-        if (this.pageRoot) {
-            this.pageRoot.active = true;
-        }
-
-        if (this.bottomMenu) {
-            this.bottomMenu.active = true;
-        }
+        this.bindLayoutNodes();
+        if (this.topBar) this.topBar.active = true;
+        if (this.pageRoot) this.pageRoot.active = true;
+        if (this.bottomMenu) this.bottomMenu.active = true;
     }
 
-    refreshUI() {
-        this.showMainLayout();
-
-        const user = PlayerData.user || {
-            nickname: '游客玩家',
-            gold: 0,
-            diamond: 0,
-            pets: [],
-        };
-
-        if (this.nicknameLabel) {
-            this.nicknameLabel.string = '玩家：' + (user.nickname || '游客玩家');
-        }
-
-        if (this.goldLabel) {
-            this.goldLabel.string = '金币：' + (user.gold ?? 0);
-        }
-
-        if (this.diamondLabel) {
-            this.diamondLabel.string = '钻石：' + (user.diamond ?? 0);
-        }
-
-        if (this.petInfoLabel) {
-            const pet = user.pets?.[0];
-            this.petInfoLabel.string = pet
-                ? '宠物：' + (pet.nickname || pet.name) +
-                    '\n等级：' + pet.level +
-                    '\n稀有度：' + (pet.rarityName || pet.rarity) +
-                    '\n饥饿：' + pet.hunger +
-                    '\n快乐：' + pet.happiness
-                : '暂无宠物';
-        }
-    }
-
-    onClickInventory() {
-        this.showMainLayout();
-        this.panelManager?.showInventory();
-    }
-
-    onClickShop() {
-        this.showMainLayout();
-        this.panelManager?.showShop();
-    }
-
-    onClickHatchery() {
-        this.showMainLayout();
-        this.panelManager?.showHatchery();
-    }
-
-    onClickPet() {
-        this.showMainLayout();
-        this.panelManager?.showPet();
-    }
-
-    onClickSkill() {
-        this.showMainLayout();
-        this.panelManager?.showSkill();
-    }
-
-    onClickRanking() {
-        this.showMainLayout();
-        this.panelManager?.showRanking();
-    }
-
-    onClickBattle() {
-        this.showMainLayout();
-        this.panelManager?.showBattle();
-    }
-
-    onClickFriend() {
-        this.showMainLayout();
-        this.panelManager?.showFriend();
-
-        const friendPage = this.panelManager?.friendPage;
-        if (!friendPage) {
-            console.warn('FriendPage 未绑定');
+    private ensurePanelManager() {
+        if (this.panelManager) {
             return;
         }
 
-        let panel = friendPage.getComponent(FriendPanel);
-        if (!panel) {
-            panel = friendPage.addComponent(FriendPanel);
+        const canvas = find('Canvas') || this.node.parent || this.node;
+        this.panelManager = canvas.getComponent(PanelManager) || canvas.addComponent(PanelManager);
+    }
+
+    private ensureTowerButton() {
+        this.bindLayoutNodes();
+        if (!this.bottomMenu) {
+            return;
         }
 
-        panel.refreshFriendPage();
+        getOrCreateButton(this.bottomMenu, 'TowerButton', 'Tower', 0, -118, 120, 48, () => {
+            this.onClickTower();
+        }, this);
     }
 }

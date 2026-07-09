@@ -7,11 +7,12 @@ import { TowerController } from './tower.controller';
 import { TowerService } from './tower.service';
 
 import { PetModule } from '../pet/pet.module';
-import { DailyTaskModule } from '../daily-task/daily-task.module';
+import { BattleModule } from '../battle/battle.module';
+import { User } from '../user/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TowerRecord]),
+    TypeOrmModule.forFeature([TowerRecord, User]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'petverse_dev_secret',
       signOptions: {
@@ -19,9 +20,10 @@ import { DailyTaskModule } from '../daily-task/daily-task.module';
       },
     }),
     PetModule,
-    DailyTaskModule,
+    BattleModule,
   ],
   controllers: [TowerController],
   providers: [TowerService],
+  exports: [TowerService],
 })
 export class TowerModule {}

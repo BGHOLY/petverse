@@ -1,15 +1,8 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ShopService } from './shop.service';
+import { DEFAULT_USER_ID } from '../game-data';
 import { BuyItemDto } from './dto/buy-item.dto';
+import { ShopService } from './shop.service';
 
 @Controller('shop')
 export class ShopController {
@@ -20,20 +13,30 @@ export class ShopController {
     return this.shopService.seedShopItems();
   }
 
+  @Get()
+  async getShop() {
+    const shopItems = await this.shopService.getShopItems();
+    return {
+      success: true,
+      shopItems,
+      items: shopItems,
+      data: shopItems,
+    };
+  }
+
   @Get('items')
   async getShopItems() {
-    return this.shopService.getShopItems();
+    const shopItems = await this.shopService.getShopItems();
+    return {
+      success: true,
+      shopItems,
+      items: shopItems,
+      data: shopItems,
+    };
   }
 
   @Post('buy')
-  @UseGuards(JwtAuthGuard)
-  async buyItem(@Req() req: any, @Body() dto: BuyItemDto) {
-    const userId = Number(
-      req?.user?.sub ??
-      req?.user?.id ??
-      req?.user?.userId,
-    );
-
-    return this.shopService.buyItem(userId, dto);
+  async buyItem(@Body() dto: BuyItemDto) {
+    return this.shopService.buyItem(DEFAULT_USER_ID, dto);
   }
 }

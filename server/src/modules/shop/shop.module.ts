@@ -29,5 +29,6 @@ import { InventoryModule } from '../inventory/inventory.module';
   ],
   controllers: [ShopController],
   providers: [ShopService],
+  exports: [ShopService],
 })
 export class ShopModule {}

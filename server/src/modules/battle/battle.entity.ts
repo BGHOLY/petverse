@@ -28,7 +28,7 @@ export class Battle {
   @Column({ default: false })
   finished: boolean;
 
-  @Column({ default: '' })
+  @Column({ type: 'text' })
   battleLog: string;
 
   @CreateDateColumn()

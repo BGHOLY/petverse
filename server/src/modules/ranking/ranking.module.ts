@@ -6,10 +6,11 @@ import { RankingService } from './ranking.service';
 
 import { Pet } from '../pet/pet.entity';
 import { TowerRecord } from '../tower/tower-record.entity';
+import { User } from '../user/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Pet, TowerRecord]),
+    TypeOrmModule.forFeature([Pet, TowerRecord, User]),
   ],
   controllers: [RankingController],
   providers: [RankingService],

@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { ShopItem } from './shop-item.entity';
-import { User } from '../user/user.entity';
-import { Item } from '../item/item.entity';
+import { DEFAULT_ITEMS, DEFAULT_SHOP_ITEMS } from '../game-data';
 import { InventoryService } from '../inventory/inventory.service';
+import { Item } from '../item/item.entity';
+import { User } from '../user/user.entity';
 import { BuyItemDto } from './dto/buy-item.dto';
+import { ShopItem } from './shop-item.entity';
 
 @Injectable()
 export class ShopService {
@@ -24,71 +25,84 @@ export class ShopService {
   ) {}
 
   async seedShopItems() {
-    const defaultItems = [
-      { itemCode: 'apple', name: '苹果', price: 20, quantity: 1 },
-      { itemCode: 'fish', name: '小鱼干', price: 30, quantity: 1 },
-      { itemCode: 'exp_potion_small', name: '初级经验药水', price: 100, quantity: 1 },
-      { itemCode: 'starter_egg', name: '新手宠物蛋', price: 300, quantity: 1 },
-    ];
-
-    for (const data of defaultItems) {
-      const exists = await this.shopItemRepository.findOne({
-        where: { itemCode: data.itemCode },
+    for (const itemData of DEFAULT_ITEMS) {
+      let item = await this.itemRepository.findOne({
+        where: { itemCode: itemData.itemCode },
       });
 
-      if (!exists) {
-        await this.shopItemRepository.save(
-          this.shopItemRepository.create({
-            ...data,
-            currencyType: 'gold',
-            enabled: true,
-          }),
-        );
+      if (!item) {
+        item = this.itemRepository.create(itemData);
+      } else {
+        Object.assign(item, itemData);
       }
 
-      const itemExists = await this.itemRepository.findOne({
-        where: { itemCode: data.itemCode },
-      });
-
-      if (!itemExists) {
-        await this.itemRepository.save(
-          this.itemRepository.create({
-            itemCode: data.itemCode,
-            name: data.name,
-            description: data.name,
-            type: 'consumable',
-            rarity: 1,
-            maxStack: 999999,
-            usable: true,
-          }),
-        );
-      }
+      await this.itemRepository.save(item);
     }
 
-    return this.getShopItems();
+    for (const data of DEFAULT_SHOP_ITEMS) {
+      const item = await this.itemRepository.findOne({
+        where: { itemCode: data.itemCode },
+      });
+
+      let shopItem = await this.shopItemRepository.findOne({
+        where: { itemCode: data.itemCode },
+      });
+
+      if (!shopItem) {
+        shopItem = this.shopItemRepository.create({
+          itemCode: data.itemCode,
+          name: item?.name || data.itemCode,
+          currencyType: data.currencyType,
+          price: data.price,
+          quantity: data.quantity,
+          enabled: true,
+        });
+      } else {
+        shopItem.name = item?.name || data.itemCode;
+        shopItem.currencyType = data.currencyType;
+        shopItem.price = data.price;
+        shopItem.quantity = data.quantity;
+        shopItem.enabled = true;
+      }
+
+      await this.shopItemRepository.save(shopItem);
+    }
+
+    return {
+      success: true,
+      shopItems: await this.getShopItems(),
+    };
   }
 
   async getShopItems() {
-    return this.shopItemRepository.find({
+    const shopItems = await this.shopItemRepository.find({
       where: { enabled: true },
       order: { id: 'ASC' },
+    });
+
+    const items = await this.itemRepository.find();
+    const itemMap = new Map(items.map((item) => [item.itemCode, item]));
+
+    return shopItems.map((shopItem) => {
+      const item = itemMap.get(shopItem.itemCode);
+      return {
+        ...shopItem,
+        type: item?.type || 'material',
+        description: item?.description || '',
+        rarity: item?.rarity || 1,
+        effect: item?.effect || '',
+        effectValue: item?.effectValue || 0,
+      };
     });
   }
 
   async buyItem(userId: number, dto: BuyItemDto) {
-    if (!Number.isFinite(userId) || userId <= 0) {
-      return {
-        success: false,
-        message: '用户身份无效',
-      };
-    }
-
     const shopItem = await this.findShopItem(dto);
 
     if (!shopItem) {
       return {
         success: false,
-        message: '商品不存在',
+        message: 'Shop item not found',
       };
     }
 
@@ -99,30 +113,28 @@ export class ShopService {
     if (!user) {
       return {
         success: false,
-        message: '用户不存在',
+        message: 'User not found. Run POST /api/dev/seed-all first.',
       };
     }
 
-    if (shopItem.currencyType === 'gold') {
-      if (user.gold < shopItem.price) {
+    if (shopItem.currencyType === 'diamond') {
+      if (Number(user.diamond || 0) < shopItem.price) {
         return {
           success: false,
-          message: '金币不足',
+          message: 'Not enough diamonds',
           user,
         };
       }
-
-      user.gold -= shopItem.price;
-    } else if (shopItem.currencyType === 'diamond') {
-      if (user.diamond < shopItem.price) {
-        return {
-          success: false,
-          message: '钻石不足',
-          user,
-        };
-      }
-
       user.diamond -= shopItem.price;
+    } else {
+      if (Number(user.gold || 0) < shopItem.price) {
+        return {
+          success: false,
+          message: 'Not enough gold',
+          user,
+        };
+      }
+      user.gold -= shopItem.price;
     }
 
     await this.userRepository.save(user);
@@ -140,10 +152,14 @@ export class ShopService {
 
     return {
       success: true,
-      message: '购买成功',
+      message: 'Purchase successful',
       shopItem,
       user,
       inventory,
+      data: {
+        user,
+        inventory,
+      },
     };
   }
 
@@ -179,10 +195,12 @@ export class ShopService {
         itemCode: shopItem.itemCode,
         name: shopItem.name,
         description: shopItem.name,
-        type: 'consumable',
+        type: 'material',
         rarity: 1,
         maxStack: 999999,
         usable: true,
+        effect: '',
+        effectValue: 0,
       });
 
       item = await this.itemRepository.save(item);

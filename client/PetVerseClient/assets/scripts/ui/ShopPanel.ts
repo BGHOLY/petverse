@@ -1,249 +1,83 @@
-import { _decorator, Component, instantiate, Label, Node, Prefab, UITransform, isValid } from 'cc';
-import NetworkManager from '../network/NetworkManager';
+import { _decorator, Component, Label } from 'cc';
+import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
-import { InventoryItemSlot } from './InventoryItemSlot';
-import { MainUI } from './MainUI';
+import ApiClient from '../network/ApiClient';
+import { clearGenerated, getOrCreateButton, getOrCreateLabel } from './UiKit';
 
-const { ccclass, property } = _decorator;
+const { ccclass } = _decorator;
 
 @ccclass('ShopPanel')
 export class ShopPanel extends Component {
-
-    @property(Node)
-    content: Node | null = null;
-
-    @property(Prefab)
-    itemPrefab: Prefab | null = null;
-
-    @property(MainUI)
-    mainUI: MainUI | null = null;
-
-    @property(Label)
-    emptyLabel: Label | null = null;
-
-    private templateSlot: Node | null = null;
-    private loading = false;
-    private refreshPending = false;
+    private statusLabel: Label | null = null;
 
     onLoad() {
-        this.resolveReferences();
+        this.ensureView();
     }
 
     onEnable() {
-        this.resolveReferences();
-        UIEventCenter.on('SHOP_UPDATED', this.onShopUpdated);
         void this.loadShop();
     }
 
-    onDisable() {
-        UIEventCenter.off('SHOP_UPDATED', this.onShopUpdated);
-    }
-
-    private onShopUpdated = () => {
-        void this.refreshShop();
-    };
-
     async loadShop() {
-        if (this.loading) {
-            this.refreshPending = true;
+        this.ensureView();
+        const result = await ApiClient.get('/shop/items');
+        const list = result?.items || result?.shopItems || result?.data || [];
+        console.log('[ShopPanel] items:', list);
+        clearGenerated(this.node, 'GeneratedShopItem');
+
+        if (!list.length) {
+            this.setStatus('No shop items. Tap Refresh after seed-all.');
+            console.log('[ShopPanel] render result: empty');
             return;
         }
 
-        this.loading = true;
-
-        try {
-            this.resolveReferences();
-
-            const res = await NetworkManager.get('/shop/items');
-            const list = this.normalizeList(res);
-
-            this.clearContent();
-            this.setEmptyState(list.length === 0);
-
-            if (!this.content) {
-                console.warn('ShopPanel 缺少 Content 节点');
-                return;
-            }
-
-            if (list.length === 0) {
-                if (!this.emptyLabel) {
-                    this.showEmptyText();
-                }
-                return;
-            }
-
-            for (const item of list) {
-                const node = this.createItemNode();
-
-                if (node) {
-                    node.name = 'GeneratedShopItem';
-                    node.active = true;
-
-                    const slot = node.getComponent(InventoryItemSlot);
-
-                    if (slot) {
-                        slot.setShopData(item, () => {
-                            void this.refreshShop();
-                        });
-                    } else {
-                        this.fillShopItem(node, item);
-                    }
-
-                    this.content.addChild(node);
-                } else {
-                    this.createTextItem(item);
-                }
-            }
-        } catch (error) {
-            console.error('加载商店失败', error);
-        } finally {
-            this.loading = false;
-
-            if (this.refreshPending) {
-                this.refreshPending = false;
-                void this.loadShop();
-            }
-        }
+        this.setStatus(`Shop items: ${list.length}`);
+        list.slice(0, 8).forEach((item: any, index: number) => {
+            const y = 275 - index * 72;
+            const price = `${item.price ?? 0} ${item.currencyType || 'gold'}`;
+            getOrCreateButton(
+                this.node,
+                `GeneratedShopItem${index}`,
+                `${item.name || item.itemCode}  ${price}\n${item.type || '-'}  ${item.description || ''}`,
+                0,
+                y,
+                620,
+                64,
+                () => {
+                    void this.buyItem(item.itemCode);
+                },
+                this,
+            );
+        });
+        console.log('[ShopPanel] render result:', list.length);
     }
 
-    async refreshShop() {
-        await this.loadShop();
+    async buyItem(itemCode: string) {
+        const result = await ApiClient.post('/shop/buy', { itemCode });
+        console.log('[ShopPanel] buy result:', result);
+
+        if (result?.user) {
+            PlayerData.user = {
+                ...(PlayerData.user || {}),
+                ...result.user,
+            };
+            UIEventCenter.emit('USER_UPDATED');
+        }
+
+        this.setStatus(result?.success ? `Bought ${itemCode}` : `Buy failed: ${result?.message || itemCode}`);
     }
 
-    private resolveReferences() {
-        if (!this.content) {
-            this.content =
-                this.node.getChildByName('Content') ||
-                this.node.getChildByName('ShopContent') ||
-                this.node;
-        }
-
-        if (!this.templateSlot) {
-            this.templateSlot =
-                this.node.getChildByName('ItemSlot') ||
-                this.node.parent?.getChildByName('ItemSlot') ||
-                null;
-        }
-
-        if (!this.emptyLabel) {
-            this.emptyLabel = this.node.getChildByName('EmptyLabel')?.getComponent(Label) || null;
-        }
-
-        if (this.templateSlot && isValid(this.templateSlot)) {
-            this.templateSlot.active = false;
-        }
+    private ensureView() {
+        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Shop';
+        this.statusLabel = getOrCreateLabel(this.node, 'ShopStatusLabel', -300, 308, 600, 34, 18);
+        getOrCreateButton(this.node, 'RefreshShopButton', 'Refresh Shop', 0, -360, 220, 56, () => {
+            void this.loadShop();
+        }, this);
     }
 
-    private normalizeList(res: any): any[] {
-        const list =
-            res?.items ||
-            res?.data ||
-            res?.shopItems ||
-            (Array.isArray(res) ? res : []);
-
-        return Array.isArray(list) ? list : [];
-    }
-
-    private clearContent() {
-        this.resolveReferences();
-
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
-
-        const children = [...this.content.children];
-
-        for (const child of children) {
-            if (!child || !isValid(child)) {
-                continue;
-            }
-
-            if (
-                child === this.templateSlot ||
-                child.name === 'ItemSlot' ||
-                child.name === 'ShopContentLabel'
-            ) {
-                continue;
-            }
-
-            child.removeFromParent();
-
-            if (isValid(child)) {
-                child.destroy();
-            }
-        }
-    }
-
-    private createItemNode(): Node | null {
-        if (this.itemPrefab) {
-            return instantiate(this.itemPrefab);
-        }
-
-        if (this.templateSlot && isValid(this.templateSlot)) {
-            return instantiate(this.templateSlot);
-        }
-
-        return null;
-    }
-
-    private fillShopItem(node: Node, item: any) {
-        const nameLabel =
-            node.getChildByName('NameLabel')?.getComponent(Label) ||
-            node.getChildByName('ItemCodeLabel')?.getComponent(Label) ||
-            null;
-
-        const countLabel =
-            node.getChildByName('CountLabel')?.getComponent(Label) ||
-            node.getChildByName('PriceLabel')?.getComponent(Label) ||
-            node.getChildByName('QuantityLabel')?.getComponent(Label) ||
-            null;
-
-        if (nameLabel) {
-            nameLabel.string = String(item?.name || item?.itemCode || 'unknown');
-        }
-
-        if (countLabel) {
-            countLabel.string = String(item?.price ?? 0) + '金币';
-        }
-    }
-
-    private createTextItem(item: any) {
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
-
-        const node = new Node('GeneratedShopItem');
-        const transform = node.addComponent(UITransform);
-        transform.setContentSize(240, 40);
-
-        const label = node.addComponent(Label);
-        label.string = `${item?.name || item?.itemCode || 'unknown'}：${item?.price ?? 0}金币`;
-        label.fontSize = 20;
-        label.lineHeight = 32;
-
-        this.content.addChild(node);
-    }
-
-    private showEmptyText() {
-        if (!this.content || !isValid(this.content)) {
-            return;
-        }
-
-        const node = new Node('GeneratedShopItem');
-        const transform = node.addComponent(UITransform);
-        transform.setContentSize(200, 40);
-
-        const label = node.addComponent(Label);
-        label.string = '暂无商品';
-        label.fontSize = 22;
-        label.lineHeight = 36;
-
-        this.content.addChild(node);
-    }
-
-    private setEmptyState(isEmpty: boolean) {
-        if (this.emptyLabel?.node && isValid(this.emptyLabel.node)) {
-            this.emptyLabel.node.active = isEmpty;
+    private setStatus(text: string) {
+        if (this.statusLabel) {
+            this.statusLabel.string = text;
         }
     }
 }

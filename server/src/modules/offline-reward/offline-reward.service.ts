@@ -92,8 +92,8 @@ export class OfflineRewardService {
     user.gold += gold;
     await this.userRepository.save(user);
 
-    const pets = await this.petService.getAllPets();
-    const myPet = pets.find((pet) => pet.ownerId === userId && !pet.isEgg);
+    const petResult = await this.petService.getUserPets(userId);
+    const myPet = petResult.pets.find((pet) => !pet.isEgg);
 
     if (myPet && exp > 0) {
       await this.petService.addExp(myPet, exp);

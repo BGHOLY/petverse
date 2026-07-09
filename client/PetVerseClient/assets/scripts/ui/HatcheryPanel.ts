@@ -1,222 +1,89 @@
-import { _decorator, Button, Component, find, Label } from 'cc';
+import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
+import UIEventCenter from '../manager/UIEventCenter';
+import ApiClient from '../network/ApiClient';
+import { getOrCreateButton, getOrCreateLabel } from './UiKit';
 
-const { ccclass, property } = _decorator;
-
-type InventoryItem = {
-    itemCode?: string;
-    code?: string;
-    name?: string;
-    quantity?: number;
-    count?: number;
-};
+const { ccclass } = _decorator;
 
 @ccclass('HatcheryPanel')
 export class HatcheryPanel extends Component {
-    @property(Label)
-    eggInfoLabel: Label | null = null;
-
-    @property(Label)
-    emptyLabel: Label | null = null;
-
-    @property(Button)
-    hatchButton: Button | null = null;
-
-    private readonly baseUrl = 'http://127.0.0.1:3000/api';
-    private eggCount = 0;
+    private eggInfoLabel: Label | null = null;
 
     onLoad() {
-        this.autoBindNodes();
-        this.bindHatchButton();
+        this.ensureView();
     }
 
     onEnable() {
-        this.refreshEggInfo();
-    }
-
-    private autoBindNodes() {
-        if (!this.eggInfoLabel) {
-            const node = find('EggInfoLabel', this.node);
-            this.eggInfoLabel = node?.getComponent(Label) || null;
-        }
-
-        if (!this.emptyLabel) {
-            const node = find('EmptyLabel', this.node);
-            this.emptyLabel = node?.getComponent(Label) || null;
-        }
-
-        if (!this.hatchButton) {
-            const node = find('HatchButton', this.node);
-            this.hatchButton = node?.getComponent(Button) || null;
-        }
-    }
-
-    private bindHatchButton() {
-        if (!this.hatchButton) {
-            return;
-        }
-
-        this.hatchButton.node.off(Button.EventType.CLICK, this.onClickHatch, this);
-        this.hatchButton.node.on(Button.EventType.CLICK, this.onClickHatch, this);
+        void this.refreshEggInfo();
     }
 
     async refreshEggInfo() {
-        try {
-            const result = await this.apiGet('/inventory');
-            const inventory = this.normalizeInventory(result);
+        this.ensureView();
+        const result = await ApiClient.get('/hatchery/eggs');
+        const eggs = result?.eggs || result?.data || [];
+        console.log('[HatcheryPanel] eggs:', eggs);
 
-            const eggItem = inventory.find((item) => {
-                const code = item.itemCode || item.code;
-                return code === 'starter_egg';
-            });
-
-            this.eggCount = eggItem?.quantity ?? eggItem?.count ?? 0;
-
-            if (this.eggCount <= 0) {
-                this.showEmpty('暂无宠物蛋\n可以先去商店购买 starter_egg');
-                return;
-            }
-
-            this.showEggInfo(
-                `宠物蛋：starter_egg\n` +
-                `数量：${this.eggCount}\n\n` +
-                `点击开始孵化，会消耗 1 个宠物蛋并生成一只宠物`
-            );
-        } catch (error) {
-            console.error('加载宠物蛋失败:', error);
-            this.showEmpty('宠物蛋信息加载失败');
-        }
-    }
-
-    async onClickHatch() {
-        if (this.eggCount <= 0) {
-            console.log('没有宠物蛋，无法孵化');
-            this.showEmpty('暂无宠物蛋\n请先去商店购买宠物蛋');
+        if (!eggs.length) {
+            this.setText('No eggs yet.\nMarry a friend pet and tap Lay Egg, or use a pet egg from Inventory.');
+            console.log('[HatcheryPanel] render result: empty');
             return;
         }
 
-        try {
-            const result = await this.apiPost('/pet/hatch-starter', {});
-
-            if (!result || result.success === false) {
-                const message = result?.message || '孵化失败';
-                console.warn(message, result);
-                this.showEggInfo(message);
-                return;
-            }
-
-            if (PlayerData.user) {
-                PlayerData.user.pets = result.pets || [];
-            }
-
-            const pet = result.pet;
-            const petName = pet?.nickname || '新宠物';
-            const rarity = pet?.rarityName || pet?.rarity || '普通';
-
-            this.showEggInfo(
-                `孵化成功！\n\n` +
-                `获得宠物：${petName}\n` +
-                `稀有度：${rarity}\n\n` +
-                `请前往“宠物”页面查看详情`
-            );
-
-            await this.refreshEggInfo();
-        } catch (error) {
-            console.error('孵化失败:', error);
-            this.showEggInfo('孵化失败，请查看控制台');
-        }
-    }
-
-    private normalizeInventory(result: any): InventoryItem[] {
-        if (Array.isArray(result)) {
-            return result;
-        }
-
-        if (Array.isArray(result?.inventory)) {
-            return result.inventory;
-        }
-
-        if (Array.isArray(result?.items)) {
-            return result.items;
-        }
-
-        if (Array.isArray(result?.data)) {
-            return result.data;
-        }
-
-        return [];
-    }
-
-    private showEmpty(message: string) {
-        if (this.eggInfoLabel) {
-            this.eggInfoLabel.string = '';
-            this.eggInfoLabel.node.active = false;
-        }
-
-        if (this.emptyLabel) {
-            this.emptyLabel.string = message;
-            this.emptyLabel.node.active = true;
-        }
-
-        if (this.hatchButton) {
-            this.hatchButton.node.active = false;
-        }
-    }
-
-    private showEggInfo(message: string) {
-        if (this.emptyLabel) {
-            this.emptyLabel.node.active = false;
-        }
-
-        if (this.eggInfoLabel) {
-            this.eggInfoLabel.string = message;
-            this.eggInfoLabel.node.active = true;
-        }
-
-        if (this.hatchButton) {
-            this.hatchButton.node.active = true;
-        }
-    }
-
-    private async apiGet(path: string) {
-        const response = await fetch(this.baseUrl + path, {
-            method: 'GET',
-            headers: this.getHeaders(),
+        const lines = eggs.slice(-8).map((egg: any) => {
+            return `Egg #${egg.id}  rarity ${egg.rarityPotential}  ${egg.status}`;
         });
-
-        return this.parseResponse(response);
+        this.setText(lines.join('\n'));
+        console.log('[HatcheryPanel] render result:', lines);
     }
 
-    private async apiPost(path: string, body: any) {
-        const response = await fetch(this.baseUrl + path, {
-            method: 'POST',
-            headers: this.getHeaders(),
-            body: JSON.stringify(body),
-        });
-
-        return this.parseResponse(response);
+    async layEgg() {
+        const result = await ApiClient.post('/marriage/lay-egg', {});
+        console.log('[HatcheryPanel] lay egg result:', result);
+        this.setText(result?.success ? `New egg #${result.egg?.id}` : `Lay egg failed: ${result?.message || ''}`);
+        await this.refreshEggInfo();
     }
 
-    private getHeaders(): Record<string, string> {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-        };
+    async hatchFirstEgg() {
+        const eggResult = await ApiClient.get('/hatchery/eggs');
+        const eggs = eggResult?.eggs || eggResult?.data || [];
+        const egg = eggs.find((item: any) => item.status === 'unhatched');
 
-        if (PlayerData.token) {
-            headers.Authorization = `Bearer ${PlayerData.token}`;
+        if (!egg) {
+            this.setText('No unhatched egg.');
+            return;
         }
 
-        return headers;
-    }
+        const result = await ApiClient.post('/hatchery/hatch', { eggId: egg.id });
+        console.log('[HatcheryPanel] hatch result:', result);
 
-    private async parseResponse(response: Response) {
-        const text = await response.text();
-        const data = text ? JSON.parse(text) : null;
-
-        if (!response.ok) {
-            throw data || new Error(`HTTP ${response.status}`);
+        if (result?.pet) {
+            PlayerData.updatePet(result.pet);
+            UIEventCenter.emit('USER_UPDATED');
         }
 
-        return data;
+        this.setText(
+            result?.success
+                ? `Hatched: ${result.pet?.nickname}\nRarity ${result.pet?.rarity}\nSlots ${result.pet?.skillSlotCount}`
+                : `Hatch failed: ${result?.message || ''}`,
+        );
+        await this.refreshEggInfo();
+    }
+
+    private ensureView() {
+        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Hatchery';
+        this.eggInfoLabel = getOrCreateLabel(this.node, 'EggInfoLabel', -300, 285, 600, 500, 22);
+        getOrCreateButton(this.node, 'LayEggButton', 'Lay Egg', -150, -360, 180, 56, () => {
+            void this.layEgg();
+        }, this);
+        getOrCreateButton(this.node, 'HatchButton', 'Hatch', 150, -360, 180, 56, () => {
+            void this.hatchFirstEgg();
+        }, this);
+    }
+
+    private setText(text: string) {
+        if (this.eggInfoLabel) {
+            this.eggInfoLabel.string = text;
+        }
     }
 }

@@ -1,8 +1,9 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('pets')
@@ -22,7 +23,7 @@ export class Pet {
   @Column({ default: 1 })
   rarity: number;
 
-  @Column({ default: '普通' })
+  @Column({ default: '普通 Common' })
   rarityName: string;
 
   @Column({ default: 1 })
@@ -30,6 +31,9 @@ export class Pet {
 
   @Column({ default: 0 })
   exp: number;
+
+  @Column({ default: 100 })
+  nextExp: number;
 
   @Column({ default: 100 })
   hp: number;
@@ -42,6 +46,9 @@ export class Pet {
 
   @Column({ default: 20 })
   agility: number;
+
+  @Column({ default: 20 })
+  speed: number;
 
   @Column({ default: 20 })
   intelligence: number;
@@ -76,6 +83,15 @@ export class Pet {
   @Column({ default: 0 })
   partnerId: number;
 
+  @Column({ default: 0 })
+  marriedPetId: number;
+
+  @Column({ default: 2 })
+  skillSlotCount: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  skills: any[];
+
   @Column({ default: false })
   isEgg: boolean;
 
@@ -93,4 +109,10 @@ export class Pet {
 
   @CreateDateColumn()
   createTime: Date;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

@@ -1,46 +1,47 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DEFAULT_USER_ID } from '../game-data';
 import { FriendService } from './friend.service';
-import { SendFriendRequestDto } from './dto/send-friend-request.dto';
-import { HandleFriendRequestDto } from './dto/handle-friend-request.dto';
 
 @Controller('friend')
 export class FriendController {
   constructor(private readonly friendService: FriendService) {}
 
-  @Post('request')
-  @UseGuards(JwtAuthGuard)
-  async sendRequest(@Req() req: any, @Body() dto: SendFriendRequestDto) {
-    return this.friendService.sendRequest(req.user.sub, dto.targetUserId);
-  }
-
-  @Get('requests')
-  @UseGuards(JwtAuthGuard)
-  async getRequests(@Req() req: any) {
-    return this.friendService.getRequests(req.user.sub);
-  }
-
-  @Post('handle')
-  @UseGuards(JwtAuthGuard)
-  async handleRequest(@Req() req: any, @Body() dto: HandleFriendRequestDto) {
-    return this.friendService.handleRequest(
-      req.user.sub,
-      dto.requestId,
-      dto.accept,
-    );
+  @Get()
+  async getFriends() {
+    return this.friendService.getMockFriends(DEFAULT_USER_ID);
   }
 
   @Get('list')
-  @UseGuards(JwtAuthGuard)
-  async getMyFriends(@Req() req: any) {
-    return this.friendService.getMyFriends(req.user.sub);
+  async getMyFriends() {
+    return this.friendService.getMockFriends(DEFAULT_USER_ID);
+  }
+
+  @Post('seed')
+  async seedFriends() {
+    return this.friendService.seedMockFriends(DEFAULT_USER_ID);
+  }
+
+  @Post('request')
+  async sendRequest(@Body() body: any) {
+    return this.friendService.sendRequest(DEFAULT_USER_ID, Number(body?.targetUserId || 0));
+  }
+
+  @Get('requests')
+  async getRequests() {
+    return {
+      success: true,
+      requests: await this.friendService.getRequests(DEFAULT_USER_ID),
+      data: await this.friendService.getRequests(DEFAULT_USER_ID),
+    };
+  }
+
+  @Post('handle')
+  async handleRequest(@Body() body: any) {
+    return this.friendService.handleRequest(
+      DEFAULT_USER_ID,
+      Number(body?.requestId || 0),
+      Boolean(body?.accept),
+    );
   }
 }

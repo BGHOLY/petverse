@@ -22,6 +22,11 @@ import { FriendModule } from './modules/friend/friend.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { AchievementModule } from './modules/achievement/achievement.module';
+import { SkillModule } from './modules/skill/skill.module';
+import { EggModule } from './modules/egg/egg.module';
+import { MarriageModule } from './modules/marriage/marriage.module';
+import { HatcheryModule } from './modules/hatchery/hatchery.module';
+import { DevModule } from './modules/dev/dev.module';
 
 @Module({
   imports: [
@@ -46,6 +51,11 @@ import { AchievementModule } from './modules/achievement/achievement.module';
     MailModule,
     ShopModule,
     AchievementModule,
+    SkillModule,
+    EggModule,
+    MarriageModule,
+    HatcheryModule,
+    DevModule,
   ],
   controllers: [AppController],
   providers: [AppService],

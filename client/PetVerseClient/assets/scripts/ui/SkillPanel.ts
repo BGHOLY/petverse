@@ -1,131 +1,63 @@
-import { _decorator, Button, Component, find, Label } from 'cc';
+import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
+import ApiClient from '../network/ApiClient';
+import { getOrCreateButton, getOrCreateLabel } from './UiKit';
 
-const { ccclass, property } = _decorator;
-
-type PetSkill = {
-    id?: string;
-    skillId?: string;
-    name?: string;
-    level?: number;
-    description?: string;
-    desc?: string;
-    power?: number;
-};
+const { ccclass } = _decorator;
 
 @ccclass('SkillPanel')
 export class SkillPanel extends Component {
-    @property(Label)
-    skillListLabel: Label | null = null;
-
-    @property(Label)
-    emptyLabel: Label | null = null;
-
-    @property(Button)
-    refreshButton: Button | null = null;
+    private skillListLabel: Label | null = null;
 
     onLoad() {
-        this.autoBindNodes();
-        this.bindRefreshButton();
+        this.ensureView();
     }
 
     onEnable() {
-        this.refreshSkillInfo();
+        void this.refreshSkillInfo();
     }
 
-    private autoBindNodes() {
-        if (!this.skillListLabel) {
-            const node = find('SkillListLabel', this.node);
-            this.skillListLabel = node?.getComponent(Label) || null;
+    async refreshSkillInfo() {
+        const result = await ApiClient.get('/pet');
+        const pets = result?.pets || result?.data || [];
+        if (PlayerData.user) {
+            PlayerData.user.pets = pets;
         }
+        console.log('[SkillPanel] pets:', pets);
 
-        if (!this.emptyLabel) {
-            const node = find('EmptyLabel', this.node);
-            this.emptyLabel = node?.getComponent(Label) || null;
-        }
-
-        if (!this.refreshButton) {
-            const node = find('RefreshButton', this.node);
-            this.refreshButton = node?.getComponent(Button) || null;
-        }
-    }
-
-    private bindRefreshButton() {
-        if (!this.refreshButton) {
+        const pet = pets.find((item: any) => !item.isEgg) || pets[0];
+        if (!pet) {
+            this.setText('No pet skills yet.');
+            console.log('[SkillPanel] render result: empty');
             return;
         }
 
-        this.refreshButton.node.off(Button.EventType.CLICK, this.onClickRefresh, this);
-        this.refreshButton.node.on(Button.EventType.CLICK, this.onClickRefresh, this);
+        const skills = Array.isArray(pet.skills) ? pet.skills : [];
+        const lines = [
+            `${pet.nickname} Skill Slots: ${pet.skillSlotCount}`,
+            `Rule Check: ${pet.skillSlotCount === pet.rarity + 1 ? 'OK' : 'Mismatch'}`,
+            '',
+            ...skills.map((skill: any, index: number) => {
+                return `${index + 1}. ${skill.name}\nRarity ${skill.rarity}  ${skill.type}  Rate ${Math.round((skill.triggerRate || 0) * 100)}%\n${skill.description}`;
+            }),
+        ];
+
+        const text = lines.join('\n\n');
+        console.log('[SkillPanel] render result:', text);
+        this.setText(text);
     }
 
-    onClickRefresh() {
-        console.log('刷新宠物技能');
-        this.refreshSkillInfo();
+    private ensureView() {
+        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Skills';
+        this.skillListLabel = getOrCreateLabel(this.node, 'SkillListLabel', -300, 285, 600, 610, 20);
+        getOrCreateButton(this.node, 'RefreshButton', 'Refresh Skills', 0, -360, 220, 56, () => {
+            void this.refreshSkillInfo();
+        }, this);
     }
 
-    refreshSkillInfo() {
-        const user = PlayerData.user;
-
-        if (!user) {
-            this.showEmpty('暂无玩家数据');
-            return;
-        }
-
-        const pets = user.pets || [];
-
-        if (!pets.length) {
-            this.showEmpty('暂无宠物\n请先通过孵化室获得宠物');
-            return;
-        }
-
-        const pet = pets[0];
-        const skills: PetSkill[] = pet.skills || [];
-
-        if (!skills.length) {
-            this.showEmpty('暂无技能\n后续宠物升级后可解锁技能');
-            return;
-        }
-
-        const skillText = skills
-            .map((skill, index) => {
-                const name = skill.name || skill.skillId || skill.id || `技能${index + 1}`;
-                const level = skill.level ?? 1;
-                const power = skill.power ?? 0;
-                const desc = skill.description || skill.desc || '暂无描述';
-
-                return (
-                    `${index + 1}. ${name}\n` +
-                    `等级：${level}\n` +
-                    `威力：${power}\n` +
-                    `描述：${desc}`
-                );
-            })
-            .join('\n\n');
-
-        this.showSkillList(skillText);
-    }
-
-    private showEmpty(message: string) {
+    private setText(text: string) {
         if (this.skillListLabel) {
-            this.skillListLabel.string = '';
-            this.skillListLabel.node.active = false;
-        }
-
-        if (this.emptyLabel) {
-            this.emptyLabel.string = message;
-            this.emptyLabel.node.active = true;
-        }
-    }
-
-    private showSkillList(message: string) {
-        if (this.emptyLabel) {
-            this.emptyLabel.node.active = false;
-        }
-
-        if (this.skillListLabel) {
-            this.skillListLabel.string = message;
-            this.skillListLabel.node.active = true;
+            this.skillListLabel.string = text;
         }
     }
 }

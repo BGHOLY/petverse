@@ -4,15 +4,7 @@ import { Repository } from 'typeorm';
 
 import { Pet } from '../pet/pet.entity';
 import { TowerRecord } from '../tower/tower-record.entity';
-
-type RankingItem = {
-  rank: number;
-  playerName: string;
-  petName: string;
-  level: number;
-  power: number;
-  rarityName: string;
-};
+import { User } from '../user/user.entity';
 
 @Injectable()
 export class RankingService {
@@ -22,49 +14,54 @@ export class RankingService {
 
     @InjectRepository(TowerRecord)
     private readonly towerRecordRepository: Repository<TowerRecord>,
+
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async getMainRanking() {
-    const powerRanking = await this.getPowerRanking();
-
-    if (!powerRanking.length) {
-      return {
-        success: true,
-        type: 'mock',
-        list: this.getMockRanking(),
-      };
-    }
-
-    const list: RankingItem[] = powerRanking.map((item: any, index: number) => {
-      return {
-        rank: index + 1,
-        playerName: `玩家${item.ownerId}`,
-        petName: item.nickname || '未命名宠物',
-        level: item.level || 1,
-        power: item.power || 0,
-        rarityName: item.rarityName || '普通',
-      };
-    });
+    const [levelRanking, powerRanking, towerRanking] = await Promise.all([
+      this.getLevelRanking(),
+      this.getPowerRanking(),
+      this.getTowerRanking(),
+    ]);
 
     return {
       success: true,
-      type: 'power',
-      list,
+      levelRanking,
+      powerRanking,
+      towerRanking,
+      list: powerRanking,
+      data: powerRanking,
     };
   }
 
   async getTowerRanking() {
-    return this.towerRecordRepository.find({
+    const records = await this.towerRecordRepository.find({
       order: {
         maxFloor: 'DESC',
         totalRewardGold: 'DESC',
       },
       take: 50,
     });
+
+    const users = await this.userRepository.find();
+    const userMap = new Map(users.map((user) => [user.id, user]));
+
+    return records.map((record, index) => ({
+      rank: index + 1,
+      userId: record.userId,
+      playerName: userMap.get(record.userId)?.nickname || `Player ${record.userId}`,
+      petName: '',
+      power: 0,
+      highestTower: record.maxFloor,
+      maxFloor: record.maxFloor,
+      totalRewardGold: record.totalRewardGold,
+    }));
   }
 
   async getLevelRanking() {
-    return this.petRepository.find({
+    const pets = await this.petRepository.find({
       where: {
         isEgg: false,
       },
@@ -75,6 +72,8 @@ export class RankingService {
       },
       take: 50,
     });
+
+    return this.decoratePets(pets, 'level');
   }
 
   async getPowerRanking() {
@@ -84,59 +83,51 @@ export class RankingService {
       },
     });
 
-    return pets
-      .map((pet) => {
-        const power =
-          Number(pet.hp || 0) +
-          Number(pet.attack || 0) +
-          Number(pet.defense || 0) +
-          Number(pet.agility || 0) +
-          Number(pet.intelligence || 0) +
-          Number(pet.level || 1) * 10 +
-          Number(pet.rarity || 1) * 30;
-
-        return {
-          petId: pet.id,
-          ownerId: pet.ownerId,
-          nickname: pet.nickname,
-          species: pet.species,
-          level: pet.level,
-          rarity: pet.rarity,
-          rarityName: pet.rarityName,
-          geneCode: pet.geneCode,
-          power,
-        };
-      })
-      .sort((a, b) => b.power - a.power)
-      .slice(0, 50);
+    const decorated = await this.decoratePets(pets, 'power');
+    return decorated.sort((a, b) => b.power - a.power).slice(0, 50);
   }
 
-  private getMockRanking(): RankingItem[] {
-    return [
-      {
-        rank: 1,
-        playerName: 'test001',
-        petName: 'Mochi',
-        level: 10,
-        power: 1200,
-        rarityName: '稀有',
-      },
-      {
-        rank: 2,
-        playerName: 'test002',
-        petName: 'Luna',
-        level: 8,
-        power: 980,
-        rarityName: '普通',
-      },
-      {
-        rank: 3,
-        playerName: 'test004',
-        petName: '暂无宠物',
-        level: 1,
-        power: 100,
-        rarityName: '普通',
-      },
-    ];
+  private async decoratePets(pets: Pet[], mode: 'level' | 'power') {
+    const users = await this.userRepository.find();
+    const userMap = new Map(users.map((user) => [user.id, user]));
+    const records = await this.towerRecordRepository.find();
+    const towerMap = new Map(records.map((record) => [record.userId, record]));
+
+    const list = pets.map((pet) => {
+      const power = this.calculatePower(pet);
+      const tower = towerMap.get(pet.ownerId);
+      return {
+        userId: pet.ownerId,
+        petId: pet.id,
+        playerName: userMap.get(pet.ownerId)?.nickname || `Player ${pet.ownerId}`,
+        petName: pet.nickname,
+        species: pet.species,
+        level: pet.level,
+        rarity: pet.rarity,
+        rarityName: pet.rarityName,
+        power,
+        highestTower: tower?.maxFloor || 0,
+      };
+    });
+
+    const sorted = mode === 'level'
+      ? list.sort((a, b) => b.level - a.level || b.power - a.power)
+      : list.sort((a, b) => b.power - a.power);
+
+    return sorted.map((item, index) => ({
+      rank: index + 1,
+      ...item,
+    }));
+  }
+
+  private calculatePower(pet: Pet) {
+    return Math.round(
+      Number(pet.hp || 0) +
+        Number(pet.attack || 0) * 5 +
+        Number(pet.defense || 0) * 3 +
+        Number(pet.speed || pet.agility || 0) * 2 +
+        Number(pet.rarity || 1) * 100 +
+        Number(pet.level || 1) * 20,
+    );
   }
 }

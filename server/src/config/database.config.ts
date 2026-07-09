@@ -15,6 +15,9 @@ import { FriendRequest } from '../modules/friend/friend-request.entity';
 import { Mail } from '../modules/mail/mail.entity';
 import { ShopItem } from '../modules/shop/shop-item.entity';
 import { Achievement } from '../modules/achievement/achievement.entity';
+import { Skill } from '../modules/skill/skill.entity';
+import { Marriage } from '../modules/marriage/marriage.entity';
+import { Egg } from '../modules/egg/egg.entity';
 
 dotenv.config();
 
@@ -41,6 +44,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
   Mail,
   ShopItem,
   Achievement,
+  Skill,
+  Marriage,
+  Egg,
 ],
   synchronize: true,
 };

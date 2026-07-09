@@ -7,10 +7,12 @@ import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 import { ItemModule } from '../item/item.module';
 import { Pet } from '../pet/pet.entity';
+import { Item } from '../item/item.entity';
+import { EggModule } from '../egg/egg.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Inventory, Pet]),
+    TypeOrmModule.forFeature([Inventory, Pet, Item]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'petverse_dev_secret',
       signOptions: {
@@ -18,6 +20,7 @@ import { Pet } from '../pet/pet.entity';
       },
     }),
     ItemModule,
+    EggModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

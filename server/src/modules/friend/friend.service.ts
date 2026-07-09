@@ -2,9 +2,46 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { DEFAULT_USER_ID } from '../game-data';
+import { PetService } from '../pet/pet.service';
+import { User } from '../user/user.entity';
 import { Friend } from './friend.entity';
 import { FriendRequest } from './friend-request.entity';
-import { User } from '../user/user.entity';
+
+const MOCK_FRIENDS = [
+  {
+    id: 101,
+    nickname: '小明',
+    pets: [
+      { nickname: 'Ming Cat', species: 'Cat', rarity: 2 },
+      { nickname: 'Ming Fox', species: 'Fox', rarity: 3 },
+    ],
+  },
+  {
+    id: 102,
+    nickname: '小红',
+    pets: [
+      { nickname: 'Ruby Rabbit', species: 'Rabbit', rarity: 1 },
+      { nickname: 'Ruby Phoenix', species: 'Phoenix', rarity: 5 },
+    ],
+  },
+  {
+    id: 103,
+    nickname: '阿强',
+    pets: [
+      { nickname: 'Strong Dog', species: 'Dog', rarity: 3 },
+    ],
+  },
+  {
+    id: 104,
+    nickname: 'Luna',
+    pets: [
+      { nickname: 'Moon Dragon', species: 'Dragon', rarity: 4 },
+      { nickname: 'Luna Cat', species: 'Cat', rarity: 2 },
+      { nickname: 'Luna Fox', species: 'Fox', rarity: 3 },
+    ],
+  },
+];
 
 @Injectable()
 export class FriendService {
@@ -17,68 +54,102 @@ export class FriendService {
 
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+
+    private readonly petService: PetService,
   ) {}
 
-  async sendRequest(userId: number, targetUserId: number) {
-    if (userId === targetUserId) {
-      return {
-        success: false,
-        message: '不能添加自己为好友',
-      };
+  async seedMockFriends(userId = DEFAULT_USER_ID) {
+    for (const friendData of MOCK_FRIENDS) {
+      let user = await this.userRepository.findOne({
+        where: { id: friendData.id },
+      });
+
+      if (!user) {
+        user = this.userRepository.create({
+          id: friendData.id,
+          openid: `mock_friend_${friendData.id}`,
+          unionid: '',
+          nickname: friendData.nickname,
+          avatar: '',
+          level: 1,
+          vipLevel: 0,
+          exp: 0,
+          gold: 1000,
+          diamond: 100,
+        } as Partial<User>);
+      } else {
+        user.nickname = friendData.nickname;
+        user.openid = user.openid || `mock_friend_${friendData.id}`;
+      }
+
+      await this.userRepository.save(user);
+
+      let relation = await this.friendRepository.findOne({
+        where: {
+          userId,
+          friendUserId: friendData.id,
+        },
+      });
+
+      if (!relation) {
+        relation = this.friendRepository.create({
+          userId,
+          friendUserId: friendData.id,
+        });
+        await this.friendRepository.save(relation);
+      }
+
+      const existingPets = await this.petService.getUserPets(friendData.id);
+      const existingNames = new Set(existingPets.pets.map((pet) => pet.nickname));
+
+      for (const petData of friendData.pets) {
+        if (!existingNames.has(petData.nickname)) {
+          await this.petService.createPet(friendData.id, petData);
+        }
+      }
     }
 
-    const targetUser = await this.userRepository.findOne({
-      where: { id: targetUserId },
-    });
+    return this.getMockFriends(userId);
+  }
 
-    if (!targetUser) {
-      return {
-        success: false,
-        message: '目标用户不存在',
-      };
+  async getMockFriends(userId = DEFAULT_USER_ID) {
+    await this.seedRecordsOnly(userId);
+
+    const friends = [];
+
+    for (const friendData of MOCK_FRIENDS) {
+      const user = await this.userRepository.findOne({
+        where: { id: friendData.id },
+      });
+      const petResult = await this.petService.getUserPets(friendData.id);
+
+      friends.push({
+        id: friendData.id,
+        userId: friendData.id,
+        nickname: user?.nickname || friendData.nickname,
+        pets: petResult.pets,
+      });
     }
-
-    const existsFriend = await this.friendRepository.findOne({
-      where: {
-        userId,
-        friendUserId: targetUserId,
-      },
-    });
-
-    if (existsFriend) {
-      return {
-        success: false,
-        message: '已经是好友',
-      };
-    }
-
-    const existsRequest = await this.friendRequestRepository.findOne({
-      where: {
-        fromUserId: userId,
-        toUserId: targetUserId,
-        status: 'pending',
-      },
-    });
-
-    if (existsRequest) {
-      return {
-        success: false,
-        message: '好友申请已发送',
-      };
-    }
-
-    const request = this.friendRequestRepository.create({
-      fromUserId: userId,
-      toUserId: targetUserId,
-      status: 'pending',
-    });
-
-    const saved = await this.friendRequestRepository.save(request);
 
     return {
       success: true,
-      message: '好友申请已发送',
-      request: saved,
+      friends,
+      data: friends,
+    };
+  }
+
+  async getFirstFriendPet() {
+    const friend = MOCK_FRIENDS[0];
+    const petResult = await this.petService.getUserPets(friend.id);
+    return petResult.pets.find((pet) => !pet.isEgg) || null;
+  }
+
+  async sendRequest(userId: number, targetUserId: number) {
+    return {
+      success: true,
+      message: 'Mock friend system uses fixed friends in beta',
+      userId,
+      targetUserId,
     };
   }
 
@@ -95,83 +166,30 @@ export class FriendService {
   }
 
   async handleRequest(userId: number, requestId: number, accept: boolean) {
-    const request = await this.friendRequestRepository.findOne({
-      where: { id: requestId },
-    });
-
-    if (!request) {
-      return {
-        success: false,
-        message: '好友申请不存在',
-      };
-    }
-
-    if (request.toUserId !== userId) {
-      return {
-        success: false,
-        message: '只能处理发给自己的好友申请',
-      };
-    }
-
-    if (request.status !== 'pending') {
-      return {
-        success: false,
-        message: '该申请已经处理过',
-      };
-    }
-
-    if (!accept) {
-      request.status = 'rejected';
-      await this.friendRequestRepository.save(request);
-
-      return {
-        success: true,
-        message: '已拒绝好友申请',
-      };
-    }
-
-    request.status = 'accepted';
-
-    const friendA = this.friendRepository.create({
-      userId: request.fromUserId,
-      friendUserId: request.toUserId,
-    });
-
-    const friendB = this.friendRepository.create({
-      userId: request.toUserId,
-      friendUserId: request.fromUserId,
-    });
-
-    await this.friendRequestRepository.save(request);
-    await this.friendRepository.save(friendA);
-    await this.friendRepository.save(friendB);
-
     return {
       success: true,
-      message: '已成为好友',
+      message: 'Mock request handled',
+      userId,
+      requestId,
+      accept,
     };
   }
 
   async getMyFriends(userId: number) {
-    const friends = await this.friendRepository.find({
-      where: { userId },
-      order: {
-        id: 'DESC',
-      },
-    });
+    const result = await this.getMockFriends(userId);
+    return result.friends;
+  }
 
-    const friendIds = friends.map((item) => item.friendUserId);
+  private async seedRecordsOnly(userId: number) {
+    for (const friendData of MOCK_FRIENDS) {
+      const user = await this.userRepository.findOne({
+        where: { id: friendData.id },
+      });
 
-    if (friendIds.length === 0) {
-      return [];
+      if (!user) {
+        await this.seedMockFriends(userId);
+        return;
+      }
     }
-
-    const users = await this.userRepository.find({
-  where: friendIds.map((id) => ({
-    id,
-  })),
-});
-
-    return users;
   }
 }

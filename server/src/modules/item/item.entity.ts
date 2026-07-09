@@ -31,6 +31,12 @@ export class Item {
   @Column({ default: true })
   usable: boolean;
 
+  @Column({ default: '' })
+  effect: string;
+
+  @Column({ default: 0 })
+  effectValue: number;
+
   @CreateDateColumn()
   createTime: Date;
 }

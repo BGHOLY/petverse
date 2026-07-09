@@ -1,135 +1,64 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 
-import { PetService } from './pet.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { DailyTaskService } from '../daily-task/daily-task.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-
-import { FeedPetDto } from './dto/feed-pet.dto';
-import { MarryPetDto } from './dto/marry-pet.dto';
-import { BreedPetDto } from './dto/breed-pet.dto';
-import { HatchPetDto } from './dto/hatch-pet.dto';
+import { DEFAULT_USER_ID } from '../game-data';
+import { PetService } from './pet.service';
 
 @Controller('pet')
 export class PetController {
-  constructor(
-    private readonly petService: PetService,
-    private readonly inventoryService: InventoryService,
-    private readonly dailyTaskService: DailyTaskService,
-  ) {}
+  constructor(private readonly petService: PetService) {}
 
   @Get()
-  getAllPets() {
+  async getMyPetsForBeta() {
+    return this.petService.getUserPets(DEFAULT_USER_ID);
+  }
+
+  @Get('all')
+  async getAllPets() {
     return this.petService.getAllPets();
   }
 
   @Get('my')
+  async getMyPets() {
+    return this.petService.getUserPets(DEFAULT_USER_ID);
+  }
+
+  @Get('my-auth')
   @UseGuards(JwtAuthGuard)
-  async getMyPets(@Req() req: any) {
+  async getMyPetsWithAuth(@Req() req: any) {
     return this.petService.getUserPets(req.user.sub);
   }
 
-  @Post('feed')
-  @UseGuards(JwtAuthGuard)
-  async feedPet(@Req() req: any, @Body() feedDto: FeedPetDto) {
-    const pet = await this.petService.getPetById(feedDto.petId);
-
-    if (!pet) {
-      return {
-        success: false,
-        message: '宠物不存在',
-      };
-    }
-
-    const consume = await this.inventoryService.consumeItem(
-      req.user.sub,
-      feedDto.itemCode,
-    );
-
-    if (!consume) {
-      return {
-        success: false,
-        message: '物品不足',
-      };
-    }
-
-    switch (feedDto.itemCode) {
-      case 'apple':
-        pet.hunger = Math.min(100, pet.hunger + 20);
-        break;
-
-      case 'fish':
-        pet.hunger = Math.min(100, pet.hunger + 15);
-        pet.happiness = Math.min(100, pet.happiness + 10);
-        break;
-
-      case 'exp_potion_small':
-        await this.petService.addExp(pet, 50);
-
-        await this.dailyTaskService.completeTask(
-          req.user.sub,
-          'feedCompleted',
-        );
-
-        return {
-          success: true,
-          message: '使用经验药水成功',
-          pet,
-        };
-
-      default:
-        return {
-          success: false,
-          message: '该物品不能使用',
-        };
-    }
-
-    await this.petService.savePet(pet);
-
-    await this.dailyTaskService.completeTask(
-      req.user.sub,
-      'feedCompleted',
-    );
+  @Post('create')
+  async createPet(@Body() body: any) {
+    const pet = await this.petService.createPet(DEFAULT_USER_ID, {
+      nickname: body?.nickname,
+      species: body?.species,
+      rarity: Number(body?.rarity || 1),
+    });
 
     return {
       success: true,
-      message: '喂食成功',
       pet,
     };
   }
 
-  @Post('marry')
-  @UseGuards(JwtAuthGuard)
-  async marryPet(@Req() req: any, @Body() marryDto: MarryPetDto) {
-    return this.petService.marryPets(
-      req.user.sub,
-      marryDto.petId,
-      marryDto.targetPetId,
+  @Post('feed')
+  async feedPet(@Body() body: any) {
+    return this.petService.feedPet(DEFAULT_USER_ID, Number(body?.petId || 0) || undefined);
+  }
+
+  @Post('level-up')
+  async levelUp(@Body() body: any) {
+    return this.petService.levelUpPet(
+      DEFAULT_USER_ID,
+      Number(body?.petId || 0) || undefined,
+      Number(body?.exp || 100),
     );
   }
 
-  @Post('breed')
-  @UseGuards(JwtAuthGuard)
-  async breedPet(@Req() req: any, @Body() breedDto: BreedPetDto) {
-    return this.petService.breedPet(req.user.sub, breedDto.petId);
-  }
-
-  @Post('hatch')
-  @UseGuards(JwtAuthGuard)
-  async hatchPet(@Req() req: any, @Body() hatchDto: HatchPetDto) {
-    return this.petService.hatchPet(req.user.sub, hatchDto.petId);
-  }
-
   @Post('hatch-starter')
-  @UseGuards(JwtAuthGuard)
-  async hatchStarterEgg(@Req() req: any) {
-    return this.petService.hatchStarterEgg(req.user.sub);
+  async hatchStarterEgg() {
+    return this.petService.hatchStarterEgg(DEFAULT_USER_ID);
   }
 }

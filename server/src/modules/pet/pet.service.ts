@@ -2,16 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import {
+  DEFAULT_USER_ID,
+  RARITY_NAMES,
+  SPECIES_POOL,
+  STAT_RANGES,
+} from '../game-data';
+import { SkillService } from '../skill/skill.service';
 import { Pet } from './pet.entity';
-import { InventoryService } from '../inventory/inventory.service';
-import {
-  generateGeneCode,
-  calculateGeneScore,
-} from './utils/gene.util';
-import {
-  calculateRarityByScore,
-  getRarityName,
-} from './utils/rarity.util';
+import { calculateGeneScore, generateGeneCode } from './utils/gene.util';
 
 @Injectable()
 export class PetService {
@@ -19,11 +18,28 @@ export class PetService {
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
 
-    private readonly inventoryService: InventoryService,
+    private readonly skillService: SkillService,
   ) {}
 
   async getAllPets() {
-    return this.petRepository.find();
+    const pets = await this.petRepository.find({
+      order: {
+        ownerId: 'ASC',
+        isEgg: 'ASC',
+        id: 'ASC',
+      },
+    });
+
+    for (const pet of pets) {
+      await this.ensureBetaFields(pet);
+    }
+
+    return {
+      success: true,
+      pets,
+      data: pets,
+      currentPet: pets.find((pet) => pet.ownerId === DEFAULT_USER_ID && !pet.isEgg) || null,
+    };
   }
 
   async getUserPets(userId: number) {
@@ -40,6 +56,7 @@ export class PetService {
     for (const pet of pets) {
       if (!pet.isEgg) {
         await this.updatePetStatus(pet);
+        await this.ensureBetaFields(pet);
       }
     }
 
@@ -47,6 +64,7 @@ export class PetService {
       success: true,
       pets,
       data: pets,
+      currentPet: pets.find((pet) => !pet.isEgg) || null,
     };
   }
 
@@ -59,7 +77,29 @@ export class PetService {
       return null;
     }
 
-    await this.updatePetStatus(pet);
+    if (!pet.isEgg) {
+      await this.updatePetStatus(pet);
+      await this.ensureBetaFields(pet);
+    }
+
+    return pet;
+  }
+
+  async getMainPet(userId: number) {
+    const pets = await this.petRepository.find({
+      where: {
+        ownerId: userId,
+        isEgg: false,
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+
+    const pet = pets[0] || null;
+    if (pet) {
+      await this.ensureBetaFields(pet);
+    }
 
     return pet;
   }
@@ -68,18 +108,140 @@ export class PetService {
     return this.petRepository.save(pet);
   }
 
+  async createPet(
+    userId: number,
+    data: {
+      nickname?: string;
+      species?: string;
+      rarity?: number;
+      fatherId?: number;
+      motherId?: number;
+    } = {},
+  ) {
+    const rarity = this.clampRarity(Number(data.rarity || this.randomRarity()));
+    const species = data.species || this.randomSpecies();
+    const geneCode = generateGeneCode('AAAA', 'AAAA');
+    const stats = this.generateStats(rarity);
+    const skillSlotCount = rarity + 1;
+    const skills = await this.skillService.generateRandomSkills(rarity, skillSlotCount);
+
+    const pet = this.petRepository.create({
+      ownerId: userId,
+      nickname: data.nickname || `${species}-${Date.now().toString().slice(-4)}`,
+      species,
+      rarity,
+      rarityName: RARITY_NAMES[rarity],
+      level: 1,
+      exp: 0,
+      nextExp: 100,
+      hp: stats.hp,
+      attack: stats.attack,
+      defense: stats.defense,
+      agility: stats.speed,
+      speed: stats.speed,
+      intelligence: 10 + rarity * 5,
+      hunger: 100,
+      happiness: 100,
+      cleanliness: 100,
+      stamina: 100,
+      geneCode,
+      geneScore: calculateGeneScore(geneCode),
+      fatherId: data.fatherId || 0,
+      motherId: data.motherId || 0,
+      married: false,
+      partnerId: 0,
+      marriedPetId: 0,
+      skillSlotCount,
+      skills,
+      isEgg: false,
+      hatchTime: null,
+      lastStatusUpdate: new Date(),
+    });
+
+    return this.petRepository.save(pet);
+  }
+
+  async createPetFromEgg(
+    userId: number,
+    rarity: number,
+    parentA?: Pet | null,
+    parentB?: Pet | null,
+  ) {
+    const species = this.pickChildSpecies(parentA, parentB);
+    return this.createPet(userId, {
+      nickname: `${RARITY_NAMES[this.clampRarity(rarity)]} ${species}`,
+      species,
+      rarity,
+      fatherId: parentA?.id || 0,
+      motherId: parentB?.id || 0,
+    });
+  }
+
+  async seedDefaultPet(userId = DEFAULT_USER_ID) {
+    const existing = await this.getMainPet(userId);
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.createPet(userId, {
+      nickname: 'Mochi',
+      species: 'Cat',
+      rarity: 2,
+    });
+  }
+
+  async feedPet(userId: number, petId?: number) {
+    const pet = petId ? await this.getPetById(petId) : await this.getMainPet(userId);
+
+    if (!pet || pet.ownerId !== userId || pet.isEgg) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+
+    pet.hunger = Math.min(100, Number(pet.hunger || 0) + 20);
+    pet.happiness = Math.min(100, Number(pet.happiness || 0) + 10);
+    pet.cleanliness = Math.min(100, Number(pet.cleanliness || 0) + 5);
+
+    return {
+      success: true,
+      message: 'Pet fed',
+      pet: await this.petRepository.save(pet),
+    };
+  }
+
+  async levelUpPet(userId: number, petId?: number, exp = 100) {
+    const pet = petId ? await this.getPetById(petId) : await this.getMainPet(userId);
+
+    if (!pet || pet.ownerId !== userId || pet.isEgg) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Exp added',
+      pet: await this.addExp(pet, exp),
+    };
+  }
+
   async addExp(pet: Pet, exp: number) {
-    pet.exp += exp;
+    pet.exp = Number(pet.exp || 0) + Math.max(0, Number(exp || 0));
+    pet.nextExp = Number(pet.nextExp || pet.level * 100 || 100);
 
-    while (pet.exp >= 100) {
-      pet.exp -= 100;
-      pet.level += 1;
-
-      pet.hp += 10;
-      pet.attack += 2;
-      pet.defense += 2;
-      pet.agility += 1;
-      pet.intelligence += 1;
+    while (pet.exp >= pet.nextExp) {
+      pet.exp -= pet.nextExp;
+      pet.level = Number(pet.level || 1) + 1;
+      pet.hp = Math.round(Number(pet.hp || 100) * 1.1);
+      pet.attack = Math.round(Number(pet.attack || 20) * 1.08);
+      pet.defense = Math.round(Number(pet.defense || 20) * 1.08);
+      pet.speed = Math.round(Number(pet.speed || pet.agility || 20) * 1.05);
+      pet.agility = pet.speed;
+      pet.nextExp = pet.level * 100;
     }
 
     return this.petRepository.save(pet);
@@ -93,302 +255,136 @@ export class PetService {
       return this.petRepository.save(pet);
     }
 
-    const diff =
-      now.getTime() -
-      new Date(pet.lastStatusUpdate).getTime();
-
+    const diff = now.getTime() - new Date(pet.lastStatusUpdate).getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
 
     if (hours <= 0) {
       return pet;
     }
 
-    pet.hunger = Math.max(0, pet.hunger - hours);
-    pet.happiness = Math.max(0, pet.happiness - hours);
-    pet.cleanliness = Math.max(0, pet.cleanliness - hours);
-    pet.stamina = Math.max(0, pet.stamina - hours);
+    pet.hunger = Math.max(0, Number(pet.hunger || 0) - hours);
+    pet.happiness = Math.max(0, Number(pet.happiness || 0) - hours);
+    pet.cleanliness = Math.max(0, Number(pet.cleanliness || 0) - hours);
+    pet.stamina = Math.max(0, Number(pet.stamina || 0) - hours);
     pet.lastStatusUpdate = now;
 
     return this.petRepository.save(pet);
   }
 
   async hatchStarterEgg(userId: number) {
-    const consumed = await this.inventoryService.consumeItem(
-      userId,
-      'starter_egg',
-      1,
-    );
-
-    if (!consumed) {
-      return {
-        success: false,
-        message: '暂无可孵化的宠物蛋',
-      };
-    }
-
-    const geneCode = generateGeneCode('AAAA', 'AAAA');
-    const geneScore = calculateGeneScore(geneCode);
-    const rarity = calculateRarityByScore(geneScore);
-    const rarityName = getRarityName(rarity);
-
-    const speciesPool = ['Cat', 'Dog', 'Rabbit'];
-    const species = speciesPool[
-      Math.floor(Math.random() * speciesPool.length)
-    ];
-
-    const pet = this.petRepository.create({
-      ownerId: userId,
-      nickname: `${rarityName}小萌宠`,
-      species,
-      rarity,
-      rarityName,
-      level: 1,
-      exp: 0,
-      hp: 90 + rarity * 10,
-      attack: 15 + rarity * 3,
-      defense: 12 + rarity * 3,
-      agility: 12 + rarity * 2,
-      intelligence: 12 + rarity * 2,
-      hunger: 100,
-      happiness: 100,
-      cleanliness: 100,
-      stamina: 100,
-      geneCode,
-      geneScore,
-      fatherId: 0,
-      motherId: 0,
-      married: false,
-      partnerId: 0,
-      isEgg: false,
-      hatchTime: null,
-      lastStatusUpdate: new Date(),
+    const pet = await this.createPet(userId, {
+      nickname: 'Starter Buddy',
+      species: this.randomSpecies(),
+      rarity: 1,
     });
-
-    const savedPet = await this.petRepository.save(pet);
-    const pets = await this.petRepository.find({
-      where: {
-        ownerId: userId,
-      },
-      order: {
-        isEgg: 'ASC',
-        id: 'ASC',
-      },
-    });
-    const inventory = await this.inventoryService.getUserInventory(userId);
+    const pets = await this.getUserPets(userId);
 
     return {
       success: true,
-      message: '孵化成功',
-      pet: savedPet,
-      pets,
-      inventory,
+      message: 'Starter pet created',
+      pet,
+      pets: pets.pets,
+      data: pets.pets,
     };
   }
 
-  async marryPets(
-    userId: number,
-    petId: number,
-    targetPetId: number,
-  ) {
-    if (petId === targetPetId) {
-      return {
-        success: false,
-        message: '不能和自己结婚',
-      };
+  private async ensureBetaFields(pet: Pet) {
+    let changed = false;
+    const rarity = this.clampRarity(Number(pet.rarity || 1));
+    const slotCount = rarity + 1;
+
+    if (pet.rarity !== rarity) {
+      pet.rarity = rarity;
+      changed = true;
     }
 
-    const pet = await this.getPetById(petId);
-    const targetPet = await this.getPetById(targetPetId);
-
-    if (!pet || !targetPet) {
-      return {
-        success: false,
-        message: '宠物不存在',
-      };
+    if (pet.rarityName !== RARITY_NAMES[rarity]) {
+      pet.rarityName = RARITY_NAMES[rarity];
+      changed = true;
     }
 
-    if (pet.ownerId !== userId) {
-      return {
-        success: false,
-        message: '只能操作自己的宠物',
-      };
+    if (!pet.nextExp || pet.nextExp < 1) {
+      pet.nextExp = Math.max(100, Number(pet.level || 1) * 100);
+      changed = true;
     }
 
-    if (pet.isEgg || targetPet.isEgg) {
-      return {
-        success: false,
-        message: '宠物蛋不能结婚',
-      };
+    if (!pet.speed) {
+      pet.speed = Number(pet.agility || 20);
+      changed = true;
     }
 
-    if (pet.married || targetPet.married) {
-      return {
-        success: false,
-        message: '其中一只宠物已经结婚',
-      };
+    if (!pet.agility) {
+      pet.agility = Number(pet.speed || 20);
+      changed = true;
     }
 
-    pet.married = true;
-    pet.partnerId = targetPet.id;
+    if (pet.skillSlotCount !== slotCount) {
+      pet.skillSlotCount = slotCount;
+      changed = true;
+    }
 
-    targetPet.married = true;
-    targetPet.partnerId = pet.id;
+    if (!Array.isArray(pet.skills) || pet.skills.length !== slotCount) {
+      pet.skills = await this.skillService.generateRandomSkills(rarity, slotCount);
+      changed = true;
+    }
 
-    await this.petRepository.save(pet);
-    await this.petRepository.save(targetPet);
+    if (pet.marriedPetId === undefined || pet.marriedPetId === null) {
+      pet.marriedPetId = Number(pet.partnerId || 0);
+      changed = true;
+    }
 
+    if (changed) {
+      await this.petRepository.save(pet);
+    }
+
+    return pet;
+  }
+
+  private generateStats(rarity: number) {
+    const ranges = STAT_RANGES[this.clampRarity(rarity)];
     return {
-      success: true,
-      message: '结婚成功',
-      pets: [pet, targetPet],
+      hp: this.randomInt(ranges.hp[0], ranges.hp[1]),
+      attack: this.randomInt(ranges.attack[0], ranges.attack[1]),
+      defense: this.randomInt(ranges.defense[0], ranges.defense[1]),
+      speed: this.randomInt(ranges.speed[0], ranges.speed[1]),
     };
   }
 
-  async breedPet(userId: number, petId: number) {
-    const father = await this.getPetById(petId);
-
-    if (!father) {
-      return {
-        success: false,
-        message: '宠物不存在',
-      };
+  private pickChildSpecies(parentA?: Pet | null, parentB?: Pet | null) {
+    if (Math.random() < 0.08) {
+      return Math.random() < 0.5 ? 'Dragon' : 'Phoenix';
     }
 
-    if (father.ownerId !== userId) {
-      return {
-        success: false,
-        message: '只能操作自己的宠物',
-      };
+    const parentSpecies = [parentA?.species, parentB?.species].filter(
+      (species) => species && species !== 'Egg',
+    ) as string[];
+
+    if (parentSpecies.length) {
+      return parentSpecies[Math.floor(Math.random() * parentSpecies.length)];
     }
 
-    if (father.isEgg) {
-      return {
-        success: false,
-        message: '宠物蛋不能生蛋',
-      };
-    }
-
-    if (!father.married || !father.partnerId) {
-      return {
-        success: false,
-        message: '宠物还没有结婚',
-      };
-    }
-
-    const mother = await this.getPetById(father.partnerId);
-
-    if (!mother) {
-      return {
-        success: false,
-        message: '配偶不存在',
-      };
-    }
-
-    if (father.stamina < 20 || mother.stamina < 20) {
-      return {
-        success: false,
-        message: '宠物体力不足',
-      };
-    }
-
-    father.stamina -= 20;
-    mother.stamina -= 20;
-
-    const geneCode = generateGeneCode(
-      father.geneCode,
-      mother.geneCode,
-    );
-
-    const geneScore = calculateGeneScore(geneCode);
-    const rarity = calculateRarityByScore(geneScore);
-    const rarityName = getRarityName(rarity);
-
-    const egg = this.petRepository.create({
-      ownerId: userId,
-      nickname: '宠物蛋',
-      species: 'Egg',
-      rarity,
-      rarityName,
-      level: 1,
-      exp: 0,
-      hp: 80 + rarity * 10,
-      attack: 10 + rarity * 3,
-      defense: 10 + rarity * 3,
-      agility: 10 + rarity * 2,
-      intelligence: 10 + rarity * 2,
-      hunger: 100,
-      happiness: 100,
-      cleanliness: 100,
-      stamina: 100,
-      geneCode,
-      geneScore,
-      fatherId: father.id,
-      motherId: mother.id,
-      married: false,
-      partnerId: 0,
-      isEgg: true,
-      hatchTime: new Date(Date.now() + 60 * 1000),
-      lastStatusUpdate: new Date(),
-    });
-
-    await this.petRepository.save(father);
-    await this.petRepository.save(mother);
-
-    const savedEgg = await this.petRepository.save(egg);
-
-    return {
-      success: true,
-      message: '生蛋成功',
-      egg: savedEgg,
-      parents: [father, mother],
-    };
+    return this.randomSpecies();
   }
 
-  async hatchPet(userId: number, petId: number) {
-    const egg = await this.getPetById(petId);
+  private randomSpecies() {
+    return SPECIES_POOL[Math.floor(Math.random() * SPECIES_POOL.length)];
+  }
 
-    if (!egg) {
-      return {
-        success: false,
-        message: '宠物蛋不存在',
-      };
-    }
+  private randomRarity() {
+    const roll = Math.random();
+    if (roll < 0.5) return 1;
+    if (roll < 0.75) return 2;
+    if (roll < 0.9) return 3;
+    if (roll < 0.97) return 4;
+    if (roll < 0.995) return 5;
+    return 6;
+  }
 
-    if (egg.ownerId !== userId) {
-      return {
-        success: false,
-        message: '只能孵化自己的宠物蛋',
-      };
-    }
+  private clampRarity(rarity: number) {
+    return Math.max(1, Math.min(6, Math.floor(rarity || 1)));
+  }
 
-    if (!egg.isEgg) {
-      return {
-        success: false,
-        message: '这不是宠物蛋',
-      };
-    }
-
-    const now = new Date();
-
-    if (egg.hatchTime && now < new Date(egg.hatchTime)) {
-      return {
-        success: false,
-        message: '孵化时间未到',
-        hatchTime: egg.hatchTime,
-      };
-    }
-
-    egg.isEgg = false;
-    egg.species = 'Cat';
-    egg.nickname = `${egg.rarityName}小萌宠`;
-    egg.lastStatusUpdate = new Date();
-
-    const savedPet = await this.petRepository.save(egg);
-
-    return {
-      success: true,
-      message: '孵化成功',
-      pet: savedPet,
-    };
+  private randomInt(min: number, max: number) {
+    return min + Math.floor(Math.random() * (max - min + 1));
   }
 }

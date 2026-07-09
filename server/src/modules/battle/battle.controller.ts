@@ -1,42 +1,35 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DEFAULT_USER_ID } from '../game-data';
 import { BattleService } from './battle.service';
-import { StartBattleDto } from './dto/start-battle.dto';
-import { DailyTaskService } from '../daily-task/daily-task.service';
 
 @Controller('battle')
 export class BattleController {
-  constructor(
-  private readonly battleService: BattleService,
-  private readonly dailyTaskService: DailyTaskService,
-) {}
+  constructor(private readonly battleService: BattleService) {}
+
+  @Post('pve')
+  async pve(@Body() body: any) {
+    return this.battleService.pve(
+      DEFAULT_USER_ID,
+      Number(body?.petId || body?.myPetId || 0) || undefined,
+    );
+  }
+
+  @Post('friend')
+  async friend(@Body() body: any) {
+    return this.battleService.friendBattle(
+      DEFAULT_USER_ID,
+      Number(body?.petId || body?.myPetId || 0) || undefined,
+      Number(body?.friendPetId || body?.targetPetId || 0) || undefined,
+    );
+  }
 
   @Post('start')
-  @UseGuards(JwtAuthGuard)
-  async startBattle(
-    @Req() req: any,
-    @Body() dto: StartBattleDto,
-  ) {
-    const result = await this.battleService.startBattle(
-  req.user.sub,
-  dto.myPetId,
-  dto.targetPetId,
-);
-
-if (result.success) {
-  await this.dailyTaskService.completeTask(
-    req.user.sub,
-    'battleCompleted',
-  );
-}
-
-return result;
+  async startBattle(@Body() body: any) {
+    return this.battleService.startBattle(
+      DEFAULT_USER_ID,
+      Number(body?.myPetId || body?.petId || 0),
+      Number(body?.targetPetId || body?.friendPetId || 0),
+    );
   }
 }

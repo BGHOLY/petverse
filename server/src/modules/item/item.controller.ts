@@ -13,6 +13,11 @@ export class ItemController {
 
   @Get()
   async getAllItems() {
-    return this.itemService.getAllItems();
+    const items = await this.itemService.getAllItems();
+    return {
+      success: true,
+      items,
+      data: items,
+    };
   }
 }
