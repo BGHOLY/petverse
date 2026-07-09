@@ -1,4 +1,4 @@
-import { _decorator, Component, Label } from 'cc';
+import { _decorator, Component, find, Label, Node } from 'cc';
 import PlayerData from '../data/PlayerData';
 import { PanelManager } from '../manager/PanelManager';
 import { FriendPanel } from './FriendPanel';
@@ -24,6 +24,15 @@ export class MainUI extends Component {
     @property(PanelManager)
     panelManager: PanelManager | null = null;
 
+    private topBar: Node | null = null;
+    private pageRoot: Node | null = null;
+    private bottomMenu: Node | null = null;
+
+    onLoad() {
+        this.bindLayoutNodes();
+        this.bindLabels();
+    }
+
     onEnable() {
         UIEventCenter.on('USER_UPDATED', this.onUserUpdated);
     }
@@ -33,31 +42,74 @@ export class MainUI extends Component {
     }
 
     start() {
+        this.showMainLayout();
+        this.panelManager?.showPet();
         this.refreshUI();
     }
 
     private onUserUpdated = () => {
+        this.showMainLayout();
         this.refreshUI();
     };
 
-    refreshUI() {
-        const user = PlayerData.user;
+    private bindLayoutNodes() {
+        this.topBar = find('Canvas/TopBar') || find('TopBar', this.node.parent || this.node);
+        this.pageRoot = find('Canvas/PageRoot') || find('PageRoot', this.node.parent || this.node);
+        this.bottomMenu = find('Canvas/BottomMenu') || find('BottomMenu', this.node.parent || this.node);
+    }
 
-        if (!user) {
-            console.warn('没有玩家数据');
-            return;
+    private bindLabels() {
+        if (!this.nicknameLabel) {
+            this.nicknameLabel = find('Canvas/TopBar/NicknameLabel')?.getComponent(Label) || null;
         }
 
+        if (!this.goldLabel) {
+            this.goldLabel = find('Canvas/TopBar/GoldLabel')?.getComponent(Label) || null;
+        }
+
+        if (!this.diamondLabel) {
+            this.diamondLabel = find('Canvas/TopBar/DiamondLabel')?.getComponent(Label) || null;
+        }
+    }
+
+    private showMainLayout() {
+        if (!this.topBar || !this.pageRoot || !this.bottomMenu) {
+            this.bindLayoutNodes();
+        }
+
+        if (this.topBar) {
+            this.topBar.active = true;
+        }
+
+        if (this.pageRoot) {
+            this.pageRoot.active = true;
+        }
+
+        if (this.bottomMenu) {
+            this.bottomMenu.active = true;
+        }
+    }
+
+    refreshUI() {
+        this.showMainLayout();
+
+        const user = PlayerData.user || {
+            nickname: '游客玩家',
+            gold: 0,
+            diamond: 0,
+            pets: [],
+        };
+
         if (this.nicknameLabel) {
-            this.nicknameLabel.string = '玩家：' + user.nickname;
+            this.nicknameLabel.string = '玩家：' + (user.nickname || '游客玩家');
         }
 
         if (this.goldLabel) {
-            this.goldLabel.string = '金币：' + user.gold;
+            this.goldLabel.string = '金币：' + (user.gold ?? 0);
         }
 
         if (this.diamondLabel) {
-            this.diamondLabel.string = '钻石：' + user.diamond;
+            this.diamondLabel.string = '钻石：' + (user.diamond ?? 0);
         }
 
         if (this.petInfoLabel) {
@@ -73,34 +125,42 @@ export class MainUI extends Component {
     }
 
     onClickInventory() {
+        this.showMainLayout();
         this.panelManager?.showInventory();
     }
 
     onClickShop() {
+        this.showMainLayout();
         this.panelManager?.showShop();
     }
 
     onClickHatchery() {
+        this.showMainLayout();
         this.panelManager?.showHatchery();
     }
 
     onClickPet() {
+        this.showMainLayout();
         this.panelManager?.showPet();
     }
 
     onClickSkill() {
+        this.showMainLayout();
         this.panelManager?.showSkill();
     }
 
     onClickRanking() {
+        this.showMainLayout();
         this.panelManager?.showRanking();
     }
 
     onClickBattle() {
+        this.showMainLayout();
         this.panelManager?.showBattle();
     }
 
     onClickFriend() {
+        this.showMainLayout();
         this.panelManager?.showFriend();
 
         const friendPage = this.panelManager?.friendPage;
