@@ -1,12 +1,13 @@
 import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import ApiClient from '../network/ApiClient';
-import { getOrCreateButton, getOrCreateLabel } from './UiKit';
+import { createButton, createInfoText, createPageTitle, createStatusLabel } from './UiKit';
 
 const { ccclass } = _decorator;
 
 @ccclass('SkillPanel')
 export class SkillPanel extends Component {
+    private statusLabel: Label | null = null;
     private skillListLabel: Label | null = null;
 
     onLoad() {
@@ -18,27 +19,46 @@ export class SkillPanel extends Component {
     }
 
     async refreshSkillInfo() {
+        this.ensureView();
         const result = await ApiClient.get('/pet');
         const pets = result?.pets || result?.data || [];
+        console.log('[SkillPanel] response:', result);
+
         if (PlayerData.user) {
             PlayerData.user.pets = pets;
         }
-        console.log('[SkillPanel] pets:', pets);
+
+        if (result?.success === false) {
+            this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
+            this.setText('\u6682\u65e0\u6570\u636e');
+            return;
+        }
 
         const pet = pets.find((item: any) => !item.isEgg) || pets[0];
         if (!pet) {
-            this.setText('No pet skills yet.');
+            this.setStatus('\u6682\u65e0\u5ba0\u7269');
+            this.setText('\u6682\u65e0\u6280\u80fd');
             console.log('[SkillPanel] render result: empty');
             return;
         }
 
         const skills = Array.isArray(pet.skills) ? pet.skills : [];
+        const slotCount = pet.skillSlotCount ?? ((pet.rarity ?? 1) + 1);
+        this.setStatus(`${pet.nickname || '\u5ba0\u7269'}  \u6280\u80fd\u683c: ${slotCount}`);
+
+        if (!skills.length) {
+            this.setText('\u6682\u65e0\u6280\u80fd');
+            console.log('[SkillPanel] render result: no skills');
+            return;
+        }
+
         const lines = [
-            `${pet.nickname} Skill Slots: ${pet.skillSlotCount}`,
-            `Rule Check: ${pet.skillSlotCount === pet.rarity + 1 ? 'OK' : 'Mismatch'}`,
+            `\u7a00\u6709\u5ea6: ${pet.rarityName || pet.rarity || '-'}  \u7b49\u7ea7: ${pet.level ?? 1}`,
+            `\u89c4\u5219\u6821\u9a8c: ${slotCount === (pet.rarity ?? 1) + 1 ? 'OK' : 'Mismatch'}`,
             '',
-            ...skills.map((skill: any, index: number) => {
-                return `${index + 1}. ${skill.name}\nRarity ${skill.rarity}  ${skill.type}  Rate ${Math.round((skill.triggerRate || 0) * 100)}%\n${skill.description}`;
+            ...skills.slice(0, slotCount).map((skill: any, index: number) => {
+                const rate = Math.round((Number(skill.triggerRate) || 0) * 100);
+                return `${index + 1}. ${skill.name || skill.skillCode}\n\u7c7b\u578b: ${skill.type || '-'}  \u89e6\u53d1: ${rate}%\n${skill.description || ''}`;
             }),
         ];
 
@@ -48,11 +68,18 @@ export class SkillPanel extends Component {
     }
 
     private ensureView() {
-        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Skills';
-        this.skillListLabel = getOrCreateLabel(this.node, 'SkillListLabel', -300, 285, 600, 610, 20);
-        getOrCreateButton(this.node, 'RefreshButton', 'Refresh Skills', 0, -360, 220, 56, () => {
+        createPageTitle(this.node, '\u6280\u80fd');
+        this.statusLabel = createStatusLabel(this.node, 'SkillStatusLabel');
+        this.skillListLabel = createInfoText(this.node, 'SkillListLabel', '');
+        createButton(this.node, 'RefreshSkillButton', '\u5237\u65b0\u6280\u80fd', 0, -330, 180, 52, () => {
             void this.refreshSkillInfo();
         }, this);
+    }
+
+    private setStatus(text: string) {
+        if (this.statusLabel) {
+            this.statusLabel.string = text;
+        }
     }
 
     private setText(text: string) {

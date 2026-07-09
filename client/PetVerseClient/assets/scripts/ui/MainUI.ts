@@ -1,9 +1,9 @@
-import { _decorator, Component, find, Label, Node } from 'cc';
+import { _decorator, Component, find, Label, Node, UITransform, Vec3 } from 'cc';
 import PlayerData from '../data/PlayerData';
 import { PanelManager } from '../manager/PanelManager';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { getOrCreateButton } from './UiKit';
+import { clearChildren, createButton, createLabel } from './UiKit';
 
 const { ccclass, property } = _decorator;
 
@@ -24,15 +24,16 @@ export class MainUI extends Component {
     @property(PanelManager)
     panelManager: PanelManager | null = null;
 
+    private canvas: Node | null = null;
     private topBar: Node | null = null;
     private pageRoot: Node | null = null;
     private bottomMenu: Node | null = null;
 
     onLoad() {
-        this.bindLayoutNodes();
-        this.bindLabels();
+        this.ensureLayout();
         this.ensurePanelManager();
-        this.ensureTowerButton();
+        this.createTopBar();
+        this.createBottomMenu();
     }
 
     onEnable() {
@@ -44,7 +45,7 @@ export class MainUI extends Component {
     }
 
     start() {
-        this.showMainLayout();
+        this.ensureLayout();
         void this.bootstrap();
     }
 
@@ -58,12 +59,12 @@ export class MainUI extends Component {
     async loadUserAndPets() {
         const userResult = await ApiClient.get('/user');
         const petResult = await ApiClient.get('/pet');
-        const user = userResult?.user || userResult?.data || userResult;
+        const user = userResult?.user || userResult?.data || userResult || {};
         const pets = petResult?.pets || petResult?.data || [];
 
         PlayerData.user = {
             ...(PlayerData.user || {}),
-            ...(user || {}),
+            ...user,
             pets,
         };
 
@@ -72,7 +73,7 @@ export class MainUI extends Component {
     }
 
     refreshUI() {
-        this.showMainLayout();
+        this.ensureLayout();
         const user = PlayerData.user || {
             nickname: 'PetVerse Tester',
             gold: 0,
@@ -81,23 +82,20 @@ export class MainUI extends Component {
         };
 
         if (this.nicknameLabel) {
-            this.nicknameLabel.string = `Player: ${user.nickname || 'PetVerse Tester'}`;
+            this.nicknameLabel.string = `玩家: ${user.nickname || 'PetVerse Tester'}`;
         }
 
         if (this.goldLabel) {
-            this.goldLabel.string = `Gold: ${user.gold ?? 0}`;
+            this.goldLabel.string = `金币: ${user.gold ?? 0}`;
         }
 
         if (this.diamondLabel) {
-            this.diamondLabel.string = `Diamond: ${user.diamond ?? 0}`;
+            this.diamondLabel.string = `钻石: ${user.diamond ?? 0}`;
         }
+    }
 
-        if (this.petInfoLabel) {
-            const pet = user.pets?.find((item: any) => !item.isEgg) || user.pets?.[0];
-            this.petInfoLabel.string = pet
-                ? `Pet: ${pet.nickname}\nLv.${pet.level}  ${pet.rarityName || pet.rarity}`
-                : 'No pet';
-        }
+    onClickPet() {
+        this.panelManager?.showPet();
     }
 
     onClickInventory() {
@@ -112,12 +110,12 @@ export class MainUI extends Component {
         this.panelManager?.showHatchery();
     }
 
-    onClickPet() {
-        this.panelManager?.showPet();
-    }
-
     onClickSkill() {
         this.panelManager?.showSkill();
+    }
+
+    onClickFriend() {
+        this.panelManager?.showFriend();
     }
 
     onClickBattle() {
@@ -128,10 +126,6 @@ export class MainUI extends Component {
         this.panelManager?.showTower();
     }
 
-    onClickFriend() {
-        this.panelManager?.showFriend();
-    }
-
     onClickRanking() {
         this.panelManager?.showRanking();
     }
@@ -140,42 +134,79 @@ export class MainUI extends Component {
         void this.loadUserAndPets();
     };
 
-    private bindLayoutNodes() {
-        this.topBar = find('Canvas/TopBar') || find('TopBar', this.node.parent || this.node);
-        this.pageRoot = find('Canvas/PageRoot') || find('PageRoot', this.node.parent || this.node);
-        this.bottomMenu = find('Canvas/BottomMenu') || find('BottomMenu', this.node.parent || this.node);
+    private ensureLayout() {
+        this.canvas = find('Canvas') || this.node.parent || this.node;
+        this.topBar = this.findOrCreateChild(this.canvas, 'TopBar', 0, 570, 720, 110);
+        this.pageRoot = this.findOrCreateChild(this.canvas, 'PageRoot', 0, 40, 680, 820);
+        this.bottomMenu = this.findOrCreateChild(this.canvas, 'BottomMenu', 0, -530, 720, 260);
+
+        this.topBar.active = true;
+        this.pageRoot.active = true;
+        this.bottomMenu.active = true;
     }
 
-    private bindLabels() {
-        this.nicknameLabel = this.nicknameLabel || find('Canvas/TopBar/NicknameLabel')?.getComponent(Label) || null;
-        this.goldLabel = this.goldLabel || find('Canvas/TopBar/GoldLabel')?.getComponent(Label) || null;
-        this.diamondLabel = this.diamondLabel || find('Canvas/TopBar/DiamondLabel')?.getComponent(Label) || null;
-    }
+    private findOrCreateChild(parent: Node, name: string, x: number, y: number, width: number, height: number) {
+        let node = parent.getChildByName(name);
+        if (!node) {
+            node = new Node(name);
+            parent.addChild(node);
+        }
 
-    private showMainLayout() {
-        this.bindLayoutNodes();
-        if (this.topBar) this.topBar.active = true;
-        if (this.pageRoot) this.pageRoot.active = true;
-        if (this.bottomMenu) this.bottomMenu.active = true;
+        node.setPosition(new Vec3(x, y, 0));
+        let transform = node.getComponent(UITransform);
+        if (!transform) {
+            transform = node.addComponent(UITransform);
+        }
+        transform.setContentSize(width, height);
+        return node;
     }
 
     private ensurePanelManager() {
-        if (this.panelManager) {
+        if (!this.canvas) {
+            this.ensureLayout();
+        }
+
+        const host = this.canvas || this.node;
+        this.panelManager = this.panelManager || host.getComponent(PanelManager) || host.addComponent(PanelManager);
+        this.panelManager.ensurePages();
+    }
+
+    private createTopBar() {
+        if (!this.topBar) {
             return;
         }
 
-        const canvas = find('Canvas') || this.node.parent || this.node;
-        this.panelManager = canvas.getComponent(PanelManager) || canvas.addComponent(PanelManager);
+        clearChildren(this.topBar);
+        this.nicknameLabel = createLabel(this.topBar, 'PlayerLabel', '玩家: -', -220, 0, 220, 60, 22);
+        this.goldLabel = createLabel(this.topBar, 'GoldLabel', '金币: 0', 0, 0, 180, 60, 22);
+        this.diamondLabel = createLabel(this.topBar, 'DiamondLabel', '钻石: 0', 220, 0, 180, 60, 22);
+
+        for (const label of [this.nicknameLabel, this.goldLabel, this.diamondLabel]) {
+            label.horizontalAlign = Label.HorizontalAlign.CENTER;
+            label.verticalAlign = Label.VerticalAlign.CENTER;
+        }
     }
 
-    private ensureTowerButton() {
-        this.bindLayoutNodes();
+    private createBottomMenu() {
         if (!this.bottomMenu) {
             return;
         }
 
-        getOrCreateButton(this.bottomMenu, 'TowerButton', 'Tower', 0, -118, 120, 48, () => {
-            this.onClickTower();
-        }, this);
+        clearChildren(this.bottomMenu);
+        const items = [
+            { text: '宠物', x: -200, y: 80, action: () => this.onClickPet() },
+            { text: '背包', x: 0, y: 80, action: () => this.onClickInventory() },
+            { text: '商店', x: 200, y: 80, action: () => this.onClickShop() },
+            { text: '孵化', x: -200, y: 10, action: () => this.onClickHatchery() },
+            { text: '技能', x: 0, y: 10, action: () => this.onClickSkill() },
+            { text: '好友', x: 200, y: 10, action: () => this.onClickFriend() },
+            { text: '对战', x: -200, y: -60, action: () => this.onClickBattle() },
+            { text: '爬塔', x: 0, y: -60, action: () => this.onClickTower() },
+            { text: '排行', x: 200, y: -60, action: () => this.onClickRanking() },
+        ];
+
+        for (const item of items) {
+            createButton(this.bottomMenu, `${item.text}Button`, item.text, item.x, item.y, 150, 52, item.action, this);
+        }
     }
 }

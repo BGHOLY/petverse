@@ -2,13 +2,15 @@ import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { clearGenerated, getOrCreateButton, getOrCreateLabel } from './UiKit';
+import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel } from './UiKit';
 
 const { ccclass } = _decorator;
 
 @ccclass('InventoryPanel')
 export class InventoryPanel extends Component {
     private statusLabel: Label | null = null;
+    private infoLabel: Label | null = null;
+    private lastMessage = '';
 
     onLoad() {
         this.ensureView();
@@ -22,31 +24,29 @@ export class InventoryPanel extends Component {
         this.ensureView();
         const result = await ApiClient.get('/inventory');
         const items = result?.inventory || result?.items || result?.data || [];
-        console.log('[InventoryPanel] items:', items);
+        console.log('[InventoryPanel] response:', result);
         clearGenerated(this.node, 'GeneratedInventoryItem');
 
+        if (result?.success === false) {
+            this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
+            this.setInfo('\u6682\u65e0\u6570\u636e');
+            return;
+        }
+
+        this.setStatus(this.lastMessage || `\u80cc\u5305\u7269\u54c1: ${items.length}`);
+
         if (!items.length) {
-            this.setStatus('Inventory is empty.');
+            this.setInfo('\u6682\u65e0\u6570\u636e');
             console.log('[InventoryPanel] render result: empty');
             return;
         }
 
-        this.setStatus(`Inventory items: ${items.length}`);
+        this.setInfo('');
         items.slice(0, 8).forEach((item: any, index: number) => {
-            const y = 275 - index * 72;
-            getOrCreateButton(
-                this.node,
-                `GeneratedInventoryItem${index}`,
-                `${item.name || item.itemCode}  x${item.quantity ?? 0}\n${item.type || '-'}  Use`,
-                0,
-                y,
-                620,
-                64,
-                () => {
-                    void this.useItem(item.itemCode);
-                },
-                this,
-            );
+            const text = `${item.name || item.itemCode}  x${item.quantity ?? 0}\n\u7c7b\u578b: ${item.type || '-'}   \u4f7f\u7528`;
+            createListButton(this.node, `GeneratedInventoryItem${index}`, text, index, () => {
+                void this.useItem(item.itemCode);
+            }, this);
         });
         console.log('[InventoryPanel] render result:', items.length);
     }
@@ -59,15 +59,18 @@ export class InventoryPanel extends Component {
             PlayerData.updatePet(result.pet);
         }
 
-        this.setStatus(result?.success ? `Used ${itemCode}` : `Use failed: ${result?.message || itemCode}`);
+        this.lastMessage = result?.success ? `\u4f7f\u7528\u6210\u529f: ${itemCode}` : `\u4f7f\u7528\u5931\u8d25: ${result?.message || itemCode}`;
+        this.setStatus(this.lastMessage);
         UIEventCenter.emit('USER_UPDATED');
         await this.loadInventory();
     }
 
     private ensureView() {
-        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Inventory';
-        this.statusLabel = getOrCreateLabel(this.node, 'InventoryStatusLabel', -300, 308, 600, 34, 18);
-        getOrCreateButton(this.node, 'RefreshInventoryButton', 'Refresh Bag', 0, -360, 220, 56, () => {
+        createPageTitle(this.node, '\u80cc\u5305');
+        this.statusLabel = createStatusLabel(this.node, 'InventoryStatusLabel');
+        this.infoLabel = createInfoText(this.node, 'InventoryInfoLabel', '');
+        createButton(this.node, 'RefreshInventoryButton', '\u5237\u65b0\u80cc\u5305', 0, -330, 180, 52, () => {
+            this.lastMessage = '';
             void this.loadInventory();
         }, this);
     }
@@ -75,6 +78,13 @@ export class InventoryPanel extends Component {
     private setStatus(text: string) {
         if (this.statusLabel) {
             this.statusLabel.string = text;
+        }
+    }
+
+    private setInfo(text: string) {
+        if (this.infoLabel) {
+            this.infoLabel.string = text;
+            this.infoLabel.node.active = Boolean(text);
         }
     }
 }

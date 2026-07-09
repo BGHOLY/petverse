@@ -2,12 +2,13 @@ import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { getOrCreateButton, getOrCreateLabel } from './UiKit';
+import { createButton, createInfoText, createPageTitle, createStatusLabel } from './UiKit';
 
 const { ccclass } = _decorator;
 
 @ccclass('HatcheryPanel')
 export class HatcheryPanel extends Component {
+    private statusLabel: Label | null = null;
     private eggInfoLabel: Label | null = null;
 
     onLoad() {
@@ -22,16 +23,24 @@ export class HatcheryPanel extends Component {
         this.ensureView();
         const result = await ApiClient.get('/hatchery/eggs');
         const eggs = result?.eggs || result?.data || [];
-        console.log('[HatcheryPanel] eggs:', eggs);
+        console.log('[HatcheryPanel] response:', result);
+
+        if (result?.success === false) {
+            this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
+            this.setText('\u6682\u65e0\u6570\u636e');
+            return;
+        }
+
+        this.setStatus(`\u86cb\u6570\u91cf: ${eggs.length}`);
 
         if (!eggs.length) {
-            this.setText('No eggs yet.\nMarry a friend pet and tap Lay Egg, or use a pet egg from Inventory.');
+            this.setText('\u6682\u65e0\u6570\u636e\n\u53ef\u4ee5\u5148\u5728\u597d\u53cb\u9875\u7ed3\u5a5a\uff0c\u7136\u540e\u56de\u6765\u751f\u86cb\u3002');
             console.log('[HatcheryPanel] render result: empty');
             return;
         }
 
         const lines = eggs.slice(-8).map((egg: any) => {
-            return `Egg #${egg.id}  rarity ${egg.rarityPotential}  ${egg.status}`;
+            return `\u86cb #${egg.id}  \u6f5c\u529b ${egg.rarityPotential}  \u72b6\u6001 ${egg.status}`;
         });
         this.setText(lines.join('\n'));
         console.log('[HatcheryPanel] render result:', lines);
@@ -40,7 +49,7 @@ export class HatcheryPanel extends Component {
     async layEgg() {
         const result = await ApiClient.post('/marriage/lay-egg', {});
         console.log('[HatcheryPanel] lay egg result:', result);
-        this.setText(result?.success ? `New egg #${result.egg?.id}` : `Lay egg failed: ${result?.message || ''}`);
+        this.setStatus(result?.success ? `\u751f\u86cb\u6210\u529f: #${result.egg?.id}` : `\u751f\u86cb\u5931\u8d25: ${result?.message || ''}`);
         await this.refreshEggInfo();
     }
 
@@ -50,7 +59,7 @@ export class HatcheryPanel extends Component {
         const egg = eggs.find((item: any) => item.status === 'unhatched');
 
         if (!egg) {
-            this.setText('No unhatched egg.');
+            this.setStatus('\u6682\u65e0\u53ef\u5b75\u5316\u7684\u86cb');
             return;
         }
 
@@ -62,23 +71,29 @@ export class HatcheryPanel extends Component {
             UIEventCenter.emit('USER_UPDATED');
         }
 
-        this.setText(
-            result?.success
-                ? `Hatched: ${result.pet?.nickname}\nRarity ${result.pet?.rarity}\nSlots ${result.pet?.skillSlotCount}`
-                : `Hatch failed: ${result?.message || ''}`,
-        );
+        this.setStatus(result?.success ? `\u5b75\u5316\u6210\u529f: ${result.pet?.nickname}` : `\u5b75\u5316\u5931\u8d25: ${result?.message || ''}`);
         await this.refreshEggInfo();
     }
 
     private ensureView() {
-        getOrCreateLabel(this.node, 'TitleLabel', -300, 350, 600, 44, 30).string = 'Hatchery';
-        this.eggInfoLabel = getOrCreateLabel(this.node, 'EggInfoLabel', -300, 285, 600, 500, 22);
-        getOrCreateButton(this.node, 'LayEggButton', 'Lay Egg', -150, -360, 180, 56, () => {
+        createPageTitle(this.node, '\u5b75\u5316');
+        this.statusLabel = createStatusLabel(this.node, 'HatcheryStatusLabel');
+        this.eggInfoLabel = createInfoText(this.node, 'EggInfoLabel', '');
+        createButton(this.node, 'LayEggButton', '\u751f\u86cb', -210, -330, 150, 52, () => {
             void this.layEgg();
         }, this);
-        getOrCreateButton(this.node, 'HatchButton', 'Hatch', 150, -360, 180, 56, () => {
+        createButton(this.node, 'HatchButton', '\u5b75\u5316', 0, -330, 150, 52, () => {
             void this.hatchFirstEgg();
         }, this);
+        createButton(this.node, 'RefreshEggButton', '\u5237\u65b0\u86cb\u5217\u8868', 210, -330, 170, 52, () => {
+            void this.refreshEggInfo();
+        }, this);
+    }
+
+    private setStatus(text: string) {
+        if (this.statusLabel) {
+            this.statusLabel.string = text;
+        }
     }
 
     private setText(text: string) {
