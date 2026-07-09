@@ -1,7 +1,7 @@
 import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import ApiClient from '../network/ApiClient';
-import { createButton, createInfoText, createPageTitle, createStatusLabel } from './UiKit';
+import { createButton, createInfoText, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -14,14 +14,13 @@ export class SkillPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.refreshSkillInfo();
-    }
-
     async refreshSkillInfo() {
         this.ensureView();
+        this.setStatus('加载技能中...');
+        this.setText('加载中...');
+
         const result = await ApiClient.get('/pet');
-        const pets = result?.pets || result?.data || [];
+        const pets = this.normalizePets(result);
         console.log('[SkillPanel] response:', result);
 
         if (PlayerData.user) {
@@ -86,5 +85,22 @@ export class SkillPanel extends Component {
         if (this.skillListLabel) {
             this.skillListLabel.string = text;
         }
+    }
+
+    private normalizePets(result: any): any[] {
+        const pets = normalizeList(result, ['pets']);
+        if (pets.length) {
+            return pets;
+        }
+
+        if (result?.pet) {
+            return [result.pet];
+        }
+
+        if (result?.currentPet) {
+            return [result.currentPet];
+        }
+
+        return [];
     }
 }

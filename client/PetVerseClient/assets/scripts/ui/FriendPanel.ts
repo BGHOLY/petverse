@@ -1,6 +1,6 @@
 import { _decorator, Component, Label } from 'cc';
 import ApiClient from '../network/ApiClient';
-import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel } from './UiKit';
+import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -14,16 +14,15 @@ export class FriendPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.refreshFriendPage();
-    }
-
     async refreshFriendPage() {
         this.ensureView();
-        const result = await ApiClient.get('/friend');
-        const friends = result?.friends || result?.data || [];
-        console.log('[FriendPanel] response:', result);
         clearGenerated(this.node, 'GeneratedFriendPet');
+        this.setStatus('加载好友中...');
+        this.setEmpty('加载中...');
+
+        const result = await ApiClient.get('/friend');
+        const friends = normalizeList(result, ['friends']);
+        console.log('[FriendPanel] response:', result);
 
         if (result?.success === false) {
             this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
@@ -35,7 +34,8 @@ export class FriendPanel extends Component {
 
         const petRows: any[] = [];
         for (const friend of friends) {
-            for (const pet of friend.pets || []) {
+            const pets = normalizeList(friend, ['pets']);
+            for (const pet of pets) {
                 petRows.push({ friend, pet });
             }
         }
@@ -62,7 +62,8 @@ export class FriendPanel extends Component {
 
     async marryPet(friendPetId: number) {
         const petResult = await ApiClient.get('/pet');
-        let ownPet = (petResult?.pets || []).find((pet: any) => !pet.isEgg && !pet.marriedPetId && !pet.married);
+        const pets = normalizeList(petResult, ['pets']);
+        let ownPet = pets.find((pet: any) => !pet.isEgg && !pet.marriedPetId && !pet.married);
 
         if (!ownPet) {
             const created = await ApiClient.post('/pet/create', {

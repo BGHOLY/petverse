@@ -14,12 +14,11 @@ export class TowerPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.refreshTower();
-    }
-
     async refreshTower() {
         this.ensureView();
+        this.setStatus('加载爬塔中...');
+        this.setInfo('加载中...');
+
         const result = await ApiClient.get('/tower/status');
         console.log('[TowerPanel] status response:', result);
 

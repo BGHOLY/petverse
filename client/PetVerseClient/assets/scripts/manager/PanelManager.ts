@@ -64,7 +64,6 @@ export class PanelManager extends Component {
     rankingPage: Node | null = null;
 
     private pageRoot: Node | null = null;
-    private normalizedPages = new Set<string>();
 
     start() {
         this.ensurePages();
@@ -81,6 +80,16 @@ export class PanelManager extends Component {
         this.battlePage = this.findOrCreatePage('BattlePage');
         this.towerPage = this.findOrCreatePage('TowerPage');
         this.rankingPage = this.findOrCreatePage('RankingPage');
+
+        this.ensureComponent(this.petPage!, PetPanel);
+        this.ensureComponent(this.inventoryPage!, InventoryPanel);
+        this.ensureComponent(this.shopPage!, ShopPanel);
+        this.ensureComponent(this.friendPage!, FriendPanel);
+        this.ensureComponent(this.hatcheryPage!, HatcheryPanel);
+        this.ensureComponent(this.skillPage!, SkillPanel);
+        this.ensureComponent(this.battlePage!, BattlePanel);
+        this.ensureComponent(this.towerPage!, TowerPanel);
+        this.ensureComponent(this.rankingPage!, RankingPanel);
     }
 
     showPet() {
@@ -151,7 +160,10 @@ export class PanelManager extends Component {
 
         page.active = true;
         console.log('[PanelManager] Switch page:', name);
-        this.ensureAndRefresh(name, page);
+        this.scheduleOnce(() => {
+            console.log('[PanelManager] Refresh page:', name);
+            this.refreshPage(name, page);
+        }, 0);
     }
 
     private findOrCreatePageRoot() {
@@ -192,17 +204,10 @@ export class PanelManager extends Component {
         }
         transform.setContentSize(680, 820);
 
-        if (!this.normalizedPages.has(name)) {
-            for (const child of [...page.children]) {
-                child.destroy();
-            }
-            this.normalizedPages.add(name);
-        }
-
         return page;
     }
 
-    private ensureAndRefresh(name: PageName, page: Node) {
+    private refreshPage(name: PageName, page: Node) {
         switch (name) {
             case 'PetPage':
                 void this.ensureComponent(page, PetPanel).loadPetsFromServer();

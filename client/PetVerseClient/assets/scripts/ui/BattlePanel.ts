@@ -14,12 +14,11 @@ export class BattlePanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        this.refreshBattlePage();
-    }
-
     refreshBattlePage() {
         this.ensureView();
+        this.setStatus('加载对战页中...');
+        this.setInfo('加载中...');
+        this.setLog('');
         this.setStatus('\u9009\u62e9\u4e00\u79cd\u5bf9\u6218');
         this.setInfo('\u666e\u901a\u602a\u7269\u5bf9\u6218\u6216\u597d\u53cb\u5ba0\u7269\u5bf9\u6218');
         this.setLog('\u6218\u6597\u65e5\u5fd7\u4f1a\u663e\u793a\u5728\u8fd9\u91cc');
@@ -27,12 +26,14 @@ export class BattlePanel extends Component {
     }
 
     async onClickPveBattle() {
+        this.setStatus('普通怪物对战中...');
         const result = await ApiClient.post('/battle/pve', {});
         console.log('[BattlePanel] pve result:', result);
         this.renderBattleResult(result);
     }
 
     async onClickFriendBattle() {
+        this.setStatus('好友宠物对战中...');
         const result = await ApiClient.post('/battle/friend', {});
         console.log('[BattlePanel] friend result:', result);
         this.renderBattleResult(result);

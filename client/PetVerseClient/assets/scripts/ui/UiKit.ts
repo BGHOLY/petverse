@@ -86,6 +86,7 @@ export function createButton(
         button = node.addComponent(Button);
     }
     button.transition = Button.Transition.SCALE;
+    (button as any).clickEvents = [];
 
     const label = createLabel(node, 'Label', text, 0, 0, width, height, Math.min(22, Math.max(16, Math.floor(height / 2.6))));
     label.horizontalAlign = Label.HorizontalAlign.CENTER;
@@ -130,3 +131,29 @@ export function createListButton(
 
 export const getOrCreateLabel = createLabel;
 export const getOrCreateButton = createButton;
+
+export function normalizeList(result: any, keys: string[] = []): any[] {
+    if (Array.isArray(result)) {
+        return result;
+    }
+
+    for (const key of keys) {
+        if (Array.isArray(result?.[key])) {
+            return result[key];
+        }
+    }
+
+    if (Array.isArray(result?.data)) {
+        return result.data;
+    }
+
+    if (Array.isArray(result?.items)) {
+        return result.items;
+    }
+
+    if (Array.isArray(result?.list)) {
+        return result.list;
+    }
+
+    return [];
+}

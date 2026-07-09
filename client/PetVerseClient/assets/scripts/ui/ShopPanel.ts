@@ -2,7 +2,7 @@ import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel } from './UiKit';
+import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -16,23 +16,22 @@ export class ShopPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.loadShop();
-    }
-
     async loadShop() {
         this.ensureView();
+        clearGenerated(this.node, 'GeneratedShopItem');
+        this.setStatus('加载商品中...');
+        this.setInfo('加载中...');
+
         let result = await ApiClient.get('/item');
-        let list = result?.items || result?.data || [];
+        let list = normalizeList(result, ['items', 'shopItems']);
 
         if (!list.length || result?.success === false) {
             console.log('[ShopPanel] /item empty, fallback to /shop/items:', result);
             result = await ApiClient.get('/shop/items');
-            list = result?.items || result?.shopItems || result?.data || [];
+            list = normalizeList(result, ['items', 'shopItems']);
         }
 
         console.log('[ShopPanel] response:', result);
-        clearGenerated(this.node, 'GeneratedShopItem');
 
         if (result?.success === false) {
             this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
@@ -50,17 +49,26 @@ export class ShopPanel extends Component {
 
         this.setInfo('');
         list.slice(0, 8).forEach((item: any, index: number) => {
-            const currency = item.currencyType || item.currency || 'gold';
-            const price = item.price !== undefined ? `${item.price} ${currency}` : '\u6d4b\u8bd5\u5546\u54c1';
-            const text = `${item.name || item.itemCode}  ${price}\n\u7c7b\u578b: ${item.type || '-'}   ${item.description || ''}`;
+            const itemCode = item.itemCode || item.code || item.id;
+            const name = item.name || item.itemName || itemCode || '-';
+            const currency = item.currencyType || item.currency || (item.diamondPrice !== undefined ? 'diamond' : 'gold');
+            const rawPrice = item.price ?? item.goldPrice ?? item.diamondPrice;
+            const price = rawPrice !== undefined ? `${rawPrice} ${currency}` : '\u6d4b\u8bd5\u5546\u54c1';
+            const text = `${name}  ${price}\n\u7c7b\u578b: ${item.type || '-'}   ${item.description || ''}`;
             createListButton(this.node, `GeneratedShopItem${index}`, text, index, () => {
-                void this.buyItem(item.itemCode);
+                void this.buyItem(itemCode);
             }, this);
         });
         console.log('[ShopPanel] render result:', list.length);
     }
 
     async buyItem(itemCode: string) {
+        if (!itemCode) {
+            this.lastMessage = '购买失败: 缺少商品编号';
+            this.setStatus(this.lastMessage);
+            return;
+        }
+
         const result = await ApiClient.post('/shop/buy', { itemCode });
         console.log('[ShopPanel] buy result:', result);
 
@@ -69,11 +77,11 @@ export class ShopPanel extends Component {
                 ...(PlayerData.user || {}),
                 ...result.user,
             };
-            UIEventCenter.emit('USER_UPDATED');
         }
 
         this.lastMessage = result?.success ? `\u8d2d\u4e70\u6210\u529f: ${itemCode}` : `\u8d2d\u4e70\u5931\u8d25: ${result?.message || itemCode}`;
         this.setStatus(this.lastMessage);
+        UIEventCenter.emit('USER_UPDATED');
     }
 
     private ensureView() {

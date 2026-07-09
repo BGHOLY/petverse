@@ -2,7 +2,7 @@ import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { createButton, createInfoText, createPageTitle, createStatusLabel } from './UiKit';
+import { createButton, createInfoText, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -15,14 +15,13 @@ export class HatcheryPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.refreshEggInfo();
-    }
-
     async refreshEggInfo() {
         this.ensureView();
+        this.setStatus('加载蛋列表中...');
+        this.setText('加载中...');
+
         const result = await ApiClient.get('/hatchery/eggs');
-        const eggs = result?.eggs || result?.data || [];
+        const eggs = normalizeList(result, ['eggs']);
         console.log('[HatcheryPanel] response:', result);
 
         if (result?.success === false) {
@@ -55,7 +54,7 @@ export class HatcheryPanel extends Component {
 
     async hatchFirstEgg() {
         const eggResult = await ApiClient.get('/hatchery/eggs');
-        const eggs = eggResult?.eggs || eggResult?.data || [];
+        const eggs = normalizeList(eggResult, ['eggs']);
         const egg = eggs.find((item: any) => item.status === 'unhatched');
 
         if (!egg) {

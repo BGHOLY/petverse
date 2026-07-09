@@ -2,7 +2,7 @@ import { _decorator, Component, Label } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
-import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel } from './UiKit';
+import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -16,16 +16,15 @@ export class InventoryPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.loadInventory();
-    }
-
     async loadInventory() {
         this.ensureView();
-        const result = await ApiClient.get('/inventory');
-        const items = result?.inventory || result?.items || result?.data || [];
-        console.log('[InventoryPanel] response:', result);
         clearGenerated(this.node, 'GeneratedInventoryItem');
+        this.setStatus('加载背包中...');
+        this.setInfo('加载中...');
+
+        const result = await ApiClient.get('/inventory');
+        const items = normalizeList(result, ['inventory', 'inventoryItems', 'items']);
+        console.log('[InventoryPanel] response:', result);
 
         if (result?.success === false) {
             this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
@@ -43,15 +42,25 @@ export class InventoryPanel extends Component {
 
         this.setInfo('');
         items.slice(0, 8).forEach((item: any, index: number) => {
-            const text = `${item.name || item.itemCode}  x${item.quantity ?? 0}\n\u7c7b\u578b: ${item.type || '-'}   \u4f7f\u7528`;
+            const itemCode = item.itemCode || item.code || item.item?.itemCode;
+            const name = item.name || item.item?.name || itemCode || '-';
+            const quantity = item.quantity ?? item.count ?? 0;
+            const type = item.type || item.item?.type || '-';
+            const text = `${name}  x${quantity}\n\u7c7b\u578b: ${type}   \u4f7f\u7528`;
             createListButton(this.node, `GeneratedInventoryItem${index}`, text, index, () => {
-                void this.useItem(item.itemCode);
+                void this.useItem(itemCode);
             }, this);
         });
         console.log('[InventoryPanel] render result:', items.length);
     }
 
     async useItem(itemCode: string) {
+        if (!itemCode) {
+            this.lastMessage = '使用失败: 缺少物品编号';
+            this.setStatus(this.lastMessage);
+            return;
+        }
+
         const result = await ApiClient.post('/inventory/use', { itemCode });
         console.log('[InventoryPanel] use result:', result);
 

@@ -1,6 +1,6 @@
 import { _decorator, Component, Label } from 'cc';
 import ApiClient from '../network/ApiClient';
-import { createButton, createInfoText, createPageTitle, createStatusLabel } from './UiKit';
+import { createButton, createInfoText, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -13,12 +13,11 @@ export class RankingPanel extends Component {
         this.ensureView();
     }
 
-    onEnable() {
-        void this.refreshRanking();
-    }
-
     async refreshRanking() {
         this.ensureView();
+        this.setStatus('加载排行中...');
+        this.setText('加载中...');
+
         const result = await ApiClient.get('/ranking');
         console.log('[RankingPanel] response:', result);
 
@@ -28,9 +27,9 @@ export class RankingPanel extends Component {
             return;
         }
 
-        const power = result?.powerRanking || result?.power || result?.list || [];
-        const level = result?.levelRanking || result?.level || [];
-        const tower = result?.towerRanking || result?.tower || [];
+        const power = normalizeList(result, ['powerRanking', 'power']);
+        const level = normalizeList(result, ['levelRanking', 'level']);
+        const tower = normalizeList(result, ['towerRanking', 'tower']);
         const lines = [
             '\u6218\u529b\u699c',
             ...power.slice(0, 4).map((item: any) => this.formatPetRank(item)),
@@ -42,9 +41,14 @@ export class RankingPanel extends Component {
             ...tower.slice(0, 4).map((item: any) => this.formatTowerRank(item)),
         ];
 
-        const text = lines.filter((line) => line !== undefined).join('\n');
-        this.setStatus(`\u699c\u5355\u6570\u636e: ${power.length + level.length + tower.length}`);
-        this.setText(text.trim() || '\u6682\u65e0\u6570\u636e');
+        let text = lines.filter((line) => line !== undefined).join('\n').trim();
+        const total = power.length + level.length + tower.length;
+        if (!text || total === 0) {
+            text = this.formatFallbackRanking(result);
+        }
+
+        this.setStatus(`\u699c\u5355\u6570\u636e: ${total}`);
+        this.setText(text || '\u6682\u65e0\u6570\u636e');
         console.log('[RankingPanel] render result:', text);
     }
 
@@ -54,6 +58,30 @@ export class RankingPanel extends Component {
 
     private formatTowerRank(item: any) {
         return `${item.rank}. ${item.playerName || item.userName || '-'}  \u5c42 ${item.highestTower ?? item.maxFloor ?? item.floor ?? 0}`;
+    }
+
+    private formatFallbackRanking(result: any) {
+        const list = normalizeList(result);
+        if (list.length) {
+            return list.slice(0, 8).map((item: any, index: number) => {
+                return `${item.rank ?? index + 1}. ${item.playerName || item.userName || item.name || '-'} / ${item.petName || '-'}  \u6218\u529b ${item.power ?? '-'}  \u5c42 ${item.highestTower ?? item.maxFloor ?? item.floor ?? '-'}`;
+            }).join('\n');
+        }
+
+        if (!result || typeof result !== 'object') {
+            return '';
+        }
+
+        return Object.keys(result).slice(0, 8).map((key) => {
+            const value = result[key];
+            if (Array.isArray(value)) {
+                return `${key}: ${value.length}`;
+            }
+            if (value && typeof value === 'object') {
+                return `${key}: ${JSON.stringify(value).slice(0, 80)}`;
+            }
+            return `${key}: ${value}`;
+        }).join('\n');
     }
 
     private ensureView() {
