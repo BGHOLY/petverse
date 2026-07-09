@@ -1,23 +1,38 @@
-import { _decorator, Component, Label } from 'cc';
+import { _decorator, Component, Label, Node, Vec3 } from 'cc';
 import PlayerData from '../data/PlayerData';
 import ApiClient from '../network/ApiClient';
 import { ToastManager } from './ToastManager';
 import {
-    clearGenerated,
+    clearChildren,
     createButton,
     createInfoText,
     createLabel,
     createPageBackground,
     createPanel,
-    getPageLayout,
+    ensureTransform,
+    getOrCreateNode,
     normalizeList,
     PET_PAGE_BG,
+    setNodeRect,
 } from './UiKit';
 
 const { ccclass } = _decorator;
 
+const TXT_PET = '\u5ba0\u7269';
+const TXT_PET_LIST = '\u5ba0\u7269\u5217\u8868';
+const TXT_PET_SHAPE = '\u5ba0\u7269\u5f62\u6001';
+const TXT_PET_DETAIL = '\u5ba0\u7269\u8be6\u60c5';
+const TXT_EMPTY_PET = '\u6682\u65e0\u5ba0\u7269';
+const TXT_REFRESH = '\u5237\u65b0';
+const TXT_BATTLE = '\u51fa\u6218';
+const TXT_SKILL = '\u6280\u80fd';
+const TXT_MARRIAGE = '\u5a5a\u59fb';
+
 @ccclass('PetPanel')
 export class PetPanel extends Component {
+    private petListContent: Node | null = null;
+    private petShapeContent: Node | null = null;
+    private petDetailContent: Node | null = null;
     private shapeLabel: Label | null = null;
     private detailLabel: Label | null = null;
     private pets: any[] = [];
@@ -39,45 +54,80 @@ export class PetPanel extends Component {
     }
 
     private ensureView() {
-        const layout = createPageBackground(this.node, '宠物', PET_PAGE_BG);
+        createPageBackground(this.node, TXT_PET, PET_PAGE_BG);
 
-        const topY = layout.top - 100;
-        const bottomY = layout.bottom + 116;
+        const listPanel = createPanel(this.node, 'PetListPanel', -230, 240, 180, 420);
+        createLabel(listPanel, 'PetListTitleLabel', TXT_PET_LIST, 0, 180, 150, 28, 15);
+        this.petListContent = this.ensureContent(listPanel, 'PetListContent', 0, -20, 170, 350);
 
-        createPanel(this.node, 'PetListPanel', layout.left + 72, topY - 150, 118, 320);
-        createLabel(this.node, 'PetListTitleLabel', '宠物列表', layout.left + 72, topY - 14, 100, 24, 15);
+        const shapePanel = createPanel(this.node, 'PetShapePanel', 0, 240, 240, 420);
+        createLabel(shapePanel, 'PetShapeTitleLabel', TXT_PET_SHAPE, 0, 180, 180, 28, 15);
+        this.petShapeContent = this.ensureContent(shapePanel, 'PetShapeContent', 0, -20, 220, 350);
+        this.shapeLabel = createLabel(this.petShapeContent, 'PetShapeLabel', '', 0, 0, 200, 300, 22);
 
-        createPanel(this.node, 'PetShapePanel', layout.left + 210, topY - 150, 140, 320);
-        createLabel(this.node, 'PetShapeTitleLabel', '宠物形态', layout.left + 210, topY - 14, 100, 24, 15);
-        this.shapeLabel = createLabel(this.node, 'PetShapeLabel', '', layout.left + 210, topY - 145, 120, 210, 20);
+        const detailPanel = createPanel(this.node, 'PetDetailPanel', 230, 240, 180, 420);
+        createLabel(detailPanel, 'PetDetailTitleLabel', TXT_PET_DETAIL, 0, 180, 150, 28, 15);
+        this.petDetailContent = this.ensureContent(detailPanel, 'PetDetailContent', 0, -20, 165, 350);
+        this.detailLabel = createInfoText(this.petDetailContent, 'PetDetailLabel', '', -78, 160, 156, 330, 12);
 
-        createPanel(this.node, 'PetDetailPanel', layout.left + 355, topY - 150, 140, 320);
-        createLabel(this.node, 'PetDetailTitleLabel', '宠物详情', layout.left + 355, topY - 14, 100, 24, 15);
-        this.detailLabel = createInfoText(this.node, 'PetDetailLabel', '', layout.left + 355, topY - 155, 115, 240, 12);
+        const actionPanel = createPanel(this.node, 'PetActionPanel', 0, -330, 660, 220);
+        createButton(actionPanel, 'SetBattlePetButton', TXT_BATTLE, -240, 55, 118, 48, () => this.setBattlePet(), this, false, 15);
+        createButton(actionPanel, 'OpenSkillButton', TXT_SKILL, -80, 55, 118, 48, () => this.openSkillTips(), this, false, 15);
+        createButton(actionPanel, 'MarriageStatusButton', TXT_MARRIAGE, 80, 55, 118, 48, () => this.showMarriageStatus(), this, false, 15);
+        createButton(actionPanel, 'RefreshPetButton', TXT_REFRESH, 240, 55, 118, 48, () => void this.loadPetsFromServer(), this, false, 15);
+        createInfoText(
+            actionPanel,
+            'PetActionHint',
+            '\u70b9\u51fb\u5de6\u4fa7\u5ba0\u7269\u4f1a\u7acb\u5373\u5207\u6362\u5f62\u6001\u548c\u8be6\u60c5',
+            -300,
+            -30,
+            600,
+            70,
+            13,
+        );
+    }
 
-        createPanel(this.node, 'PetActionPanel', 0, bottomY + 44, layout.pageW - 24, 130);
-        createButton(this.node, 'SetBattlePetButton', '出战', layout.left + 90, bottomY + 70, 76, 38, () => this.setBattlePet(), this, false, 13);
-        createButton(this.node, 'OpenSkillButton', '技能', layout.left + 180, bottomY + 70, 76, 38, () => this.openSkillTips(), this, false, 13);
-        createButton(this.node, 'MarriageStatusButton', '婚姻', layout.left + 270, bottomY + 70, 76, 38, () => this.showMarriageStatus(), this, false, 13);
-        createButton(this.node, 'RefreshPetButton', '刷新', layout.left + 360, bottomY + 70, 76, 38, () => void this.loadPetsFromServer(), this, false, 13);
+    private ensureContent(parent: Node, name: string, x: number, y: number, width: number, height: number) {
+        const node = getOrCreateNode(parent, name);
+        node.setPosition(new Vec3(x, y, 0));
+        ensureTransform(node, width, height);
+        return node;
     }
 
     private renderPetList() {
-        clearGenerated(this.node, 'GeneratedPetList');
-        const layout = getPageLayout(this.node);
-        const topY = layout.top - 100;
+        if (!this.petListContent) return;
+
+        clearChildren(this.petListContent);
 
         if (!this.pets.length) {
-            createLabel(this.node, 'GeneratedPetListEmpty', '暂无宠物', layout.left + 72, topY - 155, 90, 45, 13);
+            createLabel(this.petListContent, 'PetListEmpty', TXT_EMPTY_PET, 0, 0, 140, 45, 13);
             return;
         }
 
-        this.pets.slice(0, 6).forEach((pet: any, index: number) => {
-            createButton(this.node, `GeneratedPetList${index}`, `${index + 1}.${pet.nickname || '宠物'}`, layout.left + 72, topY - 55 - index * 44, 92, 32, () => {
-                this.selectedIndex = index;
-                this.renderPetList();
-                this.renderSelectedPet();
-            }, this, index === this.selectedIndex, 11);
+        this.drawPetListButtons();
+    }
+
+    private drawPetListButtons() {
+        if (!this.petListContent) return;
+
+        this.pets.slice(0, 7).forEach((pet: any, index: number) => {
+            createButton(
+                this.petListContent!,
+                `PetListButton${index}`,
+                `${index + 1}.${pet.nickname || TXT_PET}`,
+                0,
+                142 - index * 46,
+                148,
+                36,
+                () => {
+                    this.selectedIndex = index;
+                    this.drawPetListButtons();
+                    this.renderSelectedPet();
+                },
+                this,
+                index === this.selectedIndex,
+                11,
+            );
         });
     }
 
@@ -85,51 +135,61 @@ export class PetPanel extends Component {
         const pet = this.getSelectedPet();
 
         if (!pet) {
-            if (this.shapeLabel) this.shapeLabel.string = '暂无宠物';
+            if (this.shapeLabel) this.shapeLabel.string = TXT_EMPTY_PET;
             if (this.detailLabel) this.detailLabel.string = '-';
             return;
         }
 
         const skills = Array.isArray(pet.skills) ? pet.skills : [];
         const skillText = skills.length
-            ? skills.slice(0, 4).map((skill: any, index: number) => `${index + 1}.${skill.name || skill.skillCode || '技能'}`).join('\n')
-            : '暂无';
+            ? skills.slice(0, 5).map((skill: any, index: number) => `${index + 1}.${skill.name || skill.skillCode || TXT_SKILL}`).join('\n')
+            : '\u6682\u65e0';
 
         if (this.shapeLabel) {
-            this.shapeLabel.string = `${this.getPetEmoji(pet)}\n${pet.nickname || '-'}\nLv.${pet.level ?? 1}\n${pet.rarityName || `稀有${pet.rarity ?? 1}`}`;
+            this.shapeLabel.string = [
+                this.getSpeciesText(pet),
+                pet.nickname || '-',
+                `Lv.${pet.level ?? 1}`,
+                this.getRarityText(pet),
+            ].join('\n');
         }
 
         if (this.detailLabel) {
             this.detailLabel.string = [
-                `物种:${pet.species || '-'}`,
-                `性别:${pet.gender || '未定'}`,
-                `婚姻:${pet.married ? '已婚' : '未婚'}`,
-                `生命:${pet.hp ?? 0}`,
-                `攻击:${pet.attack ?? 0}`,
-                `防御:${pet.defense ?? 0}`,
-                `速度:${pet.speed ?? pet.agility ?? 0}`,
-                `经验:${pet.exp ?? 0}`,
-                `技能格:${pet.skillSlotCount ?? 0}`,
-                `技能:\n${skillText}`,
+                `\u7269\u79cd:${pet.species || '-'}`,
+                `\u7a00\u6709:${this.getRarityText(pet)}`,
+                `\u7b49\u7ea7:${pet.level ?? 1}`,
+                `\u7ecf\u9a8c:${pet.exp ?? 0}/${pet.nextExp ?? (pet.level ?? 1) * 100}`,
+                `\u751f\u547d:${pet.hp ?? 0}`,
+                `\u653b\u51fb:${pet.attack ?? 0}`,
+                `\u9632\u5fa1:${pet.defense ?? 0}`,
+                `\u901f\u5ea6:${pet.speed ?? pet.agility ?? 0}`,
+                `\u9965\u997f:${pet.hunger ?? 0}`,
+                `\u5feb\u4e50:${pet.happiness ?? 0}`,
+                `\u6e05\u6d01:${pet.cleanliness ?? 0}`,
+                `\u6280\u80fd\u683c:${pet.skillSlotCount ?? (Number(pet.rarity || 1) + 1)}`,
+                `${TXT_SKILL}:\n${skillText}`,
             ].join('\n');
         }
     }
 
     private setBattlePet() {
         const pet = this.getSelectedPet();
-        if (!pet) return ToastManager.show('请先选择宠物');
+        if (!pet) return ToastManager.show('\u8bf7\u5148\u9009\u62e9\u5ba0\u7269');
         PlayerData.user = { ...(PlayerData.user || {}), currentPetId: pet.id, currentPet: pet };
-        ToastManager.show(`${pet.nickname || '宠物'} 已设为出战`);
+        ToastManager.show(`${pet.nickname || TXT_PET} \u5df2\u8bbe\u4e3a\u51fa\u6218`);
     }
 
     private openSkillTips() {
-        ToastManager.show('技能洗炼下一步接入');
+        ToastManager.show('\u6280\u80fd\u683c\u548c\u6280\u80fd\u5217\u8868\u5df2\u5728\u53f3\u4fa7\u663e\u793a');
     }
 
     private showMarriageStatus() {
         const pet = this.getSelectedPet();
-        if (!pet) return ToastManager.show('请先选择宠物');
-        ToastManager.show(pet.married ? '该宠物已婚，不能再次结婚' : '该宠物未婚，可进入繁育页');
+        if (!pet) return ToastManager.show('\u8bf7\u5148\u9009\u62e9\u5ba0\u7269');
+        ToastManager.show(pet.married || pet.marriedPetId
+            ? '\u8be5\u5ba0\u7269\u5df2\u5a5a'
+            : '\u8be5\u5ba0\u7269\u672a\u5a5a\uff0c\u53ef\u53bb\u7e41\u80b2\u9875');
     }
 
     private getSelectedPet() { return this.pets[this.selectedIndex] || this.pets[0] || null; }
@@ -147,13 +207,30 @@ export class PetPanel extends Component {
         return [];
     }
 
-    private getPetEmoji(pet: any) {
-        const species = String(pet?.species || '').toLowerCase();
-        if (species.includes('cat')) return '🐱';
-        if (species.includes('dog')) return '🐶';
-        if (species.includes('dragon')) return '🐲';
-        if (species.includes('rabbit')) return '🐰';
-        if (species.includes('fox')) return '🦊';
-        return '🐾';
+    private getSpeciesText(pet: any) {
+        const species = String(pet?.species || 'Pet');
+        const map: Record<string, string> = {
+            Cat: '\u732b',
+            Dog: '\u72d7',
+            Rabbit: '\u5154',
+            Fox: '\u72d0\u72f8',
+            Dragon: '\u9f99',
+            Phoenix: '\u51e4\u51f0',
+        };
+        return map[species] || species;
+    }
+
+    private getRarityText(pet: any) {
+        if (pet?.rarityName) return String(pet.rarityName);
+        const rarity = Number(pet?.rarity || 1);
+        const map: Record<number, string> = {
+            1: '\u666e\u901a',
+            2: '\u4f18\u79c0',
+            3: '\u7a00\u6709',
+            4: '\u53f2\u8bd7',
+            5: '\u4f20\u8bf4',
+            6: '\u795e\u8bdd',
+        };
+        return map[rarity] || `R${rarity}`;
     }
 }

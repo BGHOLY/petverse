@@ -6,7 +6,7 @@ import { InventoryPanel } from '../ui/InventoryPanel';
 import { PetPanel } from '../ui/PetPanel';
 import { ShopPanel } from '../ui/ShopPanel';
 import { UIEffects } from '../ui/UIEffects';
-import { createButton, getCanvasSize } from '../ui/UiKit';
+import { createButton, DESIGN_HEIGHT, DESIGN_WIDTH } from '../ui/UiKit';
 
 const { ccclass } = _decorator;
 
@@ -24,13 +24,12 @@ export class PanelManager extends Component {
     }
 
     ensurePages() {
-        const size = getCanvasSize();
         const canvas = find('Canvas') || this.node.parent || this.node;
 
-        this.pageLayer = this.getOrCreateChild(canvas, 'PageLayer', 0, 0, size.width, size.height);
+        this.pageLayer = this.getOrCreateChild(canvas, 'PageLayer', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
         for (const name of PAGE_NAMES) {
-            const page = this.getOrCreateChild(this.pageLayer, name, 0, 0, size.width, size.height);
+            const page = this.getOrCreateChild(this.pageLayer, name, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
             page.active = false;
             this.pageMap.set(name, page);
         }
@@ -103,14 +102,10 @@ export class PanelManager extends Component {
     private ensureBackButton() {
         if (!this.pageLayer) return;
 
-        const size = getCanvasSize();
-        const x = -size.width / 2 + 45;
-        const y = -size.height / 2 + 40;
-
-        const button = createButton(this.pageLayer, 'BackHomeButton', '返回', x, y, 70, 38, () => {
+        const button = createButton(this.pageLayer, 'BackHomeButton', '\u8fd4\u56de', -300, -590, 90, 44, () => {
             this.showHome();
             UIEventCenter.emit('SHOW_HOME');
-        }, this, false, 14);
+        }, this, false, 15);
 
         button.node.setSiblingIndex(99);
     }

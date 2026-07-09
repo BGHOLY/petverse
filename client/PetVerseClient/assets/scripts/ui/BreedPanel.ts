@@ -1,22 +1,32 @@
-import { _decorator, Component, Label } from 'cc';
+import { _decorator, Component, Label, Node, Vec3 } from 'cc';
 import ApiClient from '../network/ApiClient';
 import { ToastManager } from './ToastManager';
 import {
     BREED_PAGE_BG,
-    clearGenerated,
+    clearChildren,
     createButton,
     createInfoText,
     createLabel,
     createPageBackground,
     createPanel,
-    getPageLayout,
+    ensureTransform,
+    getOrCreateNode,
     normalizeList,
 } from './UiKit';
 
 const { ccclass } = _decorator;
 
+const TXT_BREED = '\u7e41\u80b2';
+const TXT_MY_PET = '\u6211\u7684\u5ba0\u7269';
+const TXT_OTHER_PET = '\u5bf9\u65b9\u5ba0\u7269';
+const TXT_BREED_INFO = '\u7e41\u80b2\u4fe1\u606f';
+const TXT_EMPTY_PET = '\u6682\u65e0\u5ba0\u7269';
+
 @ccclass('BreedPanel')
 export class BreedPanel extends Component {
+    private myPetContent: Node | null = null;
+    private otherPetContent: Node | null = null;
+    private infoContent: Node | null = null;
     private infoLabel: Label | null = null;
     private pets: any[] = [];
     private selectedMyIndex = 0;
@@ -37,73 +47,83 @@ export class BreedPanel extends Component {
             this.selectedFriendIndex = this.selectedMyIndex === 0 ? 1 : 0;
         }
 
+        this.keepSelectionSafe();
         this.renderPetLists();
         this.renderSelectedInfo();
     }
 
     private ensureView() {
-        const layout = createPageBackground(this.node, '繁育', BREED_PAGE_BG);
-        const topY = layout.top - 100;
+        createPageBackground(this.node, TXT_BREED, BREED_PAGE_BG);
 
-        createPanel(this.node, 'MyPetPanel', layout.left + 72, topY - 165, 118, 350);
-        createLabel(this.node, 'MyPetTitleLabel', '我的宠物', layout.left + 72, topY - 18, 90, 24, 14);
+        const myPanel = createPanel(this.node, 'MyPetPanel', -230, 240, 180, 460);
+        createLabel(myPanel, 'MyPetTitleLabel', TXT_MY_PET, 0, 200, 150, 28, 14);
+        this.myPetContent = this.ensureContent(myPanel, 'MyPetContent', 0, -20, 170, 390);
 
-        createPanel(this.node, 'FriendPetPanel', layout.left + 205, topY - 165, 118, 350);
-        createLabel(this.node, 'FriendPetTitleLabel', '对方宠物', layout.left + 205, topY - 18, 90, 24, 14);
+        const otherPanel = createPanel(this.node, 'FriendPetPanel', 0, 240, 180, 460);
+        createLabel(otherPanel, 'FriendPetTitleLabel', TXT_OTHER_PET, 0, 200, 150, 28, 14);
+        this.otherPetContent = this.ensureContent(otherPanel, 'FriendPetContent', 0, -20, 170, 390);
 
-        createPanel(this.node, 'BreedInfoPanel', layout.left + 345, topY - 165, 140, 350);
-        createLabel(this.node, 'BreedInfoTitleLabel', '繁育信息', layout.left + 345, topY - 18, 100, 24, 14);
-        this.infoLabel = createInfoText(this.node, 'BreedInfoText', '', layout.left + 345, topY - 165, 112, 250, 12);
+        const infoPanel = createPanel(this.node, 'BreedInfoPanel', 230, 240, 180, 460);
+        createLabel(infoPanel, 'BreedInfoTitleLabel', TXT_BREED_INFO, 0, 200, 150, 28, 14);
+        this.infoContent = this.ensureContent(infoPanel, 'BreedInfoContent', 0, -20, 165, 390);
+        this.infoLabel = createInfoText(this.infoContent, 'BreedInfoText', '', -78, 180, 156, 350, 12);
 
-        createPanel(this.node, 'BreedRulePanel', 0, layout.bottom + 130, layout.pageW - 28, 160);
+        const rulePanel = createPanel(this.node, 'BreedRulePanel', 0, -330, 660, 220);
         createInfoText(
-            this.node,
+            rulePanel,
             'BreedRuleLabel',
-            '规则：\n1. 宠物性别出生后固定，不能更改。\n2. 每只宠物终生只能结婚一次。\n3. 双方确认后，各获得一个蛋。\n4. 两个蛋的父母相同，但孵化结果各自独立计算。',
-            0,
-            layout.bottom + 130,
-            layout.pageW - 60,
+            '\u89c4\u5219:\n1. \u9009\u62e9\u4e24\u53ea\u4e0d\u540c\u5ba0\u7269\u7ed3\u5a5a\u3002\n2. \u5df2\u5a5a\u5ba0\u7269\u4e0d\u80fd\u91cd\u590d\u7ed3\u5a5a\u3002\n3. \u7ed3\u5a5a\u540e\u53ef\u9886\u53d6\u5ba0\u7269\u86cb\u3002',
+            -300,
+            62,
+            400,
             130,
-            12,
+            13,
         );
 
-        createButton(this.node, 'CreateMarriageButton', '确认结婚', layout.right - 170, layout.bottom + 35, 105, 38, () => {
+        createButton(rulePanel, 'CreateMarriageButton', '\u7ed3\u5a5a', 190, 55, 118, 46, () => {
             void this.createMarriage();
-        }, this, false, 13);
+        }, this, false, 15);
 
-        createButton(this.node, 'LayEggButton', '领取蛋', layout.right - 62, layout.bottom + 35, 90, 38, () => {
+        createButton(rulePanel, 'LayEggButton', '\u751f\u86cb', 190, -5, 118, 46, () => {
             void this.layEgg();
-        }, this, false, 13);
+        }, this, false, 15);
 
-        createButton(this.node, 'RefreshBreedButton', '刷新', layout.left + 130, layout.bottom + 35, 80, 38, () => {
+        createButton(rulePanel, 'RefreshBreedButton', '\u5237\u65b0', 190, -65, 118, 46, () => {
             void this.refreshBreedPage();
-        }, this, false, 13);
+        }, this, false, 15);
+    }
+
+    private ensureContent(parent: Node, name: string, x: number, y: number, width: number, height: number) {
+        const node = getOrCreateNode(parent, name);
+        node.setPosition(new Vec3(x, y, 0));
+        ensureTransform(node, width, height);
+        return node;
     }
 
     private renderPetLists() {
-        clearGenerated(this.node, 'GeneratedBreedMyPet');
-        clearGenerated(this.node, 'GeneratedBreedFriendPet');
+        if (!this.myPetContent || !this.otherPetContent) return;
 
-        const layout = getPageLayout(this.node);
-        const topY = layout.top - 100;
+        clearChildren(this.myPetContent);
+        clearChildren(this.otherPetContent);
 
         if (!this.pets.length) {
-            createLabel(this.node, 'GeneratedBreedMyPetEmpty', '暂无宠物', layout.left + 72, topY - 160, 80, 40, 12);
+            createLabel(this.myPetContent, 'MyPetEmpty', TXT_EMPTY_PET, 0, 0, 140, 45, 12);
+            createLabel(this.otherPetContent, 'OtherPetEmpty', TXT_EMPTY_PET, 0, 0, 140, 45, 12);
             return;
         }
 
-        this.pets.slice(0, 6).forEach((pet: any, index: number) => {
+        this.pets.slice(0, 7).forEach((pet: any, index: number) => {
             const disabled = pet.married || pet.marriedPetId;
-            const text = `${pet.nickname || `宠物${index + 1}`}\n${disabled ? '已婚' : '未婚'}`;
+            const text = `${pet.nickname || `Pet${index + 1}`}\n${disabled ? '\u5df2\u5a5a' : '\u672a\u5a5a'}`;
 
-            createButton(this.node, `GeneratedBreedMyPet${index}`, text, layout.left + 72, topY - 58 - index * 47, 88, 36, () => {
+            createButton(this.myPetContent!, `MyPetButton${index}`, text, 0, 152 - index * 48, 148, 38, () => {
                 this.selectedMyIndex = index;
                 if (this.selectedFriendIndex === index && this.pets.length > 1) this.selectedFriendIndex = index === 0 ? 1 : 0;
                 this.renderPetLists();
                 this.renderSelectedInfo();
             }, this, index === this.selectedMyIndex, 10);
 
-            createButton(this.node, `GeneratedBreedFriendPet${index}`, text, layout.left + 205, topY - 58 - index * 47, 88, 36, () => {
+            createButton(this.otherPetContent!, `FriendPetButton${index}`, text, 0, 152 - index * 48, 148, 38, () => {
                 this.selectedFriendIndex = index;
                 if (this.selectedMyIndex === index && this.pets.length > 1) this.selectedMyIndex = index === 0 ? 1 : 0;
                 this.renderPetLists();
@@ -119,18 +139,18 @@ export class BreedPanel extends Component {
         if (!this.infoLabel) return;
 
         if (!myPet || !friendPet) {
-            this.infoLabel.string = '请选择双方宠物';
+            this.infoLabel.string = '\u8bf7\u9009\u62e9\u53cc\u65b9\u5ba0\u7269';
             return;
         }
 
         this.infoLabel.string = [
-            `我方:${myPet.nickname}`,
-            `稀有:${myPet.rarityName || myPet.rarity}`,
-            `婚姻:${myPet.married ? '已婚' : '未婚'}`,
+            `\u6211\u65b9:${myPet.nickname || '-'}`,
+            `\u7a00\u6709:${myPet.rarityName || myPet.rarity || '-'}`,
+            `\u72b6\u6001:${myPet.married || myPet.marriedPetId ? '\u5df2\u5a5a' : '\u672a\u5a5a'}`,
             '',
-            `对方:${friendPet.nickname}`,
-            `稀有:${friendPet.rarityName || friendPet.rarity}`,
-            `婚姻:${friendPet.married ? '已婚' : '未婚'}`,
+            `\u5bf9\u65b9:${friendPet.nickname || '-'}`,
+            `\u7a00\u6709:${friendPet.rarityName || friendPet.rarity || '-'}`,
+            `\u72b6\u6001:${friendPet.married || friendPet.marriedPetId ? '\u5df2\u5a5a' : '\u672a\u5a5a'}`,
         ].join('\n');
     }
 
@@ -138,20 +158,33 @@ export class BreedPanel extends Component {
         const myPet = this.pets[this.selectedMyIndex];
         const friendPet = this.pets[this.selectedFriendIndex];
 
-        if (!myPet || !friendPet || myPet.id === friendPet.id) return ToastManager.show('请选择两只不同宠物');
+        if (!myPet || !friendPet || myPet.id === friendPet.id) {
+            return ToastManager.show('\u8bf7\u9009\u62e9\u4e24\u53ea\u4e0d\u540c\u5ba0\u7269');
+        }
 
         if (myPet.married || friendPet.married || myPet.marriedPetId || friendPet.marriedPetId) {
-            return ToastManager.show('已有宠物结婚，不能再次结婚');
+            return ToastManager.show('\u5df2\u6709\u5ba0\u7269\u7ed3\u5a5a\uff0c\u4e0d\u80fd\u91cd\u590d\u7ed3\u5a5a');
         }
 
         const result = await ApiClient.post('/marriage/create', { petAId: myPet.id, petBId: friendPet.id });
-        ToastManager.show(result?.success ? '结婚成功，双方可领取宠物蛋' : `结婚失败:${result?.message || '未知错误'}`);
+        ToastManager.show(result?.success
+            ? '\u7ed3\u5a5a\u6210\u529f\uff0c\u53ef\u751f\u86cb'
+            : `\u7ed3\u5a5a\u5931\u8d25:${result?.message || '\u672a\u77e5\u9519\u8bef'}`);
         await this.refreshBreedPage();
     }
 
     private async layEgg() {
         const myPet = this.pets[this.selectedMyIndex];
         const result = await ApiClient.post('/marriage/lay-egg', { petId: myPet?.id });
-        ToastManager.show(result?.success ? '已获得宠物蛋' : `领取失败:${result?.message || '暂无婚姻'}`);
+        ToastManager.show(result?.success
+            ? '\u5df2\u83b7\u5f97\u5ba0\u7269\u86cb'
+            : `\u751f\u86cb\u5931\u8d25:${result?.message || '\u6682\u65e0\u5a5a\u59fb'}`);
+    }
+
+    private keepSelectionSafe() {
+        if (this.selectedMyIndex >= this.pets.length) this.selectedMyIndex = Math.max(0, this.pets.length - 1);
+        if (this.selectedFriendIndex >= this.pets.length) this.selectedFriendIndex = Math.max(0, this.pets.length - 1);
+        if (this.selectedMyIndex < 0) this.selectedMyIndex = 0;
+        if (this.selectedFriendIndex < 0) this.selectedFriendIndex = 0;
     }
 }

@@ -1,5 +1,8 @@
-import { Button, Color, find, Graphics, Label, Node, Size, UITransform, Vec3, view } from 'cc';
+import { Button, Color, find, Graphics, Label, Node, Size, UITransform, Vec3 } from 'cc';
 import { UIEffects } from './UIEffects';
+
+export const DESIGN_WIDTH = 720;
+export const DESIGN_HEIGHT = 1280;
 
 export const TEXT_DARK = new Color(76, 49, 26, 255);
 export const TEXT_LIGHT = new Color(255, 255, 255, 255);
@@ -31,20 +34,7 @@ export type PageLayout = {
 };
 
 export function getCanvasSize(): Size {
-    const canvas = find('Canvas');
-    const transform = canvas?.getComponent(UITransform);
-    const size = transform?.contentSize;
-
-    if (size && size.width > 0 && size.height > 0) {
-        return size;
-    }
-
-    const visible = view.getVisibleSize();
-    if (visible && visible.width > 0 && visible.height > 0) {
-        return visible;
-    }
-
-    return new Size(450, 800);
+    return new Size(DESIGN_WIDTH, DESIGN_HEIGHT);
 }
 
 export function getNodeSize(node: Node): Size {
@@ -58,24 +48,16 @@ export function getNodeSize(node: Node): Size {
 }
 
 export function getPageLayout(node?: Node): PageLayout {
-    const size = getCanvasSize();
-    const w = size.width;
-    const h = size.height;
-
-    // 功能页要像正式游戏页面一样全屏覆盖主界面。
-    const pageW = w + 6;
-    const pageH = h + 6;
-
     return {
-        w,
-        h,
-        pageW,
-        pageH,
-        left: -pageW / 2,
-        right: pageW / 2,
-        top: pageH / 2,
-        bottom: -pageH / 2,
-        titleY: pageH / 2 - 34,
+        w: DESIGN_WIDTH,
+        h: DESIGN_HEIGHT,
+        pageW: DESIGN_WIDTH,
+        pageH: DESIGN_HEIGHT,
+        left: -DESIGN_WIDTH / 2,
+        right: DESIGN_WIDTH / 2,
+        top: DESIGN_HEIGHT / 2,
+        bottom: -DESIGN_HEIGHT / 2,
+        titleY: 590,
     };
 }
 
@@ -97,13 +79,18 @@ export function ensureTransform(node: Node, width: number, height: number): UITr
     return transform;
 }
 
+export function setNodeRect(node: Node, x: number, y: number, width: number, height: number): UITransform {
+    node.setPosition(new Vec3(x, y, 0));
+    return ensureTransform(node, width, height);
+}
+
 export function drawRoundRect(
     node: Node,
     width: number,
     height: number,
     fill: Color,
     border: Color,
-    radius = 10,
+    radius = 8,
     lineWidth = 2,
 ) {
     const graphics = node.getComponent(Graphics) || node.addComponent(Graphics);
@@ -129,12 +116,11 @@ export function createPanel(
     height: number,
     fill: Color = PANEL_FILL,
     border: Color = PANEL_BORDER,
-    radius = 10,
+    radius = 8,
     lineWidth = 2,
 ): Node {
     const node = getOrCreateNode(parent, name);
-    node.setPosition(new Vec3(x, y, 0));
-    ensureTransform(node, width, height);
+    setNodeRect(node, x, y, width, height);
     drawRoundRect(node, width, height, fill, border, radius, lineWidth);
     return node;
 }
@@ -144,9 +130,8 @@ export function createPageBackground(parent: Node, title: string, fill: Color = 
     const bg = createPanel(parent, 'PageOpaqueBackground', 0, 0, layout.pageW, layout.pageH, fill, PANEL_BORDER, 0, 0);
     bg.setSiblingIndex(0);
 
-    // 页面顶部只放标题，像独立页面，不显示主界面信息。
-    createPanel(parent, 'PageHeaderBar', 0, layout.top - 32, layout.pageW, 58, new Color(255, 250, 230, 255), PANEL_BORDER, 0, 0);
-    createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW - 100, 38, 24, TEXT_DARK);
+    createPanel(parent, 'PageHeaderBar', 0, layout.titleY, layout.pageW, 60, new Color(255, 250, 230, 255), PANEL_BORDER, 0, 0);
+    createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW, 60, 24, TEXT_DARK);
     return layout;
 }
 
@@ -166,8 +151,7 @@ export function createLabel(
     color: Color = TEXT_DARK,
 ): Label {
     const node = getOrCreateNode(parent, name);
-    node.setPosition(new Vec3(x, y, 0));
-    ensureTransform(node, width, height);
+    setNodeRect(node, x, y, width, height);
 
     const label = node.getComponent(Label) || node.addComponent(Label);
     label.string = text;
@@ -194,6 +178,8 @@ export function createInfoText(
     const label = createLabel(parent, name, text, x, y, width, height, fontSize, TEXT_DARK);
     label.horizontalAlign = Label.HorizontalAlign.LEFT;
     label.verticalAlign = Label.VerticalAlign.TOP;
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableWrapText = true;
     return label;
 }
 
@@ -211,8 +197,7 @@ export function createButton(
     fontSize?: number,
 ): Button {
     const node = getOrCreateNode(parent, name);
-    node.setPosition(new Vec3(x, y, 0));
-    ensureTransform(node, width, height);
+    setNodeRect(node, x, y, width, height);
     drawRoundRect(node, width, height, selected ? BUTTON_SELECTED : BUTTON_FILL, BUTTON_BORDER, 8, 2);
 
     const button = node.getComponent(Button) || node.addComponent(Button);
@@ -225,13 +210,15 @@ export function createButton(
         text,
         0,
         0,
-        width - 6,
-        height - 4,
+        width - 8,
+        height - 6,
         fontSize || autoFont,
         TEXT_DARK,
     );
     label.horizontalAlign = Label.HorizontalAlign.CENTER;
     label.verticalAlign = Label.VerticalAlign.CENTER;
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableWrapText = true;
 
     UIEffects.bindButtonFeedback(node);
 
@@ -284,16 +271,15 @@ export function compactJson(value: any): string {
     }
 }
 
-// 兼容旧代码里的函数名。
 export const getOrCreateButton = createButton;
 export const getOrCreateLabel = createLabel;
 export function createPageTitle(parent: Node, title: string): Label {
     const layout = getPageLayout(parent);
-    return createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW - 120, 38, 24, TEXT_DARK);
+    return createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW, 60, 24, TEXT_DARK);
 }
 export function createStatusLabel(parent: Node, name = 'StatusLabel'): Label {
     const layout = getPageLayout(parent);
-    return createLabel(parent, name, '', 0, layout.titleY - 34, layout.pageW - 80, 24, 13, TEXT_DARK);
+    return createLabel(parent, name, '', 0, layout.titleY - 44, layout.pageW - 80, 28, 13, TEXT_DARK);
 }
 export function createListButton(
     parent: Node,
@@ -303,5 +289,5 @@ export function createListButton(
     callback: () => void,
     target?: any,
 ): Button {
-    return createButton(parent, name, text, 0, 230 - index * 56, 300, 42, callback, target);
+    return createButton(parent, name, text, 0, 190 - index * 56, 300, 42, callback, target);
 }
