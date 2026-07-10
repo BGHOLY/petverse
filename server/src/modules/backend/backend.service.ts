@@ -1,4 +1,3 @@
-
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +9,8 @@ import { FusionRecord } from '../fusion/fusion-record.entity';
 import { ALL_ITEM_CONFIGS } from '../item/config/item.config';
 import { Item } from '../item/item.entity';
 import { Mail } from '../mail/mail.entity';
+import { Marriage } from '../marriage/marriage.entity';
+import { MarriageProposal } from '../marriage/marriage-proposal.entity';
 import { PET_SPECIES_CONFIGS } from '../pet/config/pet-species.config';
 import { Pet } from '../pet/pet.entity';
 import { RankingSnapshot } from '../ranking/ranking-snapshot.entity';
@@ -51,6 +52,12 @@ export class BackendService {
     @InjectRepository(Mail)
     private readonly mailRepository: Repository<Mail>,
 
+    @InjectRepository(Marriage)
+    private readonly marriageRepository: Repository<Marriage>,
+
+    @InjectRepository(MarriageProposal)
+    private readonly proposalRepository: Repository<MarriageProposal>,
+
     @InjectRepository(Season)
     private readonly seasonRepository: Repository<Season>,
 
@@ -78,6 +85,8 @@ export class BackendService {
       friends,
       friendRequests,
       mails,
+      activeMarriages,
+      pendingMarriageProposals,
       seasons,
       seasonPlayers,
       rankingSnapshots,
@@ -97,6 +106,12 @@ export class BackendService {
       this.friendRepository.count(),
       this.friendRequestRepository.count(),
       this.mailRepository.count(),
+      this.marriageRepository.count({
+        where: { status: 'active' },
+      }),
+      this.proposalRepository.count({
+        where: { status: 'pending' },
+      }),
       this.seasonRepository.count(),
       this.seasonPlayerRepository.count(),
       this.snapshotRepository.count(),
@@ -119,11 +134,13 @@ export class BackendService {
       itemDatabase:
         enabledItems ===
         ALL_ITEM_CONFIGS.length,
-      v22TablesReady:
+      v23TablesReady:
         [
           friends,
           friendRequests,
           mails,
+          activeMarriages,
+          pendingMarriageProposals,
           seasons,
           seasonPlayers,
           rankingSnapshots,
@@ -138,7 +155,7 @@ export class BackendService {
 
     return {
       success: Object.values(checks).every(Boolean),
-      version: '2.2.0',
+      version: '2.3.0',
       checks,
       config: {
         species: PET_SPECIES_CONFIGS.length,
@@ -155,6 +172,8 @@ export class BackendService {
         friends,
         friendRequests,
         mails,
+        activeMarriages,
+        pendingMarriageProposals,
         seasons,
         seasonPlayers,
         rankingSnapshots,
@@ -168,9 +187,16 @@ export class BackendService {
         rankingSettlement: true,
         petTrading: true,
         petCapacity: true,
+        marriageProposals: true,
+        antiInbreeding: true,
+        alternatingEggOwnership: true,
+        fertilityAndBreedLimits: true,
+        requestUserHeader: true,
+        maintenanceRepair: true,
+        publicGameConfig: true,
       },
       nextAction: Object.values(checks).every(Boolean)
-        ? 'Backend V2.2 systems are ready'
+        ? 'Backend V2.3 final systems are ready'
         : 'Run POST /api/dev/seed-all',
     };
   }
@@ -233,7 +259,7 @@ export class BackendService {
         PET_SPECIES_CONFIGS.length === 10 &&
         ALL_SKILL_CONFIGS.length === 70 &&
         ALL_ITEM_CONFIGS.length >= 74,
-      version: '2.2.0',
+      version: '2.3.0',
       duplicateSkills,
       duplicateItems,
       invalidSkillCodes:

@@ -1,7 +1,12 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 
-import { Body, Controller, Get, Post } from '@nestjs/common';
-
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { PetCapacityService } from './pet-capacity.service';
 
 @Controller('pet-capacity')
@@ -11,14 +16,17 @@ export class PetCapacityController {
   ) {}
 
   @Get()
-  getStatus() {
-    return this.petCapacityService.getStatus(DEFAULT_USER_ID);
+  getStatus(@Headers('x-user-id') userId?: string) {
+    return this.petCapacityService.getStatus(resolveRequestUserId(userId));
   }
 
   @Post('expand')
-  expand(@Body() body: any) {
+  expand(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.petCapacityService.expandCapacity(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       String(body?.requestId || ''),
     );
   }

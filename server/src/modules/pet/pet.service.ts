@@ -328,6 +328,10 @@ export class PetService {
       tradeListingId: 0,
       gender: data.gender || (Math.random() < 0.5 ? 'male' : 'female'),
       breedCount: 0,
+      breedLimit: 20,
+      fertility: 100,
+      fertilityUpdatedAt: new Date(),
+      lastBreedAt: null,
       fusionCount: 0,
       rarity,
       rarityName: RARITY_NAMES[rarity],
@@ -498,6 +502,10 @@ export class PetService {
       tradeListingId: 0,
       gender: Math.random() < 0.5 ? 'male' : 'female',
       breedCount: 0,
+      breedLimit: 20,
+      fertility: 100,
+      fertilityUpdatedAt: new Date(),
+      lastBreedAt: null,
       fusionCount: 0,
       rarity: this.clampRarity(blueprint.rarity),
       rarityName: RARITY_NAMES[this.clampRarity(blueprint.rarity)],
@@ -1067,6 +1075,27 @@ export class PetService {
 
     if (pet.breedCount === undefined || pet.breedCount === null) {
       pet.breedCount = 0;
+      changed = true;
+    }
+
+    if (!pet.breedLimit || pet.breedLimit < 1) {
+      pet.breedLimit = 20;
+      changed = true;
+    }
+
+    if (pet.fertility === undefined || pet.fertility === null) {
+      pet.fertility = 100;
+      changed = true;
+    } else {
+      const fertility = Math.max(0, Math.min(100, Number(pet.fertility || 0)));
+      if (pet.fertility !== fertility) {
+        pet.fertility = fertility;
+        changed = true;
+      }
+    }
+
+    if (!pet.fertilityUpdatedAt) {
+      pet.fertilityUpdatedAt = new Date();
       changed = true;
     }
 

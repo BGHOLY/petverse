@@ -32,6 +32,8 @@ import { PetCapacityModule } from './modules/pet-capacity/pet-capacity.module';
 import { SeasonModule } from './modules/season/season.module';
 import { TradeModule } from './modules/trade/trade.module';
 import { BackendModule } from './modules/backend/backend.module';
+import { GameConfigModule } from './modules/game-config/game-config.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { DevModule } from './modules/dev/dev.module';
 
 @Module({
@@ -68,6 +70,8 @@ import { DevModule } from './modules/dev/dev.module';
     SeasonModule,
     TradeModule,
     BackendModule,
+    GameConfigModule,
+    MaintenanceModule,
     DevModule,
   ],
   controllers: [AppController],

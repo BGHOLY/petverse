@@ -1,7 +1,12 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 
-import { Body, Controller, Get, Post } from '@nestjs/common';
-
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { SeasonService } from './season.service';
 
 @Controller('season')
@@ -16,10 +21,8 @@ export class SeasonController {
   }
 
   @Get('me')
-  getMySeason() {
-    return this.seasonService.getMySeason(
-      DEFAULT_USER_ID,
-    );
+  getMySeason(@Headers('x-user-id') userId?: string) {
+    return this.seasonService.getMySeason(resolveRequestUserId(userId));
   }
 
   @Get('leaderboard')
@@ -28,10 +31,8 @@ export class SeasonController {
   }
 
   @Post('sync')
-  syncMyScores() {
-    return this.seasonService.syncPlayerScores(
-      DEFAULT_USER_ID,
-    );
+  syncMyScores(@Headers('x-user-id') userId?: string) {
+    return this.seasonService.syncPlayerScores(resolveRequestUserId(userId));
   }
 
   @Post('settle')

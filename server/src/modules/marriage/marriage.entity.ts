@@ -1,6 +1,15 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('marriages')
+@Index(['ownerAId', 'status'])
+@Index(['ownerBId', 'status'])
 export class Marriage {
   @PrimaryGeneratedColumn()
   id: number;
@@ -23,12 +32,24 @@ export class Marriage {
   @Column({ default: 0 })
   eggCount: number;
 
-  @Column({
-    type: 'timestamp',
-    nullable: true,
-  })
+  @Column({ default: 0 })
+  nextEggOwnerId: number;
+
+  @Column({ default: 0 })
+  lastEggOwnerId: number;
+
+  @Column({ default: 0 })
+  proposalId: number;
+
+  @Column({ type: 'timestamp', nullable: true })
   cooldownEndAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  endedAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

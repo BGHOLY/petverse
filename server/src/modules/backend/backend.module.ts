@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -8,6 +7,8 @@ import { Friend } from '../friend/friend.entity';
 import { FusionRecord } from '../fusion/fusion-record.entity';
 import { Item } from '../item/item.entity';
 import { Mail } from '../mail/mail.entity';
+import { Marriage } from '../marriage/marriage.entity';
+import { MarriageProposal } from '../marriage/marriage-proposal.entity';
 import { Pet } from '../pet/pet.entity';
 import { RankingSnapshot } from '../ranking/ranking-snapshot.entity';
 import { SeasonPlayer } from '../season/season-player.entity';
@@ -31,6 +32,8 @@ import { BackendService } from './backend.service';
       Friend,
       FriendRequest,
       Mail,
+      Marriage,
+      MarriageProposal,
       Season,
       SeasonPlayer,
       RankingSnapshot,

@@ -44,6 +44,18 @@ export class Pet {
   @Column({ default: 0 })
   breedCount: number;
 
+  @Column({ default: 20 })
+  breedLimit: number;
+
+  @Column({ default: 100 })
+  fertility: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fertilityUpdatedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastBreedAt: Date;
+
   @Column({ default: 0 })
   fusionCount: number;
 
@@ -111,7 +123,7 @@ export class Pet {
   @Column({ default: 'created' })
   sourceType: string;
 
-  @Column({ default: '2.2.0' })
+  @Column({ default: '2.3.0' })
   configVersion: string;
 
   @Column({ default: 100 })

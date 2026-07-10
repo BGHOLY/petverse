@@ -97,7 +97,7 @@ export class MailService {
   }
 
   async seedWelcomeMail(userId: number) {
-    const sourceId = 'welcome-v2.2';
+    const sourceId = 'welcome-v2.3';
     const existing = await this.mailRepository.findOne({
       where: {
         userId,
@@ -115,8 +115,8 @@ export class MailService {
 
     const mail = await this.createMailWithAttachments(
       userId,
-      'PetVerse 后端 V2.2 奖励',
-      '真实好友、邮件附件、赛季、排行榜结算、交易和宝宝容量系统已经启用。',
+      'PetVerse 后端 V2.3 最终奖励',
+      '结婚申请、三代血缘校验、轮流获得宠物蛋、繁殖次数与生育力系统已经启用。',
       [
         { type: 'gold', quantity: 3000 },
         { type: 'diamond', quantity: 50 },

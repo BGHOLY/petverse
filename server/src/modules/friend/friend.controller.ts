@@ -1,7 +1,12 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 
-import { Body, Controller, Get, Post } from '@nestjs/common';
-
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { FriendService } from './friend.service';
 
 @Controller('friend')
@@ -9,60 +14,78 @@ export class FriendController {
   constructor(private readonly friendService: FriendService) {}
 
   @Get()
-  getFriends() {
-    return this.friendService.getFriends(DEFAULT_USER_ID);
+  getFriends(@Headers('x-user-id') userId?: string) {
+    return this.friendService.getFriends(resolveRequestUserId(userId));
   }
 
   @Get('list')
-  getMyFriends() {
-    return this.friendService.getFriends(DEFAULT_USER_ID);
+  getMyFriends(@Headers('x-user-id') userId?: string) {
+    return this.friendService.getFriends(resolveRequestUserId(userId));
   }
 
   @Post('seed')
-  seedFriends() {
-    return this.friendService.seedMockFriends(DEFAULT_USER_ID);
+  seedFriends(@Headers('x-user-id') userId?: string) {
+    return this.friendService.seedMockFriends(resolveRequestUserId(userId));
   }
 
   @Post('request')
-  sendRequest(@Body() body: any) {
+  sendRequest(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.friendService.sendRequest(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.targetUserId || body?.userId || 0),
       String(body?.message || ''),
     );
   }
 
   @Get('requests')
-  getIncomingRequests() {
-    return this.friendService.getRequests(DEFAULT_USER_ID, 'incoming');
+  getIncomingRequests(@Headers('x-user-id') userId?: string) {
+    return this.friendService.getRequests(
+      resolveRequestUserId(userId),
+      'incoming',
+    );
   }
 
   @Get('requests/outgoing')
-  getOutgoingRequests() {
-    return this.friendService.getRequests(DEFAULT_USER_ID, 'outgoing');
+  getOutgoingRequests(@Headers('x-user-id') userId?: string) {
+    return this.friendService.getRequests(
+      resolveRequestUserId(userId),
+      'outgoing',
+    );
   }
 
   @Post('handle')
-  handleRequest(@Body() body: any) {
+  handleRequest(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.friendService.handleRequest(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.requestId || 0),
       Boolean(body?.accept),
     );
   }
 
   @Post('remove')
-  removeFriend(@Body() body: any) {
+  removeFriend(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.friendService.removeFriend(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.friendUserId || body?.userId || 0),
     );
   }
 
   @Post('search')
-  searchPlayers(@Body() body: any) {
+  searchPlayers(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.friendService.searchPlayers(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       String(body?.keyword || ''),
     );
   }

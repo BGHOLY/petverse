@@ -1,7 +1,12 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 
-import { Body, Controller, Get, Post } from '@nestjs/common';
-
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { MailService } from './mail.service';
 
 @Controller('mail')
@@ -9,59 +14,69 @@ export class MailController {
   constructor(private readonly mailService: MailService) {}
 
   @Get()
-  getMails() {
-    return this.mailService.getMyMails(DEFAULT_USER_ID);
+  getMails(@Headers('x-user-id') userId?: string) {
+    return this.mailService.getMyMails(resolveRequestUserId(userId));
   }
 
   @Get('list')
-  getMyMails() {
-    return this.mailService.getMyMails(DEFAULT_USER_ID);
+  getMyMails(@Headers('x-user-id') userId?: string) {
+    return this.mailService.getMyMails(resolveRequestUserId(userId));
   }
 
   @Post('read')
-  markRead(@Body() body: any) {
+  markRead(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.mailService.markRead(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.mailId || 0),
     );
   }
 
   @Post('read-all')
-  readAll() {
-    return this.mailService.readAll(DEFAULT_USER_ID);
+  readAll(@Headers('x-user-id') userId?: string) {
+    return this.mailService.readAll(resolveRequestUserId(userId));
   }
 
   @Post('claim')
-  claimMail(@Body() body: any) {
+  claimMail(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.mailService.claimMail(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.mailId || 0),
       String(body?.requestId || ''),
     );
   }
 
   @Post('claim-all')
-  claimAll(@Body() body: any) {
+  claimAll(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
     return this.mailService.claimAll(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       String(body?.requestId || ''),
     );
   }
 
   @Post('delete-claimed')
-  deleteClaimed() {
-    return this.mailService.deleteClaimed(DEFAULT_USER_ID);
+  deleteClaimed(@Headers('x-user-id') userId?: string) {
+    return this.mailService.deleteClaimed(resolveRequestUserId(userId));
   }
 
   @Post('seed-welcome')
-  seedWelcome() {
-    return this.mailService.seedWelcomeMail(DEFAULT_USER_ID);
+  seedWelcome(@Headers('x-user-id') userId?: string) {
+    return this.mailService.seedWelcomeMail(resolveRequestUserId(userId));
   }
 
   @Post('test-send')
-  testSend() {
+  testSend(@Headers('x-user-id') userId?: string) {
+    const currentUserId = resolveRequestUserId(userId);
     return this.mailService.createMailWithAttachments(
-      DEFAULT_USER_ID,
+      currentUserId,
       '系统测试奖励',
       '附件包含金币、钻石和道具，可验证多附件领取。',
       [
@@ -75,7 +90,7 @@ export class MailController {
       ],
       {
         sourceType: 'test',
-        sourceId: `test-${Date.now()}`,
+        sourceId: `test-${currentUserId}-${Date.now()}`,
       },
     );
   }

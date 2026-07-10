@@ -18,6 +18,7 @@ import { Achievement } from '../modules/achievement/achievement.entity';
 import { Skill } from '../modules/skill/skill.entity';
 import { SkillLearningLog } from '../modules/skill/skill-learning-log.entity';
 import { Marriage } from '../modules/marriage/marriage.entity';
+import { MarriageProposal } from '../modules/marriage/marriage-proposal.entity';
 import { Egg } from '../modules/egg/egg.entity';
 import { FusionRecord } from '../modules/fusion/fusion-record.entity';
 import { GameOperationRecord } from '../modules/economy/game-operation-record.entity';
@@ -56,6 +57,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     Skill,
     SkillLearningLog,
     Marriage,
+    MarriageProposal,
     Egg,
     FusionRecord,
     GameOperationRecord,

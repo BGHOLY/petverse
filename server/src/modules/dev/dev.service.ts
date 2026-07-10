@@ -119,8 +119,8 @@ export class DevService {
 
     return {
       success: true,
-      message: 'PetVerse backend V2.2 data seeded',
-      version: '2.2.0',
+      message: 'PetVerse backend V2.3 final data seeded',
+      version: '2.3.0',
       user: {
         ...user,
         gold: wallet.gold,
