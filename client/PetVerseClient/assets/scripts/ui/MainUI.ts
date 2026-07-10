@@ -51,7 +51,8 @@ type PageName =
     | 'mail'
     | 'trade'
     | 'profile'
-    | 'settings';
+    | 'settings'
+    | 'benefits';
 
 type AptitudeView = {
     hp: number;
@@ -129,6 +130,15 @@ export class MainUI extends Component {
 
     private capacitySummary: any = null;
 
+    private shopCategory: 'featured' | 'nurture' | 'skills' | 'materials' = 'featured';
+    private selectedShopItemId = 0;
+    private shopBuyCount = 1;
+
+    private benefitMode: 'sign' | 'daily' | 'achievement' | 'month' | 'pass' = 'sign';
+    private signInfo: any = null;
+    private dailyTask: any = null;
+    private achievements: any[] = [];
+
     private busy = new Set<string>();
     private countdownAccumulator = 0;
     private toastToken = 0;
@@ -197,6 +207,7 @@ export class MainUI extends Component {
     public showFusion() { this.showPage('fusion'); }
     public showProfile() { this.showPage('profile'); }
     public showSettings() { this.showPage('settings'); }
+    public showBenefits() { this.showPage('benefits'); }
 
     public showPage(page: PageName) {
         const changed = this.currentPage !== page;
@@ -246,6 +257,9 @@ export class MainUI extends Component {
                 ApiClient.get('/mail/list'),
                 ApiClient.get('/season/me'),
                 ApiClient.get('/pet-capacity'),
+                ApiClient.get('/sign'),
+                ApiClient.get('/daily-task'),
+                ApiClient.get('/achievement/list'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -260,6 +274,10 @@ export class MainUI extends Component {
             this.applyMailResult(results[8]);
             this.seasonSummary = results[9]?.data || results[9] || null;
             this.capacitySummary = results[10]?.data || results[10] || null;
+            this.signInfo = results[11]?.data || results[11] || null;
+            this.dailyTask = results[12]?.data || results[12] || null;
+            this.achievements = this.resultList(results[13], ['achievements', 'data', 'items', 'list']);
+            this.ensureSelectedShopItem();
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
             this.ensureTradePet();
@@ -281,14 +299,18 @@ export class MainUI extends Component {
         try {
             switch (page) {
                 case 'home': {
-                    const [profile, tower, mail] = await Promise.all([
+                    const [profile, tower, mail, sign, daily] = await Promise.all([
                         ApiClient.get('/user/profile'),
                         ApiClient.get('/tower/status'),
                         ApiClient.get('/mail/list'),
+                        ApiClient.get('/sign'),
+                        ApiClient.get('/daily-task'),
                     ]);
                     if (profile?.success !== false) GameStore.setProfile(profile);
                     if (tower?.success !== false) GameStore.setTower(tower);
                     this.applyMailResult(mail);
+                    this.signInfo = sign?.data || sign || this.signInfo;
+                    this.dailyTask = daily?.data || daily || this.dailyTask;
                     break;
                 }
                 case 'profile': {
@@ -337,8 +359,32 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'shop': {
-                    const shop = await ApiClient.get('/shop/items');
+                    const [shop, profile, inventory] = await Promise.all([
+                        ApiClient.get('/shop/items'),
+                        ApiClient.get('/user/profile'),
+                        ApiClient.get('/inventory'),
+                    ]);
                     if (shop?.success !== false) GameStore.setList('shopItems', shop);
+                    if (profile?.success !== false) GameStore.setProfile(profile);
+                    if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+                    this.ensureSelectedShopItem();
+                    break;
+                }
+                case 'benefits': {
+                    const [sign, daily, achievements, profile, inventory, season] = await Promise.all([
+                        ApiClient.get('/sign'),
+                        ApiClient.get('/daily-task'),
+                        ApiClient.get('/achievement/list'),
+                        ApiClient.get('/user/profile'),
+                        ApiClient.get('/inventory'),
+                        ApiClient.get('/season/me'),
+                    ]);
+                    this.signInfo = sign?.data || sign || this.signInfo;
+                    this.dailyTask = daily?.data || daily || this.dailyTask;
+                    this.achievements = this.resultList(achievements, ['achievements', 'data', 'items', 'list']);
+                    if (profile?.success !== false) GameStore.setProfile(profile);
+                    if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+                    this.seasonSummary = season?.data || season || this.seasonSummary;
                     break;
                 }
                 case 'hatchery': {
@@ -601,6 +647,12 @@ export class MainUI extends Component {
             case 'adventure':
                 this.renderAdventure();
                 break;
+            case 'shop':
+                this.renderShop();
+                break;
+            case 'benefits':
+                this.renderBenefits();
+                break;
             case 'hatchery':
                 this.renderHatchery();
                 break;
@@ -658,21 +710,21 @@ export class MainUI extends Component {
             radius: 26,
             subtitle: '每日特惠',
         });
-        button(scene, 'MonthCard', '月卡', -274, 142, 122, 112, () => this.showToast('月卡入口已预留，后续接入充值系统'), {
+        button(scene, 'MonthCard', '月卡', -274, 142, 122, 112, () => { this.benefitMode = 'month'; this.showPage('benefits'); }, {
             icon: '🌙',
             fill: CuteTheme.lilac,
             fontSize: 16,
             radius: 26,
             subtitle: '每日钻石',
         });
-        button(scene, 'BattlePass', '战令', -274, 8, 122, 112, () => this.showToast('战令入口已预留，后续接入赛季任务'), {
+        button(scene, 'BattlePass', '战令', -274, 8, 122, 112, () => { this.benefitMode = 'pass'; this.showPage('benefits'); }, {
             icon: '🏅',
             fill: CuteTheme.honey,
             fontSize: 16,
             radius: 26,
             subtitle: '赛季奖励',
         });
-        button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => this.showToast('签到、邮件和活动奖励将在福利中心集中展示'), {
+        button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => { this.benefitMode = 'sign'; this.showPage('benefits'); }, {
             icon: '🎀',
             fill: CuteTheme.mint,
             fontSize: 16,
@@ -856,6 +908,262 @@ export class MainUI extends Component {
                 disabled: !skillBook && !usable,
             });
         });
+    }
+
+
+    private renderShop() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'ShopSign', '萌宠集市', 0, 456, 220, 66);
+
+        const page = panel(root, 'ShopPage', 0, -2, 692, 910, new Color(255, 246, 224, 255), 40, true, CuteTheme.caramelSoft, 4);
+        text(page, 'Wallet', `金币 ${formatNumber(GameStore.user?.gold)}　◆ 钻石 ${formatNumber(GameStore.user?.diamond)}`, 0, 382, 600, 32, 16, CuteTheme.caramel, 'center', true);
+
+        const categories: Array<['featured' | 'nurture' | 'skills' | 'materials', string, string]> = [
+            ['featured', '精选', '🎁'],
+            ['nurture', '养成', '🧪'],
+            ['skills', '技能书', '📕'],
+            ['materials', '材料', '🧩'],
+        ];
+        categories.forEach(([key, title, icon], index) => button(
+            page,
+            `ShopCategory_${key}`,
+            title,
+            -234 + index * 156,
+            330,
+            142,
+            54,
+            () => {
+                this.shopCategory = key;
+                this.shopBuyCount = 1;
+                this.ensureSelectedShopItem();
+                this.renderCurrentPage(false);
+            },
+            {
+                icon,
+                selected: this.shopCategory === key,
+                fill: this.shopCategory === key ? CuteTheme.honey : CuteTheme.paper,
+                fontSize: 14,
+                radius: 22,
+            },
+        ));
+
+        const items = this.filteredShopItems().slice(0, 9);
+        if (!items.length) {
+            text(page, 'EmptyShop', '当前分类暂时没有商品', 0, 80, 480, 100, 22, CuteTheme.muted, 'center', true);
+            return;
+        }
+        this.ensureSelectedShopItem();
+        items.forEach((item, index) => {
+            const col = index % 3;
+            const row = Math.floor(index / 3);
+            const x = -214 + col * 214;
+            const y = 238 - row * 142;
+            const selected = Number(item?.id || 0) === this.selectedShopItemId;
+            const card = panel(page, `ShopItem_${item?.id ?? index}`, x, y, 196, 124, selected ? new Color(255, 240, 196, 255) : CuteTheme.paper, 24, true, selected ? CuteTheme.honeyDark : CuteTheme.white, selected ? 4 : 2);
+            button(card, 'Select', safeName(item?.name, item?.itemCode || '商品'), 0, 0, 190, 118, () => {
+                this.selectedShopItemId = Number(item?.id || 0);
+                this.shopBuyCount = 1;
+                this.renderCurrentPage(false);
+            }, {
+                icon: this.itemIcon(item),
+                fill: selected ? new Color(255, 239, 187, 255) : this.shopItemColor(item),
+                fontSize: 13,
+                radius: 22,
+                selected,
+                subtitle: `${item?.currencyType === 'diamond' ? '◆' : '●'} ${formatNumber(item?.price || 0)}`,
+            });
+        });
+
+        const selected = this.selectedShopItem();
+        const detail = panel(page, 'ShopDetail', 0, -318, 640, 184, new Color(255, 252, 239, 255), 28, false, CuteTheme.caramelSoft, 2);
+        if (!selected) {
+            text(detail, 'NoSelection', '请选择商品', 0, 0, 300, 50, 20, CuteTheme.muted, 'center', true);
+            return;
+        }
+        text(detail, 'Icon', this.itemIcon(selected), -278, 22, 72, 72, 42, CuteTheme.honeyDark, 'center', true);
+        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -222, 50, 300, 32, 20, CuteTheme.caramel, 'left', true);
+        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -222, 6, 350, 62, 14, CuteTheme.muted, 'left', false);
+        const owned = GameStore.inventory.find((item) => String(item?.itemCode || '') === String(selected?.itemCode || ''));
+        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -222, -48, 180, 28, 13, CuteTheme.mintDark, 'left', true);
+        button(detail, 'Minus', '－', 85, -24, 46, 46, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 22, radius: 20 });
+        text(detail, 'Count', `×${this.shopBuyCount}`, 145, -24, 70, 36, 18, CuteTheme.caramel, 'center', true);
+        button(detail, 'Plus', '＋', 205, -24, 46, 46, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 22, radius: 20 });
+        const total = Number(selected?.price || 0) * this.shopBuyCount;
+        button(detail, 'Buy', `${selected?.currencyType === 'diamond' ? '◆' : '●'} ${formatNumber(total)} 购买`, 216, 45, 190, 58, () => void this.buySelectedShopItem(), {
+            icon: '🛒',
+            fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey,
+            fontSize: 15,
+            radius: 24,
+            disabled: this.busy.has('shop:buy'),
+        });
+        text(page, 'ShopHint', '宠物蛋购买后会自动转入孵化室仓库；技能书会进入打技能页面。', 0, -421, 600, 28, 13, CuteTheme.muted, 'center', true);
+    }
+
+    private renderBenefits() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'BenefitSign', '福利成长', 0, 456, 220, 66);
+        const page = panel(root, 'BenefitPage', 0, -2, 692, 910, new Color(255, 248, 228, 255), 40, true, CuteTheme.caramelSoft, 4);
+
+        const tabs: Array<['sign' | 'daily' | 'achievement' | 'month' | 'pass', string, string]> = [
+            ['sign', '签到', '📅'],
+            ['daily', '每日', '✅'],
+            ['achievement', '成就', '🏅'],
+            ['month', '月卡', '🌙'],
+            ['pass', '战令', '🎖'],
+        ];
+        tabs.forEach(([mode, title, icon], index) => button(
+            page,
+            `BenefitTab_${mode}`,
+            title,
+            -252 + index * 126,
+            374,
+            116,
+            54,
+            () => {
+                this.benefitMode = mode;
+                this.renderCurrentPage(false);
+            },
+            { icon, selected: this.benefitMode === mode, fill: this.benefitMode === mode ? CuteTheme.honey : CuteTheme.paper, fontSize: 13, radius: 22 },
+        ));
+
+        if (this.benefitMode === 'sign') this.renderSignBenefits(page);
+        else if (this.benefitMode === 'daily') this.renderDailyBenefits(page);
+        else if (this.benefitMode === 'achievement') this.renderAchievementBenefits(page);
+        else if (this.benefitMode === 'month') this.renderMonthCard(page);
+        else this.renderBattlePass(page);
+    }
+
+    private renderSignBenefits(parent: Node) {
+        const info = this.signInfo || {};
+        const record = info?.record || {};
+        headingTag(parent, 'SignTitle', '七日签到', 0, 302, 160, CuteTheme.peach);
+        text(parent, 'SignMeta', `连续签到 ${Number(record?.continuousDays || 0)} 天　累计 ${Number(record?.totalDays || 0)} 天`, 0, 258, 560, 32, 16, CuteTheme.caramel, 'center', true);
+        const rewards = [
+            ['第1天', '金币100', '●'], ['第2天', '金币200', '●'], ['第3天', '金币300', '●'], ['第4天', '金币500', '●'],
+            ['第5天', '经验药水×1', '🧪'], ['第6天', '经验药水×3', '🧪'], ['第7天', '宠物蛋×1', '🥚'],
+        ];
+        const cycleDay = ((Number(record?.continuousDays || 0)) % 7) + 1;
+        rewards.forEach(([day, reward, icon], index) => {
+            const col = index % 4;
+            const row = Math.floor(index / 4);
+            const x = -234 + col * 156;
+            const y = 155 - row * 160;
+            const reached = index + 1 <= Number(record?.continuousDays || 0);
+            const today = index + 1 === cycleDay && Boolean(info?.canSign);
+            const card = panel(parent, `SignDay_${index}`, x, y, 138, 134, reached ? new Color(220, 244, 213, 255) : today ? new Color(255, 237, 190, 255) : CuteTheme.paper, 24, true, reached ? CuteTheme.mintDark : today ? CuteTheme.honeyDark : CuteTheme.white, 3);
+            text(card, 'Icon', reached ? '✓' : icon, 0, 30, 70, 54, 34, reached ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+            text(card, 'Day', day, 0, -12, 110, 24, 14, CuteTheme.caramel, 'center', true);
+            text(card, 'Reward', reward, 0, -42, 118, 30, 12, CuteTheme.muted, 'center', true);
+        });
+        button(parent, 'SignButton', info?.canSign ? '今日签到' : '今日已签到', 0, -210, 250, 70, () => void this.claimSignToday(), {
+            icon: info?.canSign ? '🎀' : '✓',
+            fill: info?.canSign ? CuteTheme.honey : CuteTheme.mint,
+            fontSize: 20,
+            radius: 30,
+            disabled: !info?.canSign || this.busy.has('benefit:sign'),
+        });
+        text(parent, 'SignHint', '签到奖励会直接进入钱包或背包；第7天宠物蛋会转入孵化室仓库。', 0, -286, 600, 38, 14, CuteTheme.muted, 'center', true);
+    }
+
+    private renderDailyBenefits(parent: Node) {
+        const task = this.dailyTask || {};
+        headingTag(parent, 'DailyTitle', '今日任务', 0, 302, 160, CuteTheme.mint);
+        text(parent, 'DailyProgress', `今日完成 ${Number(task?.completed || 0)}/${Number(task?.total || 4)}`, 0, 258, 300, 32, 17, CuteTheme.caramel, 'center', true);
+        progress(parent, 'DailyBar', 0, 224, 520, 18, Number(task?.completed || 0) / Math.max(1, Number(task?.total || 4)), CuteTheme.green);
+        const rows = [
+            ['每日签到', 'signCompleted', '📅', '前往签到', () => { this.benefitMode = 'sign'; this.renderCurrentPage(false); }],
+            ['喂养一次宝宝', 'feedCompleted', '🍎', '前往宝宝', () => this.showPage('pet')],
+            ['完成一次爬塔', 'towerCompleted', '🗼', '前往冒险', () => { this.adventureMode = 'tower'; this.showPage('adventure'); }],
+            ['完成一次战斗', 'battleCompleted', '⚔', '前往冒险', () => { this.adventureMode = 'pve'; this.showPage('adventure'); }],
+        ] as Array<[string, string, string, string, () => void]>;
+        rows.forEach(([title, key, icon, actionTitle, action], index) => {
+            const done = Boolean(task?.[key]);
+            const row = panel(parent, `DailyTask_${key}`, 0, 148 - index * 104, 610, 88, done ? new Color(224, 246, 218, 255) : CuteTheme.paper, 22, false, done ? CuteTheme.mintDark : CuteTheme.white, 2);
+            text(row, 'Icon', done ? '✓' : icon, -264, 0, 52, 52, 30, done ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+            text(row, 'Title', title, -220, 14, 260, 30, 17, CuteTheme.caramel, 'left', true);
+            text(row, 'State', done ? '已完成' : '未完成', -220, -17, 160, 26, 13, done ? CuteTheme.mintDark : CuteTheme.muted, 'left', true);
+            button(row, 'Action', done ? '完成' : actionTitle, 220, 0, 126, 48, action, { fill: done ? CuteTheme.mint : CuteTheme.paperWarm, fontSize: 13, radius: 20, disabled: done });
+        });
+        button(parent, 'DailyClaim', task?.rewardClaimed ? '奖励已领取' : '领取今日宝箱', 0, -300, 250, 66, () => void this.claimDailyReward(), {
+            icon: task?.rewardClaimed ? '✓' : '🎁',
+            fill: task?.allCompleted && !task?.rewardClaimed ? CuteTheme.honey : new Color(222, 216, 202, 255),
+            fontSize: 18,
+            radius: 28,
+            disabled: !task?.allCompleted || Boolean(task?.rewardClaimed) || this.busy.has('benefit:daily'),
+        });
+        text(parent, 'DailyReward', '宝箱奖励：金币500＋初级经验药水×1', 0, -354, 480, 28, 14, CuteTheme.muted, 'center', true);
+    }
+
+    private renderAchievementBenefits(parent: Node) {
+        headingTag(parent, 'AchievementTitle', '成长成就', 0, 302, 170, CuteTheme.lilac);
+        const claimable = this.achievements.filter((item) => item?.completed && !item?.claimed).length;
+        text(parent, 'AchievementMeta', `共 ${this.achievements.length} 项　可领取 ${claimable} 项`, 0, 258, 420, 32, 16, CuteTheme.caramel, 'center', true);
+        const list = this.achievements.slice(0, 6);
+        if (!list.length) {
+            text(parent, 'AchievementEmpty', '成就正在准备中', 0, 60, 420, 80, 21, CuteTheme.muted, 'center', true);
+            return;
+        }
+        list.forEach((item, index) => {
+            const y = 188 - index * 92;
+            const complete = Boolean(item?.completed);
+            const claimed = Boolean(item?.claimed);
+            const row = panel(parent, `Achievement_${item?.id ?? index}`, 0, y, 610, 78, complete ? new Color(248, 242, 219, 255) : CuteTheme.paper, 20, false, claimed ? CuteTheme.mintDark : complete ? CuteTheme.honeyDark : CuteTheme.white, 2);
+            text(row, 'Icon', claimed ? '✓' : complete ? '★' : '◇', -266, 0, 46, 46, 28, claimed ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+            text(row, 'Title', safeName(item?.title, '成长目标'), -224, 15, 260, 28, 16, CuteTheme.caramel, 'left', true);
+            text(row, 'Desc', `${safeName(item?.description, '')}　${Math.min(Number(item?.progress || 0), Number(item?.target || 1))}/${Number(item?.target || 1)}`, -224, -15, 350, 26, 12, CuteTheme.muted, 'left', true);
+            text(row, 'Reward', this.achievementRewardText(item), 105, 0, 120, 30, 12, CuteTheme.peachDark, 'center', true);
+            button(row, 'Claim', claimed ? '已领' : complete ? '领取' : '未完成', 244, 0, 94, 44, () => void this.claimAchievement(item), {
+                fill: claimed ? CuteTheme.mint : complete ? CuteTheme.honey : new Color(222, 216, 202, 255),
+                fontSize: 12,
+                radius: 18,
+                disabled: claimed || !complete || this.busy.has(`achievement:${item?.id}`),
+            });
+        });
+        if (this.achievements.length > 6) text(parent, 'AchievementMore', `还有 ${this.achievements.length - 6} 项成就，后续支持滚动查看`, 0, -354, 480, 28, 13, CuteTheme.muted, 'center', true);
+    }
+
+    private renderMonthCard(parent: Node) {
+        const card = panel(parent, 'MonthCard', 0, 42, 610, 590, new Color(242, 236, 255, 255), 40, true, CuteTheme.lilac, 4);
+        text(card, 'Moon', '🌙', 0, 200, 160, 120, 78, CuteTheme.honeyDark, 'center', true);
+        text(card, 'Title', '星月月卡', 0, 116, 320, 50, 32, CuteTheme.caramel, 'center', true);
+        text(card, 'Sub', '30天陪伴奖励 · 正式充值系统接入后开放', 0, 72, 470, 32, 15, CuteTheme.muted, 'center', true);
+        const benefits = ['购买立即获得钻石300', '每日领取钻石30', '孵化加速时间＋10%', '专属月卡头像框'];
+        benefits.forEach((item, index) => {
+            const row = panel(card, `MonthBenefit_${index}`, 0, 8 - index * 72, 500, 56, CuteTheme.paper, 18, false, CuteTheme.white, 2);
+            text(row, 'Check', '✓', -218, 0, 34, 34, 20, CuteTheme.mintDark, 'center', true);
+            text(row, 'Text', item, -180, 0, 380, 30, 16, CuteTheme.caramel, 'left', true);
+        });
+        button(card, 'MonthBuy', '充值系统接入后开放', 0, -226, 300, 66, () => this.showToast('当前Beta版本不开放真实充值'), { icon: '🔒', fill: new Color(220, 216, 208, 255), fontSize: 16, radius: 28, disabled: true });
+        text(parent, 'MonthSafety', 'Beta阶段不产生真实付费，不会扣除钻石或人民币。', 0, -320, 560, 34, 14, CuteTheme.muted, 'center', true);
+    }
+
+    private renderBattlePass(parent: Node) {
+        const season = this.seasonSummary?.season || this.seasonSummary || {};
+        const player = this.seasonSummary?.player || {};
+        headingTag(parent, 'PassTitle', '萌宠战令', 0, 302, 170, CuteTheme.honey);
+        text(parent, 'PassSeason', `${safeName(season?.name, '当前赛季')}　积分 ${Number(player?.points || 0)}`, 0, 258, 520, 34, 17, CuteTheme.caramel, 'center', true);
+        const level = Math.max(1, Math.min(30, Math.floor(Number(player?.points || 0) / 100) + 1));
+        progress(parent, 'PassProgress', 0, 220, 520, 18, (Number(player?.points || 0) % 100) / 100, CuteTheme.honey);
+        text(parent, 'PassLevel', `战令等级 Lv.${level}　下一级还需 ${100 - (Number(player?.points || 0) % 100)} 积分`, 0, 190, 520, 28, 14, CuteTheme.muted, 'center', true);
+        const track = panel(parent, 'PassTrack', 0, -18, 620, 350, new Color(250, 246, 230, 255), 28, false, CuteTheme.caramelSoft, 2);
+        text(track, 'FreeTitle', '免费奖励', -260, 138, 110, 30, 15, CuteTheme.mintDark, 'left', true);
+        text(track, 'PaidTitle', '高级奖励', -260, -22, 110, 30, 15, CuteTheme.peachDark, 'left', true);
+        for (let index = 0; index < 4; index += 1) {
+            const lv = level + index;
+            const x = -172 + index * 115;
+            const unlocked = index === 0;
+            const free = panel(track, `Free_${index}`, x, 78, 92, 92, unlocked ? new Color(220, 244, 213, 255) : CuteTheme.paper, 20, true, unlocked ? CuteTheme.mintDark : CuteTheme.white, 2);
+            text(free, 'Icon', unlocked ? '✓' : '🎁', 0, 16, 54, 46, 28, CuteTheme.honeyDark, 'center', true);
+            text(free, 'Level', `Lv.${lv}`, 0, -25, 70, 24, 12, CuteTheme.caramel, 'center', true);
+            const paid = panel(track, `Paid_${index}`, x, -82, 92, 92, new Color(255, 235, 231, 255), 20, true, CuteTheme.peach, 2);
+            text(paid, 'Icon', '🔒', 0, 16, 54, 46, 26, CuteTheme.peachDark, 'center', true);
+            text(paid, 'Level', `Lv.${lv}`, 0, -25, 70, 24, 12, CuteTheme.caramel, 'center', true);
+        }
+        button(parent, 'PassTask', '查看每日任务', -126, -290, 220, 62, () => { this.benefitMode = 'daily'; this.renderCurrentPage(false); }, { icon: '✅', fill: CuteTheme.mint, fontSize: 16, radius: 26 });
+        button(parent, 'PassPremium', '高级战令待开放', 126, -290, 220, 62, () => this.showToast('当前Beta版本不开放真实付费'), { icon: '🔒', fill: new Color(220, 216, 208, 255), fontSize: 15, radius: 26, disabled: true });
+        text(parent, 'PassHint', '完成战斗、爬塔和每日任务会累计赛季进度。正式充值系统接入后再开放高级奖励轨。', 0, -354, 610, 42, 13, CuteTheme.muted, 'center', true);
     }
 
     private renderHatchery() {
@@ -1973,6 +2281,7 @@ export class MainUI extends Component {
 
         const entries = [
             ['shop', '商城', '🛒', CuteTheme.honey],
+            ['benefits', '福利', '🎀', CuteTheme.peach],
             ['hatchery', '孵化室', '🥚', CuteTheme.mint],
             ['skills', '打技能', '📕', CuteTheme.sky],
             ['fusion', '炼妖', '🔮', CuteTheme.lilac],
@@ -3112,6 +3421,160 @@ export class MainUI extends Component {
         } finally { this.busy.delete('capacity:expand'); this.refreshAllVisuals(); }
     }
 
+
+    private filteredShopItems() {
+        const items = Array.isArray((GameStore as any).shopItems) ? (GameStore as any).shopItems : [];
+        if (this.shopCategory === 'featured') return items;
+        if (this.shopCategory === 'skills') return items.filter((item) => this.isSkillBook(item));
+        if (this.shopCategory === 'nurture') return items.filter((item) => {
+            const type = String(item?.type || '').toLowerCase();
+            const effect = String(item?.effect || '').toLowerCase();
+            return ['food', 'potion', 'capacity', 'clean'].includes(type) || /hunger|happiness|clean|exp|capacity/.test(effect);
+        });
+        return items.filter((item) => {
+            const type = String(item?.type || '').toLowerCase();
+            return !this.isSkillBook(item) && !['food', 'potion', 'capacity', 'clean'].includes(type);
+        });
+    }
+
+    private ensureSelectedShopItem() {
+        const list = this.filteredShopItems();
+        if (!list.some((item) => Number(item?.id || 0) === this.selectedShopItemId)) {
+            this.selectedShopItemId = Number(list[0]?.id || 0);
+        }
+    }
+
+    private selectedShopItem() {
+        return (Array.isArray((GameStore as any).shopItems) ? (GameStore as any).shopItems : []).find((item) => Number(item?.id || 0) === this.selectedShopItemId) || null;
+    }
+
+    private shopItemColor(item: any) {
+        if (this.isSkillBook(item)) return this.itemTier(item) === 'high' ? new Color(255, 224, 224, 255) : new Color(225, 246, 219, 255);
+        const type = String(item?.type || '').toLowerCase();
+        if (type === 'egg') return new Color(255, 239, 198, 255);
+        if (type === 'potion') return CuteTheme.sky;
+        if (type === 'food') return CuteTheme.mint;
+        if (String(item?.currencyType || '') === 'diamond') return CuteTheme.lilac;
+        return CuteTheme.paperWarm;
+    }
+
+    private changeShopBuyCount(delta: number) {
+        this.shopBuyCount = Math.max(1, Math.min(99, this.shopBuyCount + delta));
+        this.renderCurrentPage(false);
+    }
+
+    private async buySelectedShopItem() {
+        const item = this.selectedShopItem();
+        if (!item || this.busy.has('shop:buy')) return;
+        this.busy.add('shop:buy');
+        try {
+            const result = await ApiClient.post('/shop/buy', {
+                shopItemId: Number(item?.id || 0),
+                itemCode: String(item?.itemCode || ''),
+                count: this.shopBuyCount,
+                requestId: this.requestId(`shop-${item?.id || item?.itemCode}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '购买失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`购买成功：${safeName(item?.name, '商品')} ×${this.shopBuyCount}`);
+            this.shopBuyCount = 1;
+            const [profile, inventory, eggs] = await Promise.all([
+                ApiClient.get('/user/profile'),
+                ApiClient.get('/inventory'),
+                ApiClient.get('/hatchery/eggs'),
+            ]);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
+            await this.syncEggItemsToHatchery();
+        } finally {
+            this.busy.delete('shop:buy');
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimSignToday() {
+        if (this.busy.has('benefit:sign')) return;
+        this.busy.add('benefit:sign');
+        try {
+            const result = await ApiClient.post('/sign/today-beta', {});
+            if (result?.success === false) return this.showToast(result?.message || '签到失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`签到成功：${this.rewardSummary(result?.reward)}`);
+            this.signInfo = await ApiClient.get('/sign');
+            this.dailyTask = await ApiClient.get('/daily-task');
+            const [profile, inventory, eggs] = await Promise.all([
+                ApiClient.get('/user/profile'),
+                ApiClient.get('/inventory'),
+                ApiClient.get('/hatchery/eggs'),
+            ]);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
+            await this.syncEggItemsToHatchery();
+        } finally {
+            this.busy.delete('benefit:sign');
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimDailyReward() {
+        if (this.busy.has('benefit:daily')) return;
+        this.busy.add('benefit:daily');
+        try {
+            const result = await ApiClient.post('/daily-task/reward', {});
+            if (result?.success === false) return this.showToast(result?.message || '领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`今日宝箱：${this.rewardSummary(result?.reward)}`);
+            this.dailyTask = await ApiClient.get('/daily-task');
+            const [profile, inventory] = await Promise.all([ApiClient.get('/user/profile'), ApiClient.get('/inventory')]);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+        } finally {
+            this.busy.delete('benefit:daily');
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimAchievement(item: any) {
+        const key = `achievement:${item?.id}`;
+        if (!item?.id || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/achievement/claim', { achievementId: Number(item.id) });
+            if (result?.success === false) return this.showToast(result?.message || '领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`成就奖励：${this.rewardSummary(result?.reward)}`);
+            const [achievements, profile, inventory] = await Promise.all([
+                ApiClient.get('/achievement/list'),
+                ApiClient.get('/user/profile'),
+                ApiClient.get('/inventory'),
+            ]);
+            this.achievements = this.resultList(achievements, ['achievements', 'data', 'items', 'list']);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private achievementRewardText(item: any) {
+        const type = String(item?.rewardType || '');
+        const value = String(item?.rewardValue || '');
+        if (type === 'gold') return `金币${value}`;
+        if (type === 'diamond') return `钻石${value}`;
+        if (type === 'item') {
+            try {
+                const parsed = JSON.parse(value || '{}');
+                return Object.keys(parsed).map((key) => `${key}×${parsed[key]}`).join('、') || '道具奖励';
+            } catch {
+                return '道具奖励';
+            }
+        }
+        return '成长奖励';
+    }
+
     private statusLabel(status: any) {
         const labels: Record<string, string> = {
             pending: '待处理', accepted: '已通过', rejected: '已拒绝', cancelled: '已撤回', expired: '已过期', active: '进行中', sold: '已售出', claimed: '已领取', completed: '已完成', none: '无',
@@ -3137,6 +3600,7 @@ export class MainUI extends Component {
             trade: '寄售市场',
             profile: '玩家手账',
             settings: '游戏设置',
+            benefits: '福利成长',
         };
         return titles[page];
     }
@@ -3154,6 +3618,7 @@ export class MainUI extends Component {
             trade: '🏷',
             profile: '📒',
             settings: '⚙',
+            benefits: '🎀',
         };
         return icons[page] || '🐾';
     }
@@ -3171,6 +3636,7 @@ export class MainUI extends Component {
             trade: '寄售宝宝会显示技能格、特殊技能、资质、成长和价格。',
             profile: '玩家头像、等级、成就、容量和赛季记录会整理成一本个人手账。',
             settings: '可调整声音、点击反馈、动效与画质档位。',
+            benefits: '签到、每日任务、成长成就、月卡与赛季战令会集中在福利中心。',
         };
         return summaries[page] || '该页面将在后续萌系界面批次中完整接入。';
     }
