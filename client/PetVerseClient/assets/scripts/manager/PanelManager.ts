@@ -20,8 +20,11 @@ export class PanelManager extends Component {
     showAdventure() { MainUI.instance?.showTower(); }
     showHatchery() { MainUI.instance?.showHatchery(); }
     showFriend() { MainUI.instance?.showFriend(); }
-    showSkill() { MainUI.instance?.showPet(); }
+    showSkill() { MainUI.instance?.showSkills(); }
+    showFusion() { MainUI.instance?.showFusion(); }
     showBattle() { MainUI.instance?.showTower(); }
     showTower() { MainUI.instance?.showTower(); }
     showRanking() { MainUI.instance?.showRanking(); }
 }
+
+export default PanelManager;
