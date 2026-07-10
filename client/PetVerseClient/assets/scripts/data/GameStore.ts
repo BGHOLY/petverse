@@ -1,17 +1,12 @@
+import { EDITOR } from 'cc/env';
+import ApiClient from '../network/ApiClient';
+
 export type StoreListener = () => void;
 
-export class GameStore {
-    static user: any = {
-        id: 1,
-        nickname: 'PetVerse玩家',
-        avatar: '',
-        level: 1,
-        exp: 0,
-        gold: 0,
-        diamond: 0,
-        vipLevel: 0,
-    };
+type ListName = 'inventory' | 'shopItems' | 'eggs' | 'marriages' | 'friends' | 'ranking';
 
+export class GameStore {
+    static user: any = GameStore.createEmptyUser();
     static pets: any[] = [];
     static currentPetId = 0;
     static inventory: any[] = [];
@@ -25,6 +20,7 @@ export class GameStore {
     static online = false;
 
     private static listeners = new Set<StoreListener>();
+    private static detailPending = new Set<number>();
 
     static subscribe(listener: StoreListener) {
         this.listeners.add(listener);
@@ -32,7 +28,13 @@ export class GameStore {
     }
 
     static notify() {
-        for (const listener of this.listeners) listener();
+        for (const listener of [...this.listeners]) {
+            try {
+                listener();
+            } catch (error) {
+                console.error('[GameStore] listener failed:', error);
+            }
+        }
     }
 
     static get currentPet() {
@@ -40,57 +42,125 @@ export class GameStore {
     }
 
     static setProfile(result: any) {
-        const profile = result?.data || result || {};
-        const user = profile?.user || result?.user || {};
-        const pets = this.list(profile?.pets ?? result?.pets);
+        if (!this.acceptResult(result, '玩家资料加载失败')) return false;
 
-        this.user = { ...this.user, ...user };
-        if (pets.length || Array.isArray(profile?.pets)) this.pets = pets.filter((pet) => !pet?.isEgg);
+        const profile = result?.data || result || {};
+        const user = profile?.user || result?.user || (profile?.id ? profile : {});
+        const pets = this.findList(profile?.pets ?? result?.pets, []);
+
+        this.user = {
+            ...this.user,
+            ...(user || {}),
+        };
+
+        if (pets !== null) {
+            this.pets = this.mergePetList(pets.filter((pet) => !pet?.isEgg));
+        }
+
         this.keepPetSelection();
-        this.online = result?.success !== false;
+        this.markSuccess();
         this.notify();
+        void this.ensureCurrentPetDetail(false);
+        return true;
     }
 
     static setPets(result: any) {
-        const pets = this.list(result?.pets ?? result?.data ?? result);
-        if (pets.length || Array.isArray(result?.pets) || Array.isArray(result?.data)) {
-            this.pets = pets.filter((pet) => !pet?.isEgg);
-        }
+        if (!this.acceptResult(result, '宠物列表加载失败')) return false;
+
+        const pets = this.findList(result, ['pets', 'data', 'items', 'list']);
+        if (pets === null) return false;
+
+        this.pets = this.mergePetList(pets.filter((pet) => !pet?.isEgg));
         this.keepPetSelection();
+        this.markSuccess();
         this.notify();
+        void this.ensureCurrentPetDetail(false);
+        return true;
     }
 
     static updatePet(pet: any) {
-        if (!pet) return;
+        if (!pet || !Number(pet?.id)) return;
+
         const index = this.pets.findIndex((item) => Number(item?.id) === Number(pet?.id));
-        if (index >= 0) this.pets[index] = { ...this.pets[index], ...pet };
-        else this.pets.unshift(pet);
+        if (index >= 0) {
+            this.pets[index] = {
+                ...this.pets[index],
+                ...pet,
+            };
+        } else {
+            this.pets.unshift(pet);
+        }
+
         this.keepPetSelection();
         this.notify();
     }
 
-    static setList(name: 'inventory' | 'shopItems' | 'eggs' | 'marriages' | 'friends' | 'ranking', value: any) {
-        const keys: Record<string, string[]> = {
-            inventory: ['inventory', 'items', 'data'],
-            shopItems: ['shopItems', 'items', 'data'],
-            eggs: ['eggs', 'data'],
-            marriages: ['marriages', 'data'],
-            friends: ['friends', 'data'],
-            ranking: ['ranking', 'rankings', 'data', 'list'],
+    static setList(name: ListName, value: any) {
+        if (!this.acceptResult(value, `${this.listTitle(name)}加载失败`)) return false;
+
+        const keys: Record<ListName, string[]> = {
+            inventory: ['inventory', 'inventoryItems', 'items', 'data', 'list'],
+            shopItems: ['shopItems', 'items', 'data', 'list'],
+            eggs: ['eggs', 'data', 'items', 'list'],
+            marriages: ['marriages', 'data', 'items', 'list'],
+            friends: ['friends', 'data', 'items', 'list'],
+            ranking: ['ranking', 'rankings', 'data', 'items', 'list'],
         };
-        (this as any)[name] = this.listFrom(value, keys[name]);
+
+        const list = this.findList(value, keys[name]);
+        if (list === null) return false;
+
+        (this as any)[name] = list;
+        this.markSuccess();
         this.notify();
+        return true;
     }
 
     static setTower(value: any) {
-        this.tower = value?.data || value?.record || value?.status || value || {};
+        if (!this.acceptResult(value, '爬塔数据加载失败')) return false;
+
+        const candidate = value?.data || value?.record || value?.status || value || {};
+        this.tower = {
+            ...(this.tower || {}),
+            ...(candidate || {}),
+        };
+        this.markSuccess();
         this.notify();
+        return true;
     }
 
     static selectPet(id: number) {
-        if (this.pets.some((pet) => Number(pet?.id) === Number(id))) {
-            this.currentPetId = Number(id);
-            this.notify();
+        const petId = Number(id || 0);
+        if (!petId || !this.pets.some((pet) => Number(pet?.id) === petId)) return;
+
+        this.currentPetId = petId;
+        this.notify();
+        void this.ensureCurrentPetDetail(true);
+    }
+
+    static async ensureCurrentPetDetail(force = false) {
+        const pet = this.currentPet;
+        const petId = Number(pet?.id || 0);
+        if (!petId) return null;
+
+        if (!force && this.isDetailComplete(pet)) return pet;
+        if (this.detailPending.has(petId)) return pet;
+
+        this.detailPending.add(petId);
+        try {
+            const result = await ApiClient.get(`/pet/${petId}`);
+            if (!this.acceptResult(result, '宠物详情加载失败', false)) return pet;
+
+            const detail = result?.data || result?.pet || result;
+            if (detail && Number(detail?.id) === petId) {
+                this.updatePet(detail);
+                this.markSuccess();
+                return this.currentPet;
+            }
+
+            return pet;
+        } finally {
+            this.detailPending.delete(petId);
         }
     }
 
@@ -99,14 +169,19 @@ export class GameStore {
     }
 
     static listFrom(result: any, keys: string[] = []): any[] {
-        if (Array.isArray(result)) return result;
-        for (const key of keys) {
-            if (Array.isArray(result?.[key])) return result[key];
-        }
-        return [];
+        return this.findList(result, keys) || [];
+    }
+
+    static markRequestFailure(result: any, fallback = '请求失败') {
+        this.acceptResult(result, fallback);
     }
 
     static seedPreview() {
+        if (!EDITOR) {
+            this.resetRuntimeDefaults();
+            return;
+        }
+
         this.user = {
             id: 1,
             nickname: 'PetLover',
@@ -139,6 +214,12 @@ export class GameStore {
             bodyType: 'normal',
             color: 'gold',
             pattern: 'stripe',
+            finalAttributes: {
+                hp: 238,
+                attack: 62,
+                defense: 48,
+                speed: 51,
+            },
             skills: [{ name: '爪击' }, { name: '快乐恢复' }, { name: '烈焰冲击' }],
         }];
         this.currentPetId = 1;
@@ -161,7 +242,52 @@ export class GameStore {
             { rank: 2, nickname: '宠物大师', floor: 36 },
             { rank: 3, nickname: 'PetLover', floor: 27 },
         ];
+        this.online = false;
+        this.lastError = '';
         this.notify();
+    }
+
+    private static resetRuntimeDefaults() {
+        this.user = this.createEmptyUser();
+        this.pets = [];
+        this.currentPetId = 0;
+        this.inventory = [];
+        this.shopItems = [];
+        this.eggs = [];
+        this.marriages = [];
+        this.friends = [];
+        this.tower = {};
+        this.ranking = [];
+        this.online = false;
+        this.lastError = '';
+        this.notify();
+    }
+
+    private static createEmptyUser() {
+        return {
+            id: 0,
+            nickname: 'PetVerse玩家',
+            avatar: '',
+            level: 1,
+            exp: 0,
+            gold: 0,
+            diamond: 0,
+            vipLevel: 0,
+        };
+    }
+
+    private static mergePetList(incoming: any[]) {
+        const oldById = new Map<number, any>();
+        for (const pet of this.pets) {
+            const id = Number(pet?.id || 0);
+            if (id) oldById.set(id, pet);
+        }
+
+        return incoming.map((pet) => {
+            const id = Number(pet?.id || 0);
+            const oldPet = id ? oldById.get(id) : null;
+            return oldPet ? { ...oldPet, ...pet } : pet;
+        });
     }
 
     private static keepPetSelection() {
@@ -169,9 +295,64 @@ export class GameStore {
             this.currentPetId = 0;
             return;
         }
+
         if (!this.pets.some((pet) => Number(pet?.id) === Number(this.currentPetId))) {
             this.currentPetId = Number(this.pets[0]?.id || 0);
         }
+    }
+
+    private static isDetailComplete(pet: any) {
+        return Boolean(
+            pet
+            && pet?.id
+            && (pet?.finalAttributes || pet?.geneCode || Array.isArray(pet?.skills))
+            && pet?.nickname,
+        );
+    }
+
+    private static findList(result: any, keys: string[] = []): any[] | null {
+        if (Array.isArray(result)) return result;
+
+        for (const key of keys) {
+            if (Array.isArray(result?.[key])) return result[key];
+        }
+
+        if (result?.data && typeof result.data === 'object' && !Array.isArray(result.data)) {
+            for (const key of keys) {
+                if (Array.isArray(result.data?.[key])) return result.data[key];
+            }
+        }
+
+        return null;
+    }
+
+    private static acceptResult(result: any, fallback: string, notify = true) {
+        if (result?.success !== false) return true;
+
+        const message = String(result?.message || fallback);
+        this.lastError = message;
+        if (result?.error || /无法连接|请求超时|network|failed to fetch|timeout/i.test(message)) {
+            this.online = false;
+        }
+        if (notify) this.notify();
+        return false;
+    }
+
+    private static markSuccess() {
+        this.online = true;
+        this.lastError = '';
+    }
+
+    private static listTitle(name: ListName) {
+        const titles: Record<ListName, string> = {
+            inventory: '背包',
+            shopItems: '商店',
+            eggs: '孵化列表',
+            marriages: '婚姻记录',
+            friends: '好友列表',
+            ranking: '排行榜',
+        };
+        return titles[name];
     }
 }
 
