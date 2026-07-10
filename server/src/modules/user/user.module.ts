@@ -5,10 +5,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { User } from './user.entity';
+import { Pet } from '../pet/pet.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Pet]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'petverse_dev_secret',
       signOptions: {

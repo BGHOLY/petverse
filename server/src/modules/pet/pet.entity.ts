@@ -26,6 +26,10 @@ export class Pet {
   @Column({ default: '普通 Common' })
   rarityName: string;
 
+  // 资质百分比。100 表示标准成长，不重复叠加稀有度和等级。
+  @Column({ default: 100 })
+  quality: number;
+
   @Column({ default: 1 })
   level: number;
 
@@ -70,6 +74,16 @@ export class Pet {
 
   @Column({ default: 12 })
   geneScore: number;
+
+  // 外观基因。保留独立字段，方便 Cocos 直接读取和后续繁殖继承。
+  @Column({ default: 'normal' })
+  bodyType: string;
+
+  @Column({ default: 'white' })
+  color: string;
+
+  @Column({ default: 'none' })
+  pattern: string;
 
   @Column({ default: 0 })
   fatherId: number;

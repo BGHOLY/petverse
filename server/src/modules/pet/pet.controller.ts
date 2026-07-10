@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DEFAULT_USER_ID } from '../game-data';
@@ -35,6 +35,10 @@ export class PetController {
       nickname: body?.nickname,
       species: body?.species,
       rarity: Number(body?.rarity || 1),
+      quality: body?.quality === undefined ? undefined : Number(body.quality),
+      bodyType: body?.bodyType,
+      color: body?.color,
+      pattern: body?.pattern,
     });
 
     return {
@@ -60,5 +64,26 @@ export class PetController {
   @Post('hatch-starter')
   async hatchStarterEgg() {
     return this.petService.hatchStarterEgg(DEFAULT_USER_ID);
+  }
+
+  @Get(':id')
+  async getPetDetail(@Param('id') id: string) {
+    const petId = Number(id);
+
+    if (!Number.isInteger(petId) || petId <= 0) {
+      return {
+        success: false,
+        message: 'Invalid pet id',
+        data: null,
+      };
+    }
+
+    const data = await this.petService.getPetDetail(petId);
+
+    return {
+      success: Boolean(data),
+      message: data ? 'Pet detail loaded' : 'Pet not found',
+      data,
+    };
   }
 }

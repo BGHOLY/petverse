@@ -17,6 +17,14 @@ export class UserController {
     };
   }
 
+  @Get('profile')
+  async getProfile() {
+    return {
+      success: true,
+      data: await this.userService.getProfile(),
+    };
+  }
+
   @Get('info')
   @UseGuards(JwtAuthGuard)
   async getInfo(@Req() req: any) {
