@@ -32,6 +32,7 @@ import {
     text,
 } from './cute/CuteUiKit';
 import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
+import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -81,6 +82,7 @@ export class MainUI extends Component {
     private modalLayer: Node | null = null;
     private battleLayer: Node | null = null;
     private utilityLayer: Node | null = null;
+    private guideLayer: Node | null = null;
 
     private currentPage: PageName = 'home';
     private drawerOpen = false;
@@ -138,6 +140,9 @@ export class MainUI extends Component {
     private signInfo: any = null;
     private dailyTask: any = null;
     private achievements: any[] = [];
+
+    private guideActive = false;
+    private guideStepIndex = 0;
 
     private busy = new Set<string>();
     private countdownAccumulator = 0;
@@ -260,6 +265,8 @@ export class MainUI extends Component {
                 ApiClient.get('/sign'),
                 ApiClient.get('/daily-task'),
                 ApiClient.get('/achievement/list'),
+                ApiClient.get('/friend/requests'),
+                ApiClient.get('/marriage/proposals?direction=incoming'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -277,6 +284,8 @@ export class MainUI extends Component {
             this.signInfo = results[11]?.data || results[11] || null;
             this.dailyTask = results[12]?.data || results[12] || null;
             this.achievements = this.resultList(results[13], ['achievements', 'data', 'items', 'list']);
+            this.incomingFriendRequests = this.resultList(results[14], ['requests', 'data', 'items', 'list']);
+            this.marriageProposals = this.resultList(results[15], ['proposals', 'data', 'items', 'list']);
             this.ensureSelectedShopItem();
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
@@ -288,6 +297,7 @@ export class MainUI extends Component {
         } finally {
             this.setLoading(false);
             this.refreshAllVisuals();
+            if (CuteGuideState.shouldAutoStart()) this.startGuide(false);
         }
     }
 
@@ -299,18 +309,26 @@ export class MainUI extends Component {
         try {
             switch (page) {
                 case 'home': {
-                    const [profile, tower, mail, sign, daily] = await Promise.all([
+                    const [profile, tower, mail, sign, daily, achievements, friendRequests, marriageRequests, eggs] = await Promise.all([
                         ApiClient.get('/user/profile'),
                         ApiClient.get('/tower/status'),
                         ApiClient.get('/mail/list'),
                         ApiClient.get('/sign'),
                         ApiClient.get('/daily-task'),
+                        ApiClient.get('/achievement/list'),
+                        ApiClient.get('/friend/requests'),
+                        ApiClient.get('/marriage/proposals?direction=incoming'),
+                        ApiClient.get('/hatchery/eggs'),
                     ]);
                     if (profile?.success !== false) GameStore.setProfile(profile);
                     if (tower?.success !== false) GameStore.setTower(tower);
+                    if (eggs?.success !== false) GameStore.setList('eggs', eggs);
                     this.applyMailResult(mail);
                     this.signInfo = sign?.data || sign || this.signInfo;
                     this.dailyTask = daily?.data || daily || this.dailyTask;
+                    this.achievements = this.resultList(achievements, ['achievements', 'data', 'items', 'list']);
+                    this.incomingFriendRequests = this.resultList(friendRequests, ['requests', 'data', 'items', 'list']);
+                    this.marriageProposals = this.resultList(marriageRequests, ['proposals', 'data', 'items', 'list']);
                     break;
                 }
                 case 'profile': {
@@ -513,6 +531,11 @@ export class MainUI extends Component {
         root.addChild(this.battleLayer);
         setRect(this.battleLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
+        this.guideLayer = new Node('CuteGuideLayer');
+        root.addChild(this.guideLayer);
+        setRect(this.guideLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+        this.guideLayer.active = false;
+
         this.toastLayer = new Node('CuteToastLayer');
         root.addChild(this.toastLayer);
         setRect(this.toastLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
@@ -550,6 +573,7 @@ export class MainUI extends Component {
         this.renderSkillModal();
         this.renderUtilityModal();
         this.renderBattleResultModal();
+        this.renderGuide();
     }
 
     private renderTopBar() {
@@ -588,8 +612,16 @@ export class MainUI extends Component {
             () => this.showPage('shop'),
         );
 
-        const state = GameStore.online ? '● 在线' : '● 预览';
-        text(this.topBar, 'Connection', state, 326, -53, 76, 22, 11, GameStore.online ? CuteTheme.mintDark : CuteTheme.muted, 'right', true);
+        if (GameStore.online) {
+            text(this.topBar, 'Connection', '● 在线', 326, -53, 76, 22, 11, CuteTheme.mintDark, 'right', true);
+        } else {
+            button(this.topBar, 'Reconnect', '重连', 309, -52, 72, 28, () => void this.bootstrap(), {
+                icon: '↻',
+                fill: CuteTheme.peach,
+                fontSize: 11,
+                radius: 14,
+            });
+        }
     }
 
     private renderBottomNav() {
@@ -609,7 +641,7 @@ export class MainUI extends Component {
         ];
 
         tabs.forEach((item, index) => {
-            button(
+            const tabNode = button(
                 this.bottomNav!,
                 `Tab_${item.key}`,
                 item.title,
@@ -627,6 +659,7 @@ export class MainUI extends Component {
                     radius: 25,
                 },
             );
+            if (item.key === 'more') this.addNotificationBadge(tabNode, this.totalNotificationCount(), 45, 34);
         });
     }
 
@@ -724,13 +757,14 @@ export class MainUI extends Component {
             radius: 26,
             subtitle: '赛季奖励',
         });
-        button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => { this.benefitMode = 'sign'; this.showPage('benefits'); }, {
+        const welfareButton = button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => { this.benefitMode = 'sign'; this.showPage('benefits'); }, {
             icon: '🎀',
             fill: CuteTheme.mint,
             fontSize: 16,
             radius: 26,
             subtitle: '签到活动',
         });
+        this.addNotificationBadge(welfareButton, this.pageNotificationCount('benefits'), 43, 42);
 
         const namePlate = panel(scene, 'NamePlate', 72, -356, 480, 96, new Color(255, 252, 239, 242), 28, true, CuteTheme.white, 3);
         text(namePlate, 'Name', safeName(pet?.nickname, '暂无宝宝'), -214, 18, 220, 36, 25, CuteTheme.caramel, 'left', true);
@@ -2164,15 +2198,21 @@ export class MainUI extends Component {
             'left',
             false,
         );
-        button(info, 'TestSound', '测试反馈', -110, -72, 160, 52, () => CuteFeedback.playSuccess(), {
-            icon: '🔔', fill: CuteTheme.mint, fontSize: 14, radius: 22,
+        button(info, 'TestSound', '测试反馈', -196, -72, 142, 52, () => CuteFeedback.playSuccess(), {
+            icon: '🔔', fill: CuteTheme.mint, fontSize: 13, radius: 22,
         });
-        button(info, 'Reset', '恢复默认', 110, -72, 160, 52, () => {
+        button(info, 'ReplayGuide', '新手引导', 0, -72, 142, 52, () => {
+            CuteGuideState.reset();
+            this.startGuide(true);
+        }, {
+            icon: '🐾', fill: CuteTheme.honey, fontSize: 13, radius: 22,
+        });
+        button(info, 'Reset', '恢复默认', 196, -72, 142, 52, () => {
             CuteFeedback.resetSettings();
             this.showToast('设置已恢复默认');
             this.renderCurrentPage(false);
         }, {
-            icon: '↻', fill: CuteTheme.paperWarm, fontSize: 14, radius: 22,
+            icon: '↻', fill: CuteTheme.paperWarm, fontSize: 13, radius: 22,
         });
     }
 
@@ -2204,6 +2244,160 @@ export class MainUI extends Component {
         CuteFeedback.setSettings({ resolutionPreset: preset });
         this.showToast(`已选择${CuteFeedback.resolutionLabel(preset)}，正式构建时应用`);
         this.renderCurrentPage(false);
+    }
+
+    private addNotificationBadge(parent: Node, count: number, x: number, y: number) {
+        const value = Math.max(0, Math.floor(Number(count || 0)));
+        if (!parent?.isValid || value <= 0) return;
+        const badge = panel(parent, 'NotificationBadge', x, y, 34, 34, new Color(242, 86, 91, 255), 17, true, CuteTheme.white, 2);
+        text(badge, 'Value', value > 99 ? '99+' : String(value), 0, 0, 30, 28, value > 9 ? 11 : 14, CuteTheme.white, 'center', true);
+        if (CuteFeedback.animationEnabled()) {
+            badge.setScale(new Vec3(0.92, 0.92, 1));
+            tween(badge)
+                .to(0.22, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'quadOut' })
+                .to(0.22, { scale: Vec3.ONE }, { easing: 'quadIn' })
+                .start();
+        }
+    }
+
+    private benefitNotificationCount() {
+        let count = this.signInfo?.canSign ? 1 : 0;
+        const task = this.dailyTask?.data || this.dailyTask || {};
+        if (task?.allCompleted && !task?.rewardClaimed) count += 1;
+        count += this.achievements.filter((item) => item?.completed && !item?.claimed).length;
+        return count;
+    }
+
+    private hatchNotificationCount() {
+        return GameStore.eggs.filter((egg) => {
+            const status = String(egg?.status || '');
+            return status !== 'hatched' && (Boolean(egg?.canHatch) || (['incubating', 'hatching', 'unhatched'].includes(status) && Number(egg?.remainingSeconds || 0) <= 0));
+        }).length;
+    }
+
+    private pageNotificationCount(page: PageName) {
+        switch (page) {
+            case 'benefits':
+                return this.benefitNotificationCount();
+            case 'hatchery':
+                return this.hatchNotificationCount();
+            case 'friends':
+                return this.incomingFriendRequests.filter((item) => String(item?.status || 'pending') === 'pending').length;
+            case 'marriage': {
+                const myId = Number(GameStore.user?.id || 0);
+                return this.marriageProposals.filter((item) => {
+                    if (String(item?.status || 'pending') !== 'pending') return false;
+                    const targetId = Number(item?.targetUserId || 0);
+                    return !myId || !targetId || targetId === myId;
+                }).length;
+            }
+            case 'mail':
+                return Math.max(this.mailUnreadCount, this.mailClaimableCount);
+            default:
+                return 0;
+        }
+    }
+
+    private totalNotificationCount() {
+        return Math.min(99, ['benefits', 'hatchery', 'friends', 'marriage', 'mail']
+            .reduce((sum, page) => sum + this.pageNotificationCount(page as PageName), 0));
+    }
+
+    private startGuide(force: boolean) {
+        if (!force && !CuteGuideState.shouldAutoStart()) return;
+        this.guideActive = true;
+        this.guideStepIndex = 0;
+        this.applyGuideStep();
+    }
+
+    private applyGuideStep() {
+        const step = CuteGuideState.steps[this.guideStepIndex];
+        if (!step) {
+            this.finishGuide();
+            return;
+        }
+        this.drawerOpen = false;
+        this.detailSkill = null;
+        this.hatchAcceleratorOpen = false;
+        this.showPage(step.page as PageName);
+        this.renderGuide();
+    }
+
+    private nextGuideStep() {
+        if (!this.guideActive) return;
+        this.guideStepIndex += 1;
+        if (this.guideStepIndex >= CuteGuideState.steps.length) {
+            this.finishGuide();
+            return;
+        }
+        CuteFeedback.playSuccess();
+        this.applyGuideStep();
+    }
+
+    private skipGuide() {
+        CuteGuideState.markCompleted();
+        this.guideActive = false;
+        this.renderGuide();
+        this.showPage('home');
+        this.showToast('可以随时在设置中重播新手引导');
+    }
+
+    private finishGuide() {
+        CuteGuideState.markCompleted();
+        this.guideActive = false;
+        this.renderGuide();
+        CuteFeedback.playSuccess();
+        this.showPage('home');
+        this.showToast('欢迎入住萌宠手账屋！');
+    }
+
+    private renderGuide() {
+        if (!this.guideLayer) return;
+        clearNode(this.guideLayer);
+        this.guideLayer.active = this.guideActive;
+        if (!this.guideActive) return;
+        if (!this.guideLayer.getComponent(BlockInputEvents)) this.guideLayer.addComponent(BlockInputEvents);
+
+        const step: CuteGuideStep | undefined = CuteGuideState.steps[this.guideStepIndex];
+        if (!step) return;
+        panel(this.guideLayer, 'GuideDim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 76), 0, false, CuteTheme.transparent, 0);
+
+        const marker = panel(this.guideLayer, 'FocusMarker', step.focusX, step.focusY, 78, 78, new Color(255, 248, 216, 225), 39, true, CuteTheme.honey, 5);
+        text(marker, 'Arrow', step.focusIcon || '👇', 0, 0, 62, 62, 34, CuteTheme.honeyDark, 'center', true);
+        if (CuteFeedback.animationEnabled()) {
+            tween(marker)
+                .repeatForever(
+                    tween(marker)
+                        .to(0.45, { scale: new Vec3(1.10, 1.10, 1) }, { easing: 'quadOut' })
+                        .to(0.45, { scale: Vec3.ONE }, { easing: 'quadIn' }),
+                )
+                .start();
+        }
+
+        const progressText = `第 ${this.guideStepIndex + 1} / ${CuteGuideState.steps.length} 步`;
+        const progressCard = panel(this.guideLayer, 'GuideProgress', 0, 520, 220, 48, new Color(255, 250, 232, 245), 22, true, CuteTheme.white, 2);
+        text(progressCard, 'Text', progressText, 0, 0, 190, 32, 14, CuteTheme.caramel, 'center', true);
+
+        const card = panel(this.guideLayer, 'GuideCard', 0, -355, 640, 270, new Color(255, 250, 232, 252), 38, true, CuteTheme.caramelSoft, 4);
+        text(card, 'Mascot', step.icon, -258, 52, 90, 90, 52, CuteTheme.caramel, 'center', true);
+        text(card, 'Title', step.title, -185, 76, 430, 42, 25, CuteTheme.caramel, 'left', true);
+        text(card, 'Description', step.description, -185, 5, 430, 100, 16, CuteTheme.muted, 'left', false);
+        button(card, 'Skip', '跳过', -195, -91, 150, 52, () => this.skipGuide(), {
+            fill: CuteTheme.paperWarm,
+            fontSize: 14,
+            radius: 22,
+        });
+        const finalStep = this.guideStepIndex === CuteGuideState.steps.length - 1;
+        button(card, 'Next', finalStep ? '开始冒险' : '下一步', 150, -91, 210, 56, () => this.nextGuideStep(), {
+            icon: finalStep ? '🎉' : '🐾',
+            fill: finalStep ? CuteTheme.honey : CuteTheme.mint,
+            fontSize: 15,
+            radius: 24,
+        });
+        if (CuteFeedback.animationEnabled()) {
+            card.setScale(new Vec3(0.94, 0.94, 1));
+            tween(card).to(0.20, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+        }
     }
 
     private renderSecondaryPage(page: PageName) {
@@ -2297,7 +2491,7 @@ export class MainUI extends Component {
         entries.forEach(([page, title, icon, fill], index) => {
             const col = index % 4;
             const row = Math.floor(index / 4);
-            button(
+            const entryNode = button(
                 drawer,
                 `Entry_${page}`,
                 title,
@@ -2313,6 +2507,7 @@ export class MainUI extends Component {
                     radius: 26,
                 },
             );
+            this.addNotificationBadge(entryNode, this.pageNotificationCount(page), 49, 42);
         });
 
         text(
@@ -3065,9 +3260,23 @@ export class MainUI extends Component {
 
         if (!this.loadingLayer.getComponent(BlockInputEvents)) this.loadingLayer.addComponent(BlockInputEvents);
         panel(this.loadingLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(95, 63, 42, 65), 0, false, CuteTheme.transparent, 0);
-        const bubble = panel(this.loadingLayer, 'Bubble', 0, 0, 360, 130, CuteTheme.paper, 38, true, CuteTheme.white, 3);
-        text(bubble, 'Icon', '🐾', 0, 28, 70, 50, 30, CuteTheme.honeyDark, 'center', true);
-        text(bubble, 'Message', message, 0, -27, 310, 42, 18, CuteTheme.caramel, 'center', true);
+        const bubble = panel(this.loadingLayer, 'Bubble', 0, 0, 390, 150, CuteTheme.paper, 38, true, CuteTheme.white, 3);
+        text(bubble, 'Message', message, 0, -34, 340, 42, 18, CuteTheme.caramel, 'center', true);
+        [-62, 0, 62].forEach((x, index) => {
+            text(bubble, `Paw_${index}`, '🐾', x, 34, 56, 52, 27, index === 1 ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
+            const paw = bubble.getChildByName(`Paw_${index}`);
+            if (paw && CuteFeedback.animationEnabled()) {
+                paw.setScale(new Vec3(0.84, 0.84, 1));
+                tween(paw)
+                    .delay(index * 0.10)
+                    .repeatForever(
+                        tween(paw)
+                            .to(0.28, { scale: new Vec3(1.10, 1.10, 1) }, { easing: 'quadOut' })
+                            .to(0.28, { scale: new Vec3(0.84, 0.84, 1) }, { easing: 'quadIn' }),
+                    )
+                    .start();
+            }
+        });
     }
 
     private showToast = (message: string) => {
