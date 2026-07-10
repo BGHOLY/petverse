@@ -1,128 +1,132 @@
-import UIEventCenter from '../manager/UIEventCenter';
-import ApiConfig from './ApiConfig';
+export type HttpMethod = 'GET' | 'POST';
 
-type RequestMethod = 'GET' | 'POST';
-
-export type ApiResponse<T = any> = T & {
+export type ApiResult<T = any> = T & {
     success?: boolean;
     message?: string;
     error?: any;
 };
 
 export default class ApiClient {
-    public static BASE_URL = ApiConfig.getBaseUrl();
-    private static readonly inFlight = new Map<string, Promise<any>>();
+    public static BASE_URL = 'http://127.0.0.1:3000/api';
+    public static TIMEOUT_MS = 9000;
 
-    public static async get(path: string): Promise<any> {
-        return this.request('GET', path);
+    private static pending = new Map<string, Promise<any>>();
+
+    public static setBaseUrl(url: string) {
+        this.BASE_URL = String(url || '').replace(/\/+$/, '');
     }
 
-    public static async post(path: string, data: any = {}): Promise<any> {
-        return this.request('POST', path, data);
+    public static get<T = any>(path: string): Promise<ApiResult<T>> {
+        return this.request<T>('GET', path);
     }
 
-    private static async request(method: RequestMethod, path: string, data?: any): Promise<ApiResponse> {
-        const url = this.resolveUrl(path);
-        const key = `${method}:${url}:${method === 'POST' ? JSON.stringify(data || {}) : ''}`;
+    public static post<T = any>(path: string, data: any = {}): Promise<ApiResult<T>> {
+        return this.request<T>('POST', path, data);
+    }
 
-        if (method === 'POST' && this.inFlight.has(key)) {
-            return this.inFlight.get(key)!;
+    public static isPending(method: HttpMethod, path: string, data?: any) {
+        return this.pending.has(this.makeKey(method, path, data));
+    }
+
+    private static request<T>(method: HttpMethod, path: string, data?: any): Promise<ApiResult<T>> {
+        const key = this.makeKey(method, path, data);
+        const existing = this.pending.get(key);
+        if (existing) return existing;
+
+        const promise = this.performRequest<T>(method, path, data)
+            .catch((error) => ({ success: false, message: this.errorMessage(error), error } as ApiResult<T>))
+            .finally(() => this.pending.delete(key));
+
+        this.pending.set(key, promise);
+        return promise;
+    }
+
+    private static async performRequest<T>(method: HttpMethod, path: string, data?: any): Promise<ApiResult<T>> {
+        const url = this.BASE_URL + (path.startsWith('/') ? path : `/${path}`);
+        const globalAny = globalThis as any;
+
+        if (globalAny.wx?.request) {
+            return this.wxRequest<T>(url, method, data);
         }
 
-        const task = this.performRequest(method, url, data);
-        if (method === 'POST') {
-            this.inFlight.set(key, task);
-        }
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = setTimeout(() => controller?.abort(), this.TIMEOUT_MS);
 
         try {
-            return await task;
-        } finally {
-            if (method === 'POST') {
-                this.inFlight.delete(key);
-            }
-        }
-    }
-
-    private static async performRequest(method: RequestMethod, url: string, data?: any): Promise<ApiResponse> {
-        console.log('[ApiClient] request:', method, url, data || '');
-        UIEventCenter.emit('LOADING_CHANGED', true);
-
-        try {
-            const response = await this.withTimeout(fetch(url, {
+            const response = await fetch(url, {
                 method,
                 headers: {
                     Accept: 'application/json',
                     'Content-Type': 'application/json',
                 },
                 body: method === 'POST' ? JSON.stringify(data || {}) : undefined,
-            }), ApiConfig.REQUEST_TIMEOUT_MS);
+                signal: controller?.signal,
+            });
 
             const text = await response.text();
-            const json = text ? this.safeParse(text) : null;
-            console.log('[ApiClient] response:', url, json);
+            let json: any = null;
+            try {
+                json = text ? JSON.parse(text) : null;
+            } catch {
+                json = { success: false, message: text || `HTTP ${response.status}` };
+            }
 
             if (!response.ok) {
-                const result = json || {
+                return {
+                    ...(json || {}),
                     success: false,
-                    message: this.getHttpMessage(response.status),
-                };
-                console.error('[ApiClient] failed:', url, response.status, result);
-                UIEventCenter.emit('API_ERROR', result.message);
-                return result;
+                    message: json?.message || `HTTP ${response.status}`,
+                } as ApiResult<T>;
             }
 
-            if (json?.success === false) {
-                UIEventCenter.emit('API_ERROR', json.message || '操作失败');
-            }
-
-            return json || { success: true };
-        } catch (error) {
-            console.error('[ApiClient] error:', url, error);
-            const result = {
-                success: false,
-                message: '后端连接失败，请确认服务已启动',
-                error,
-            };
-            UIEventCenter.emit('API_ERROR', result.message);
-            return result;
-        } finally {
-            UIEventCenter.emit('LOADING_CHANGED', false);
-        }
-    }
-
-    private static resolveUrl(path: string) {
-        const base = this.BASE_URL || ApiConfig.getBaseUrl();
-        return base.replace(/\/$/, '') + (path.startsWith('/') ? path : '/' + path);
-    }
-
-    private static async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-        let timer = 0;
-        const timeout = new Promise<T>((_, reject) => {
-            timer = setTimeout(() => reject(new Error('Request timeout')), timeoutMs) as unknown as number;
-        });
-
-        try {
-            return await Promise.race([promise, timeout]);
+            return (json || { success: true }) as ApiResult<T>;
         } finally {
             clearTimeout(timer);
         }
     }
 
-    private static safeParse(text: string) {
-        try {
-            return JSON.parse(text);
-        } catch {
-            return {
-                success: false,
-                message: text || '响应解析失败',
-            };
-        }
+    private static wxRequest<T>(url: string, method: HttpMethod, data?: any): Promise<ApiResult<T>> {
+        const globalAny = globalThis as any;
+        return new Promise((resolve) => {
+            globalAny.wx.request({
+                url,
+                method,
+                data: method === 'POST' ? data || {} : undefined,
+                timeout: this.TIMEOUT_MS,
+                header: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                success: (res: any) => {
+                    const payload = res?.data ?? null;
+                    if (res?.statusCode >= 200 && res?.statusCode < 300) {
+                        resolve((payload || { success: true }) as ApiResult<T>);
+                    } else {
+                        resolve({
+                            ...(payload || {}),
+                            success: false,
+                            message: payload?.message || `HTTP ${res?.statusCode || 0}`,
+                        } as ApiResult<T>);
+                    }
+                },
+                fail: (error: any) => resolve({
+                    success: false,
+                    message: this.errorMessage(error),
+                    error,
+                } as ApiResult<T>),
+            });
+        });
     }
 
-    private static getHttpMessage(status: number) {
-        if (status === 401 || status === 403) return '登录状态不可用或权限不足';
-        if (status === 404) return '接口不存在';
-        if (status >= 500) return '后端服务异常';
-        return `请求失败 HTTP ${status}`;
+    private static makeKey(method: HttpMethod, path: string, data?: any) {
+        let body = '';
+        try { body = data === undefined ? '' : JSON.stringify(data); } catch { body = String(data); }
+        return `${method}:${path}:${body}`;
+    }
+
+    private static errorMessage(error: any) {
+        const text = String(error?.message || error?.errMsg || error || '');
+        if (/abort|timeout/i.test(text)) return '请求超时，请检查后端服务';
+        return '无法连接后端，请确认 localhost:3000 已启动';
     }
 }
