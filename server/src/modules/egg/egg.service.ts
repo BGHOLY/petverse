@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { OffspringBlueprint } from '../breeding/breeding.service';
 import { calculateGeneScore, normalizeGeneCode } from '../pet/utils/gene.util';
@@ -48,7 +48,8 @@ export class EggService {
     private readonly eggRepository: Repository<Egg>,
   ) {}
 
-  async createEgg(data: CreateEggData) {
+  async createEgg(data: CreateEggData, manager?: EntityManager) {
+    const eggRepository = manager ? manager.getRepository(Egg) : this.eggRepository;
     const rarity = this.clampRarity(data.rarityPotential);
     const geneCode = normalizeGeneCode(data.geneCode || 'AAAA');
     const hatchDurationSeconds =
@@ -64,7 +65,7 @@ export class EggService {
       speed: 1200,
     };
 
-    const egg = this.eggRepository.create({
+    const egg = eggRepository.create({
       ownerId: data.ownerId,
       parentAId: data.parentAId || 0,
       parentBId: data.parentBId || 0,
@@ -110,7 +111,7 @@ export class EggService {
       hatchedPetId: 0,
     });
 
-    return this.eggRepository.save(egg);
+    return eggRepository.save(egg);
   }
 
   async getUserEggs(userId: number, includeHatched = true) {

@@ -26,6 +26,9 @@ import { EggModule } from './modules/egg/egg.module';
 import { MarriageModule } from './modules/marriage/marriage.module';
 import { HatcheryModule } from './modules/hatchery/hatchery.module';
 import { FusionModule } from './modules/fusion/fusion.module';
+import { EconomyModule } from './modules/economy/economy.module';
+import { TeamModule } from './modules/team/team.module';
+import { BackendModule } from './modules/backend/backend.module';
 import { DevModule } from './modules/dev/dev.module';
 
 @Module({
@@ -56,6 +59,9 @@ import { DevModule } from './modules/dev/dev.module';
     MarriageModule,
     HatcheryModule,
     FusionModule,
+    EconomyModule,
+    TeamModule,
+    BackendModule,
     DevModule,
   ],
   controllers: [AppController],

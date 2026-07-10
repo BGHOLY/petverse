@@ -10,6 +10,7 @@ import {
   PetAptitudes,
   BreedingService,
 } from '../breeding/breeding.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import {
   DEFAULT_USER_ID,
   RARITY_NAMES,
@@ -23,6 +24,7 @@ import {
   PET_CONFIG_VERSION,
   PetSpeciesConfig,
 } from './config/pet-species.config';
+import { PetTeam } from '../team/pet-team.entity';
 import { Pet } from './pet.entity';
 import {
   calculateGeneScore,
@@ -37,6 +39,9 @@ interface CreatePetData {
   species?: string;
   speciesCode?: string;
   isMutant?: boolean;
+  isLocked?: boolean;
+  isFavorite?: boolean;
+  gender?: string;
   rarity?: number;
   quality?: number;
   geneCode?: string;
@@ -60,8 +65,12 @@ export class PetService {
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
 
+    @InjectRepository(PetTeam)
+    private readonly petTeamRepository: Repository<PetTeam>,
+
     private readonly skillService: SkillService,
     private readonly breedingService: BreedingService,
+    private readonly dailyTaskService: DailyTaskService,
   ) {}
 
   async getAllPets() {
@@ -309,6 +318,11 @@ export class PetService {
       species: speciesConfig.name,
       speciesCode: speciesConfig.speciesCode,
       isMutant,
+      isLocked: Boolean(data.isLocked),
+      isFavorite: Boolean(data.isFavorite),
+      gender: data.gender || (Math.random() < 0.5 ? 'male' : 'female'),
+      breedCount: 0,
+      fusionCount: 0,
       rarity,
       rarityName: RARITY_NAMES[rarity],
       quality,
@@ -470,6 +484,11 @@ export class PetService {
       species: species.name,
       speciesCode: species.speciesCode,
       isMutant: Boolean(blueprint.isMutant),
+      isLocked: false,
+      isFavorite: false,
+      gender: Math.random() < 0.5 ? 'male' : 'female',
+      breedCount: 0,
+      fusionCount: 0,
       rarity: this.clampRarity(blueprint.rarity),
       rarityName: RARITY_NAMES[this.clampRarity(blueprint.rarity)],
       quality: this.clampQuality(blueprint.quality),
@@ -516,6 +535,142 @@ export class PetService {
     };
   }
 
+
+  async renamePet(userId: number, petId: number, nickname: string) {
+    const normalized = String(nickname || '').trim().slice(0, 20);
+    if (normalized.length < 1) {
+      return {
+        success: false,
+        message: 'Nickname cannot be empty',
+      };
+    }
+
+    const pet = await this.petRepository.findOne({
+      where: {
+        id: petId,
+        ownerId: userId,
+        isEgg: false,
+      },
+    });
+    if (!pet) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+
+    pet.nickname = normalized;
+    return {
+      success: true,
+      message: 'Pet renamed',
+      pet: await this.petRepository.save(pet),
+    };
+  }
+
+  async setPetLock(userId: number, petId: number, locked: boolean) {
+    const pet = await this.petRepository.findOne({
+      where: {
+        id: petId,
+        ownerId: userId,
+        isEgg: false,
+      },
+    });
+    if (!pet) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+
+    pet.isLocked = Boolean(locked);
+    return {
+      success: true,
+      message: pet.isLocked ? 'Pet locked' : 'Pet unlocked',
+      pet: await this.petRepository.save(pet),
+    };
+  }
+
+  async setPetFavorite(
+    userId: number,
+    petId: number,
+    favorite: boolean,
+  ) {
+    const pet = await this.petRepository.findOne({
+      where: {
+        id: petId,
+        ownerId: userId,
+        isEgg: false,
+      },
+    });
+    if (!pet) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+
+    pet.isFavorite = Boolean(favorite);
+    return {
+      success: true,
+      message: pet.isFavorite
+        ? 'Pet marked as favorite'
+        : 'Pet removed from favorites',
+      pet: await this.petRepository.save(pet),
+    };
+  }
+
+  async releasePet(userId: number, petId: number) {
+    const pet = await this.petRepository.findOne({
+      where: {
+        id: petId,
+        ownerId: userId,
+        isEgg: false,
+      },
+    });
+    if (!pet) {
+      return {
+        success: false,
+        message: 'Pet not found',
+      };
+    }
+    if (pet.isLocked) {
+      return {
+        success: false,
+        message: 'Locked pet cannot be released',
+      };
+    }
+    if (
+      pet.married ||
+      Number(pet.partnerId || 0) > 0 ||
+      Number(pet.marriedPetId || 0) > 0
+    ) {
+      return {
+        success: false,
+        message: 'Married pet cannot be released',
+      };
+    }
+
+    const team = await this.petTeamRepository.findOne({
+      where: { userId },
+    });
+    if (
+      Array.isArray(team?.petIds) &&
+      team.petIds.map(Number).includes(pet.id)
+    ) {
+      return {
+        success: false,
+        message: 'Remove pet from the active team first',
+      };
+    }
+
+    await this.petRepository.remove(pet);
+    return {
+      success: true,
+      message: 'Pet released',
+      releasedPetId: petId,
+    };
+  }
+
   async seedDefaultPet(userId = DEFAULT_USER_ID) {
     const existing = await this.getMainPet(userId);
     if (existing) return existing;
@@ -547,10 +702,16 @@ export class PetService {
       Number(pet.cleanliness || 0) + 5,
     );
 
+    const savedPet = await this.petRepository.save(pet);
+    await this.dailyTaskService.completeTask(
+      userId,
+      'feedCompleted',
+    );
+
     return {
       success: true,
       message: 'Pet fed',
-      pet: await this.petRepository.save(pet),
+      pet: savedPet,
     };
   }
 
@@ -830,6 +991,31 @@ export class PetService {
 
     if (pet.isMutant === undefined || pet.isMutant === null) {
       pet.isMutant = false;
+      changed = true;
+    }
+
+    if (pet.isLocked === undefined || pet.isLocked === null) {
+      pet.isLocked = false;
+      changed = true;
+    }
+
+    if (pet.isFavorite === undefined || pet.isFavorite === null) {
+      pet.isFavorite = false;
+      changed = true;
+    }
+
+    if (!pet.gender) {
+      pet.gender = pet.id % 2 === 0 ? 'female' : 'male';
+      changed = true;
+    }
+
+    if (pet.breedCount === undefined || pet.breedCount === null) {
+      pet.breedCount = 0;
+      changed = true;
+    }
+
+    if (pet.fusionCount === undefined || pet.fusionCount === null) {
+      pet.fusionCount = 0;
       changed = true;
     }
 

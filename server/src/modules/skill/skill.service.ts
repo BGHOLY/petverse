@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
+import { EconomyService } from '../economy/economy.service';
+import { getSkillBookItemCode } from '../item/config/item.config';
 import { Pet } from '../pet/pet.entity';
 import { createRandomSeed, SeededRandom } from '../breeding/utils/seeded-random.util';
 import {
@@ -24,6 +26,9 @@ export class SkillService {
 
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+
+    private readonly dataSource: DataSource,
+    private readonly economyService: EconomyService,
   ) {}
 
   async seedDefaultSkills() {
@@ -150,125 +155,333 @@ export class SkillService {
     skillCode: string,
     lockedSkillCodes: string[] = [],
     requestedSeed?: string,
+    requestedRequestId?: string,
   ) {
-    const pet = await this.petRepository.findOne({ where: { id: petId } });
-    if (!pet || pet.ownerId !== ownerId || pet.isEgg) {
-      return { success: false, message: 'Pet not found' };
-    }
-
-    const bookSkill = await this.getSkillByCode(skillCode);
-    if (!bookSkill || bookSkill.tier === 'special' || !bookSkill.canPurchase) {
-      return { success: false, message: 'Skill book is invalid' };
-    }
-
-    const beforeSkills = await this.normalizeSkillList(pet.skills);
-    const lockSet = new Set(
-      [...new Set((lockedSkillCodes || []).map((code) => String(code || '')))]
-        .filter(Boolean)
-        .slice(0, 4),
+    const normalizedSkillCode = String(skillCode || '').trim();
+    const requestId = this.economyService.normalizeRequestId(
+      requestedRequestId,
+      'skill-learn',
     );
+    const operationType = 'skill_learn';
 
-    for (const code of lockSet) {
-      const existing = beforeSkills.find((skill) => skill.skillCode === code);
-      if (!existing) {
-        return { success: false, message: `Locked skill not found: ${code}` };
-      }
-      if (existing.canLock === false || isSpecialSkill(existing)) {
-        return { success: false, message: `Skill cannot be locked: ${code}` };
-      }
-    }
-
-    if (beforeSkills.some((skill) => skill.skillCode === bookSkill.skillCode)) {
-      return { success: false, message: 'Pet already has this skill' };
-    }
-
-    const afterSkills = beforeSkills.map((skill) => ({ ...skill }));
-    const newSkill = this.toSnapshot(bookSkill);
-    let overwrittenSkillCode = '';
-
-    // 高级技能直接升级同家族低级技能，不触发随机顶格。
-    const familyIndex = afterSkills.findIndex(
-      (skill) =>
-        skill.familyCode === newSkill.familyCode &&
-        skill.skillCode !== newSkill.skillCode,
+    const existing = await this.economyService.getOperation(
+      ownerId,
+      operationType,
+      requestId,
     );
-    if (bookSkill.tier === 'high' && familyIndex >= 0) {
-      overwrittenSkillCode = afterSkills[familyIndex].skillCode;
-      afterSkills[familyIndex] = newSkill;
-    } else {
-      const conflictIndex = bookSkill.conflictGroup
-        ? afterSkills.findIndex(
-            (skill) => skill.conflictGroup === bookSkill.conflictGroup,
-          )
-        : -1;
+    if (existing?.status === 'success') {
+      return {
+        ...(existing.result || {}),
+        duplicate: true,
+        requestId,
+      };
+    }
 
-      if (conflictIndex >= 0) {
-        const conflictSkill = afterSkills[conflictIndex];
-        if (lockSet.has(conflictSkill.skillCode)) {
-          return {
-            success: false,
-            message: 'Conflicting skill is locked',
-          };
-        }
-        overwrittenSkillCode = conflictSkill.skillCode;
-        afterSkills[conflictIndex] = newSkill;
-      } else {
-        const capacity = Math.max(
-          2,
-          Math.min(10, Number(pet.skillSlotCount || beforeSkills.length || 3)),
-        );
+    const bookSkill = await this.getSkillByCode(
+      normalizedSkillCode,
+    );
+    if (
+      !bookSkill ||
+      bookSkill.tier === 'special' ||
+      !bookSkill.canPurchase
+    ) {
+      return {
+        success: false,
+        message: 'Skill book is invalid',
+        requestId,
+      };
+    }
 
-        if (afterSkills.length < capacity) {
-          afterSkills.push(newSkill);
-        } else {
-          const candidates = afterSkills
-            .map((skill, index) => ({ skill, index }))
-            .filter(({ skill }) => {
-              if (lockSet.has(skill.skillCode)) return false;
-              return skill.canOverwrite !== false;
-            });
-
-          if (!candidates.length) {
+    try {
+      return await this.dataSource.transaction(
+        async (manager) => {
+          const duplicate =
+            await this.economyService.getOperationWithManager(
+              manager,
+              ownerId,
+              operationType,
+              requestId,
+            );
+          if (duplicate?.status === 'success') {
             return {
-              success: false,
-              message: 'No skill can be overwritten',
+              ...(duplicate.result || {}),
+              duplicate: true,
+              requestId,
             };
           }
 
-          const seed = String(requestedSeed || createRandomSeed('skill-book'));
-          const rng = new SeededRandom(seed);
-          const selected = rng.pick(candidates);
-          if (!selected) {
-            return { success: false, message: 'Skill overwrite failed' };
+          const petRepository = manager.getRepository(Pet);
+          const pet = await petRepository.findOne({
+            where: {
+              id: petId,
+              ownerId,
+              isEgg: false,
+            },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!pet) {
+            throw new Error('Pet not found');
+          }
+          if (pet.isLocked) {
+            throw new Error(
+              'Locked pet cannot learn skills',
+            );
           }
 
-          overwrittenSkillCode = selected.skill.skillCode;
-          afterSkills[selected.index] = newSkill;
-          return this.saveSkillLearningResult(
-            pet,
+          const beforeSkills =
+            await this.normalizeSkillList(pet.skills);
+          const lockSet = new Set(
+            [
+              ...new Set(
+                (lockedSkillCodes || []).map((code) =>
+                  String(code || '').trim(),
+                ),
+              ),
+            ]
+              .filter(Boolean)
+              .slice(0, 4),
+          );
+
+          for (const code of lockSet) {
+            const current = beforeSkills.find(
+              (skill) => skill.skillCode === code,
+            );
+            if (!current) {
+              throw new Error(
+                `Locked skill not found: ${code}`,
+              );
+            }
+            if (
+              current.canLock === false ||
+              isSpecialSkill(current)
+            ) {
+              throw new Error(
+                `Skill cannot be locked: ${code}`,
+              );
+            }
+          }
+
+          if (
+            beforeSkills.some(
+              (skill) =>
+                skill.skillCode === bookSkill.skillCode,
+            )
+          ) {
+            throw new Error('Pet already has this skill');
+          }
+
+          const seed = String(
+            requestedSeed ||
+              createRandomSeed('skill-book'),
+          );
+          const afterSkills = beforeSkills.map((skill) => ({
+            ...skill,
+          }));
+          const newSkill = this.toSnapshot(bookSkill);
+          let overwrittenSkillCode = '';
+
+          const familyIndex = afterSkills.findIndex(
+            (skill) =>
+              skill.familyCode === newSkill.familyCode &&
+              skill.skillCode !== newSkill.skillCode,
+          );
+
+          if (
+            bookSkill.tier === 'high' &&
+            familyIndex >= 0
+          ) {
+            overwrittenSkillCode =
+              afterSkills[familyIndex].skillCode;
+            afterSkills[familyIndex] = newSkill;
+          } else {
+            const conflictIndex = bookSkill.conflictGroup
+              ? afterSkills.findIndex(
+                  (skill) =>
+                    skill.conflictGroup ===
+                    bookSkill.conflictGroup,
+                )
+              : -1;
+
+            if (conflictIndex >= 0) {
+              const conflictSkill =
+                afterSkills[conflictIndex];
+              if (
+                lockSet.has(conflictSkill.skillCode)
+              ) {
+                throw new Error(
+                  'Conflicting skill is locked',
+                );
+              }
+              overwrittenSkillCode =
+                conflictSkill.skillCode;
+              afterSkills[conflictIndex] = newSkill;
+            } else {
+              const capacity = Math.max(
+                2,
+                Math.min(
+                  10,
+                  Number(
+                    pet.skillSlotCount ||
+                      beforeSkills.length ||
+                      3,
+                  ),
+                ),
+              );
+
+              if (afterSkills.length < capacity) {
+                afterSkills.push(newSkill);
+              } else {
+                const candidates = afterSkills
+                  .map((skill, index) => ({
+                    skill,
+                    index,
+                  }))
+                  .filter(({ skill }) => {
+                    if (
+                      lockSet.has(skill.skillCode)
+                    ) {
+                      return false;
+                    }
+                    return (
+                      skill.canOverwrite !== false
+                    );
+                  });
+
+                if (!candidates.length) {
+                  throw new Error(
+                    'No skill can be overwritten',
+                  );
+                }
+
+                const rng = new SeededRandom(seed);
+                const selected = rng.pick(candidates);
+                if (!selected) {
+                  throw new Error(
+                    'Skill overwrite failed',
+                  );
+                }
+                overwrittenSkillCode =
+                  selected.skill.skillCode;
+                afterSkills[selected.index] = newSkill;
+              }
+            }
+          }
+
+          const lockCostMap: Record<number, number> = {
+            0: 0,
+            1: 1,
+            2: 3,
+            3: 7,
+            4: 15,
+          };
+          const lockCost =
+            lockCostMap[lockSet.size] || 0;
+          const costItems: Record<string, number> = {
+            [getSkillBookItemCode(
+              bookSkill.skillCode,
+            )]: 1,
+          };
+          if (lockCost > 0) {
+            costItems.skill_lock = lockCost;
+          }
+
+          const operation =
+            duplicate ||
+            (await this.economyService.createOperation(
+              manager,
+              {
+                userId: ownerId,
+                operationType,
+                requestId,
+                cost: { items: costItems },
+                payload: {
+                  petId,
+                  skillCode: bookSkill.skillCode,
+                  lockedSkillCodes: [...lockSet],
+                  seed,
+                },
+              },
+            ));
+
+          await this.economyService.spend(
+            manager,
             ownerId,
-            bookSkill.skillCode,
+            {
+              items: costItems,
+            },
+          );
+
+          pet.skills = afterSkills;
+          pet.specialSkillCount =
+            afterSkills.filter((skill) =>
+              isSpecialSkill(skill),
+            ).length;
+          await petRepository.save(pet);
+
+          const logRepository =
+            manager.getRepository(SkillLearningLog);
+          const log = logRepository.create({
+            ownerId,
+            petId: pet.id,
+            requestId,
+            bookSkillCode: bookSkill.skillCode,
+            consumedItems: costItems,
             beforeSkills,
             afterSkills,
-            [...lockSet],
+            lockedSkillCodes: [...lockSet],
             overwrittenSkillCode,
             seed,
-          );
-        }
-      }
-    }
+            configVersion:
+              SKILL_CONFIG_VERSION,
+          });
+          await logRepository.save(log);
 
-    const seed = String(requestedSeed || createRandomSeed('skill-book'));
-    return this.saveSkillLearningResult(
-      pet,
-      ownerId,
-      bookSkill.skillCode,
-      beforeSkills,
-      afterSkills,
-      [...lockSet],
-      overwrittenSkillCode,
-      seed,
-    );
+          const result = {
+            success: true,
+            message: overwrittenSkillCode
+              ? 'Skill learned and one skill was overwritten'
+              : 'Skill learned',
+            pet,
+            beforeSkills,
+            afterSkills,
+            overwrittenSkillCode,
+            lockedSkillCodes: [...lockSet],
+            consumedItems: costItems,
+            seed,
+            requestId,
+            duplicate: false,
+          };
+
+          await this.economyService.completeOperation(
+            manager,
+            operation,
+            result,
+          );
+          return result;
+        },
+      );
+    } catch (error: any) {
+      const duplicate =
+        await this.economyService.getOperation(
+          ownerId,
+          operationType,
+          requestId,
+        );
+      if (duplicate?.status === 'success') {
+        return {
+          ...(duplicate.result || {}),
+          duplicate: true,
+          requestId,
+        };
+      }
+      return {
+        success: false,
+        message: String(
+          error?.message || 'Skill learning failed',
+        ),
+        requestId,
+      };
+    }
   }
 
   async getPetLearningLogs(ownerId: number, petId: number) {
@@ -336,7 +549,9 @@ export class SkillService {
     const log = this.skillLearningLogRepository.create({
       ownerId,
       petId: pet.id,
+      requestId: '',
       bookSkillCode,
+      consumedItems: {},
       beforeSkills,
       afterSkills,
       lockedSkillCodes,

@@ -1,4 +1,9 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+} from '@nestjs/common';
 
 import { DEFAULT_USER_ID } from '../game-data';
 import { BuyItemDto } from './dto/buy-item.dto';
@@ -6,16 +11,19 @@ import { ShopService } from './shop.service';
 
 @Controller('shop')
 export class ShopController {
-  constructor(private readonly shopService: ShopService) {}
+  constructor(
+    private readonly shopService: ShopService,
+  ) {}
 
   @Post('seed')
-  async seedShopItems() {
+  seedShopItems() {
     return this.shopService.seedShopItems();
   }
 
   @Get()
   async getShop() {
-    const shopItems = await this.shopService.getShopItems();
+    const shopItems =
+      await this.shopService.getShopItems();
     return {
       success: true,
       shopItems,
@@ -26,7 +34,8 @@ export class ShopController {
 
   @Get('items')
   async getShopItems() {
-    const shopItems = await this.shopService.getShopItems();
+    const shopItems =
+      await this.shopService.getShopItems();
     return {
       success: true,
       shopItems,
@@ -36,7 +45,16 @@ export class ShopController {
   }
 
   @Post('buy')
-  async buyItem(@Body() dto: BuyItemDto) {
-    return this.shopService.buyItem(DEFAULT_USER_ID, dto);
+  buyItem(
+    @Body()
+    dto: BuyItemDto & {
+      count?: number;
+      requestId?: string;
+    },
+  ) {
+    return this.shopService.buyItem(
+      DEFAULT_USER_ID,
+      dto,
+    );
   }
 }

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DEFAULT_USER_ID } from '../game-data';
 import { AchievementService } from './achievement.service';
 import { ClaimAchievementDto } from './dto/claim-achievement.dto';
 
@@ -18,30 +19,54 @@ export class AchievementController {
   ) {}
 
   @Post('seed')
+  seedBeta() {
+    return this.achievementService.seedAchievements(
+      DEFAULT_USER_ID,
+    );
+  }
+
+  @Post('seed-auth')
   @UseGuards(JwtAuthGuard)
-  async seed(@Req() req: any) {
+  seed(@Req() req: any) {
     return this.achievementService.seedAchievements(
       req.user.sub,
     );
   }
 
   @Get('list')
+  listBeta() {
+    return this.achievementService.getMyAchievements(
+      DEFAULT_USER_ID,
+    );
+  }
+
+  @Get('list-auth')
   @UseGuards(JwtAuthGuard)
-  async list(@Req() req: any) {
+  list(@Req() req: any) {
     return this.achievementService.getMyAchievements(
       req.user.sub,
     );
   }
 
   @Post('claim')
+  claimBeta(
+    @Body() dto: ClaimAchievementDto,
+  ) {
+    return this.achievementService.claimAchievement(
+      DEFAULT_USER_ID,
+      Number(dto?.achievementId || 0),
+    );
+  }
+
+  @Post('claim-auth')
   @UseGuards(JwtAuthGuard)
-  async claim(
+  claim(
     @Req() req: any,
     @Body() dto: ClaimAchievementDto,
   ) {
     return this.achievementService.claimAchievement(
       req.user.sub,
-      dto.achievementId,
+      Number(dto?.achievementId || 0),
     );
   }
 }

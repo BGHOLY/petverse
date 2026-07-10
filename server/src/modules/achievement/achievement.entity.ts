@@ -1,11 +1,16 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('achievements')
+@Index(['userId', 'achievementCode'], {
+  unique: true,
+})
 export class Achievement {
   @PrimaryGeneratedColumn()
   id: number;
@@ -22,6 +27,15 @@ export class Achievement {
   @Column()
   description: string;
 
+  @Column({ default: '' })
+  eventType: string;
+
+  @Column({ default: 0 })
+  progress: number;
+
+  @Column({ default: 1 })
+  target: number;
+
   @Column({ default: false })
   completed: boolean;
 
@@ -36,4 +50,7 @@ export class Achievement {
 
   @CreateDateColumn()
   createTime: Date;
+
+  @UpdateDateColumn()
+  updateTime: Date;
 }

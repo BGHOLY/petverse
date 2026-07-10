@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  DataSource,
+  Repository,
+} from 'typeorm';
 
-import { DEFAULT_ITEMS, DEFAULT_SHOP_ITEMS } from '../game-data';
+import { EconomyService } from '../economy/economy.service';
 import { InventoryService } from '../inventory/inventory.service';
+import {
+  SHOP_ITEM_CONFIGS,
+} from '../item/config/item.config';
 import { Item } from '../item/item.entity';
-import { User } from '../user/user.entity';
+import { ItemService } from '../item/item.service';
 import { BuyItemDto } from './dto/buy-item.dto';
 import { ShopItem } from './shop-item.entity';
 
@@ -15,90 +21,143 @@ export class ShopService {
     @InjectRepository(ShopItem)
     private readonly shopItemRepository: Repository<ShopItem>,
 
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-
     @InjectRepository(Item)
     private readonly itemRepository: Repository<Item>,
 
+    private readonly itemService: ItemService,
     private readonly inventoryService: InventoryService,
+    private readonly economyService: EconomyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async seedShopItems() {
-    for (const itemData of DEFAULT_ITEMS) {
-      let item = await this.itemRepository.findOne({
-        where: { itemCode: itemData.itemCode },
-      });
+    await this.itemService.seedDefaultItems();
+    const configuredCodes = new Set(
+      SHOP_ITEM_CONFIGS.map((item) => item.itemCode),
+    );
 
-      if (!item) {
-        item = this.itemRepository.create(itemData);
-      } else {
-        Object.assign(item, itemData);
-      }
-
-      await this.itemRepository.save(item);
-    }
-
-    for (const data of DEFAULT_SHOP_ITEMS) {
+    for (const data of SHOP_ITEM_CONFIGS) {
       const item = await this.itemRepository.findOne({
-        where: { itemCode: data.itemCode },
+        where: {
+          itemCode: data.itemCode,
+          enabled: true,
+        },
       });
+      if (!item) continue;
 
-      let shopItem = await this.shopItemRepository.findOne({
-        where: { itemCode: data.itemCode },
-      });
+      let shopItem =
+        await this.shopItemRepository.findOne({
+          where: { itemCode: data.itemCode },
+        });
 
       if (!shopItem) {
-        shopItem = this.shopItemRepository.create({
-          itemCode: data.itemCode,
-          name: item?.name || data.itemCode,
-          currencyType: data.currencyType,
-          price: data.price,
-          quantity: data.quantity,
-          enabled: true,
-        });
+        shopItem =
+          this.shopItemRepository.create({
+            itemCode: data.itemCode,
+            name: item.name,
+            currencyType: data.currencyType,
+            price: data.price,
+            quantity: data.quantity,
+            enabled: true,
+            version: '2.1.0',
+          });
       } else {
-        shopItem.name = item?.name || data.itemCode;
-        shopItem.currencyType = data.currencyType;
+        shopItem.name = item.name;
+        shopItem.currencyType =
+          data.currencyType;
         shopItem.price = data.price;
         shopItem.quantity = data.quantity;
         shopItem.enabled = true;
+        shopItem.version = '2.1.0';
       }
+      await this.shopItemRepository.save(
+        shopItem,
+      );
+    }
 
-      await this.shopItemRepository.save(shopItem);
+    const stored =
+      await this.shopItemRepository.find();
+    for (const legacy of stored) {
+      if (
+        !configuredCodes.has(legacy.itemCode) &&
+        legacy.enabled
+      ) {
+        legacy.enabled = false;
+        await this.shopItemRepository.save(
+          legacy,
+        );
+      }
     }
 
     return {
       success: true,
+      count: SHOP_ITEM_CONFIGS.length,
       shopItems: await this.getShopItems(),
     };
   }
 
   async getShopItems() {
-    const shopItems = await this.shopItemRepository.find({
-      where: { enabled: true },
-      order: { id: 'ASC' },
-    });
+    const sentinel =
+      await this.shopItemRepository.findOne({
+        where: {
+          itemCode: 'fusion_core',
+          enabled: true,
+        },
+      });
+    if (!sentinel) {
+      await this.seedShopItems();
+    }
 
-    const items = await this.itemRepository.find();
-    const itemMap = new Map(items.map((item) => [item.itemCode, item]));
+    const shopItems =
+      await this.shopItemRepository.find({
+        where: { enabled: true },
+        order: {
+          currencyType: 'ASC',
+          price: 'ASC',
+          id: 'ASC',
+        },
+      });
+    const items = await this.itemRepository.find({
+      where: { enabled: true },
+    });
+    const itemMap = new Map(
+      items.map((item) => [
+        item.itemCode,
+        item,
+      ]),
+    );
 
     return shopItems.map((shopItem) => {
-      const item = itemMap.get(shopItem.itemCode);
+      const item = itemMap.get(
+        shopItem.itemCode,
+      );
       return {
         ...shopItem,
         type: item?.type || 'material',
-        description: item?.description || '',
+        description:
+          item?.description || '',
         rarity: item?.rarity || 1,
+        maxStack:
+          item?.maxStack || 999999,
         effect: item?.effect || '',
-        effectValue: item?.effectValue || 0,
+        effectValue:
+          item?.effectValue || 0,
+        effectData:
+          item?.effectData || {},
+        version: item?.version || '',
       };
     });
   }
 
-  async buyItem(userId: number, dto: BuyItemDto) {
-    const shopItem = await this.findShopItem(dto);
-
+  async buyItem(
+    userId: number,
+    dto: BuyItemDto & {
+      count?: number;
+      requestId?: string;
+    },
+  ) {
+    const shopItem =
+      await this.findShopItem(dto);
     if (!shopItem) {
       return {
         success: false,
@@ -106,106 +165,180 @@ export class ShopService {
       };
     }
 
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-    });
-
-    if (!user) {
+    const count = Math.max(
+      1,
+      Math.min(
+        99,
+        Math.floor(Number(dto?.count || 1)),
+      ),
+    );
+    const requestId =
+      this.economyService.normalizeRequestId(
+        dto?.requestId,
+        'shop-buy',
+      );
+    const operationType = 'shop_buy';
+    const existing =
+      await this.economyService.getOperation(
+        userId,
+        operationType,
+        requestId,
+      );
+    if (existing?.status === 'success') {
       return {
-        success: false,
-        message: 'User not found. Run POST /api/dev/seed-all first.',
+        ...(existing.result || {}),
+        duplicate: true,
+        requestId,
       };
     }
 
-    if (shopItem.currencyType === 'diamond') {
-      if (Number(user.diamond || 0) < shopItem.price) {
-        return {
-          success: false,
-          message: 'Not enough diamonds',
-          user,
-        };
-      }
-      user.diamond -= shopItem.price;
-    } else {
-      if (Number(user.gold || 0) < shopItem.price) {
-        return {
-          success: false,
-          message: 'Not enough gold',
-          user,
-        };
-      }
-      user.gold -= shopItem.price;
-    }
-
-    await this.userRepository.save(user);
-
-    const item = await this.ensureItemExists(shopItem);
-
-    await this.inventoryService.addItem(
-      userId,
-      item.id,
-      item.itemCode,
-      shopItem.quantity || 1,
-    );
-
-    const inventory = await this.inventoryService.getUserInventory(userId);
-
-    return {
-      success: true,
-      message: 'Purchase successful',
-      shopItem,
-      user,
-      inventory,
-      data: {
-        user,
-        inventory,
+    const cost =
+      shopItem.currencyType === 'diamond'
+        ? {
+            diamond:
+              Number(shopItem.price || 0) *
+              count,
+          }
+        : {
+            gold:
+              Number(shopItem.price || 0) *
+              count,
+          };
+    const reward = {
+      items: {
+        [shopItem.itemCode]:
+          Number(shopItem.quantity || 1) *
+          count,
       },
     };
+
+    try {
+      const result =
+        await this.dataSource.transaction(
+          async (manager) => {
+            const duplicate =
+              await this.economyService.getOperationWithManager(
+                manager,
+                userId,
+                operationType,
+                requestId,
+              );
+            if (
+              duplicate?.status === 'success'
+            ) {
+              return {
+                ...(duplicate.result || {}),
+                duplicate: true,
+                requestId,
+              };
+            }
+
+            const operation =
+              duplicate ||
+              (await this.economyService.createOperation(
+                manager,
+                {
+                  userId,
+                  operationType,
+                  requestId,
+                  cost,
+                  reward,
+                  payload: {
+                    shopItemId: shopItem.id,
+                    itemCode:
+                      shopItem.itemCode,
+                    count,
+                  },
+                },
+              ));
+
+            await this.economyService.spend(
+              manager,
+              userId,
+              cost,
+            );
+            await this.economyService.grant(
+              manager,
+              userId,
+              reward,
+            );
+
+            const response = {
+              success: true,
+              message:
+                'Purchase successful',
+              shopItem,
+              count,
+              requestId,
+              cost,
+              reward,
+              duplicate: false,
+            };
+            await this.economyService.completeOperation(
+              manager,
+              operation,
+              response,
+            );
+            return response;
+          },
+        );
+
+      return {
+        ...result,
+        wallet:
+          await this.economyService.getWallet(
+            userId,
+          ),
+        inventory:
+          await this.inventoryService.getUserInventory(
+            userId,
+          ),
+      };
+    } catch (error: any) {
+      const duplicate =
+        await this.economyService.getOperation(
+          userId,
+          operationType,
+          requestId,
+        );
+      if (duplicate?.status === 'success') {
+        return {
+          ...(duplicate.result || {}),
+          duplicate: true,
+          requestId,
+        };
+      }
+      return {
+        success: false,
+        message: String(
+          error?.message || 'Purchase failed',
+        ),
+        requestId,
+      };
+    }
   }
 
-  private async findShopItem(dto: BuyItemDto) {
-    if (dto.shopItemId) {
+  private async findShopItem(
+    dto: BuyItemDto,
+  ) {
+    if (dto?.shopItemId) {
       return this.shopItemRepository.findOne({
         where: {
-          id: dto.shopItemId,
+          id: Number(dto.shopItemId),
           enabled: true,
         },
       });
     }
 
-    if (dto.itemCode) {
+    if (dto?.itemCode) {
       return this.shopItemRepository.findOne({
         where: {
-          itemCode: dto.itemCode,
+          itemCode: String(dto.itemCode),
           enabled: true,
         },
       });
     }
 
     return null;
-  }
-
-  private async ensureItemExists(shopItem: ShopItem) {
-    let item = await this.itemRepository.findOne({
-      where: { itemCode: shopItem.itemCode },
-    });
-
-    if (!item) {
-      item = this.itemRepository.create({
-        itemCode: shopItem.itemCode,
-        name: shopItem.name,
-        description: shopItem.name,
-        type: 'material',
-        rarity: 1,
-        maxStack: 999999,
-        usable: true,
-        effect: '',
-        effectValue: 0,
-      });
-
-      item = await this.itemRepository.save(item);
-    }
-
-    return item;
   }
 }

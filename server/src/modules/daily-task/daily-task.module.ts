@@ -1,21 +1,15 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { DailyTask } from './daily-task.entity';
+import { EconomyModule } from '../economy/economy.module';
 import { DailyTaskController } from './daily-task.controller';
+import { DailyTask } from './daily-task.entity';
 import { DailyTaskService } from './daily-task.service';
-
-import { User } from '../user/user.entity';
-import { InventoryModule } from '../inventory/inventory.module';
-import { ItemModule } from '../item/item.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      DailyTask,
-      User,
-    ]),
+    TypeOrmModule.forFeature([DailyTask]),
     JwtModule.register({
       secret:
         process.env.JWT_SECRET ||
@@ -24,17 +18,10 @@ import { ItemModule } from '../item/item.module';
         expiresIn: '7d',
       },
     }),
-    InventoryModule,
-    ItemModule,
+    EconomyModule,
   ],
-  controllers: [
-    DailyTaskController,
-  ],
-  providers: [
-    DailyTaskService,
-  ],
-  exports: [
-    DailyTaskService,
-  ],
+  controllers: [DailyTaskController],
+  providers: [DailyTaskService],
+  exports: [DailyTaskService],
 })
 export class DailyTaskModule {}

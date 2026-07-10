@@ -4,47 +4,45 @@ import {
   Entity,
   Index,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('skill_learning_logs')
-@Index(['ownerId', 'requestId'])
-export class SkillLearningLog {
+@Entity('game_operation_records')
+@Index(['userId', 'operationType', 'requestId'], { unique: true })
+export class GameOperationRecord {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column()
-  ownerId: number;
+  userId: number;
 
-  @Column()
-  petId: number;
+  @Column({ length: 50 })
+  operationType: string;
 
-  @Column({ default: '' })
+  @Column({ length: 80 })
   requestId: string;
 
-  @Column()
-  bookSkillCode: string;
+  @Column({ default: 'processing' })
+  status: string;
 
   @Column({ type: 'simple-json', nullable: true })
-  consumedItems: Record<string, number>;
+  cost: Record<string, any>;
 
   @Column({ type: 'simple-json', nullable: true })
-  beforeSkills: any[];
+  reward: Record<string, any>;
 
   @Column({ type: 'simple-json', nullable: true })
-  afterSkills: any[];
+  payload: Record<string, any>;
 
   @Column({ type: 'simple-json', nullable: true })
-  lockedSkillCodes: string[];
-
-  @Column({ default: '' })
-  overwrittenSkillCode: string;
-
-  @Column({ default: '' })
-  seed: string;
+  result: Record<string, any>;
 
   @Column({ default: '2.1.0' })
   configVersion: string;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

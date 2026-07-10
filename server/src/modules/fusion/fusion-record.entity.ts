@@ -7,7 +7,9 @@ import {
 } from 'typeorm';
 
 @Entity('fusion_records')
-@Index(['ownerId', 'requestId'], { unique: true })
+@Index(['ownerId', 'requestId'], {
+  unique: true,
+})
 export class FusionRecord {
   @PrimaryGeneratedColumn()
   id: number;
@@ -15,7 +17,7 @@ export class FusionRecord {
   @Column()
   ownerId: number;
 
-  @Column({ length: 64 })
+  @Column({ length: 80 })
   requestId: string;
 
   @Column()
@@ -31,6 +33,9 @@ export class FusionRecord {
   seed: string;
 
   @Column({ type: 'simple-json', nullable: true })
+  costData: any;
+
+  @Column({ type: 'simple-json', nullable: true })
   parentSnapshot: any;
 
   @Column({ type: 'simple-json', nullable: true })
@@ -39,7 +44,7 @@ export class FusionRecord {
   @Column({ default: 'success' })
   status: string;
 
-  @Column({ default: '2.0.0' })
+  @Column({ default: '2.1.0' })
   configVersion: string;
 
   @CreateDateColumn()

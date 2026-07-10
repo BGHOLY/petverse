@@ -20,6 +20,8 @@ import { SkillLearningLog } from '../modules/skill/skill-learning-log.entity';
 import { Marriage } from '../modules/marriage/marriage.entity';
 import { Egg } from '../modules/egg/egg.entity';
 import { FusionRecord } from '../modules/fusion/fusion-record.entity';
+import { GameOperationRecord } from '../modules/economy/game-operation-record.entity';
+import { PetTeam } from '../modules/team/pet-team.entity';
 
 dotenv.config();
 
@@ -51,6 +53,8 @@ export const databaseConfig: TypeOrmModuleOptions = {
     Marriage,
     Egg,
     FusionRecord,
+    GameOperationRecord,
+    PetTeam,
   ],
   synchronize: true,
 };

@@ -3,8 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { BattleService } from '../battle/battle.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { PetService } from '../pet/pet.service';
+import { TeamService } from '../team/team.service';
 import { User } from '../user/user.entity';
 import { TowerRecord } from './tower-record.entity';
 
@@ -18,13 +20,17 @@ export class TowerService {
     private readonly userRepository: Repository<User>,
 
     private readonly petService: PetService,
-
     private readonly battleService: BattleService,
+    private readonly dailyTaskService: DailyTaskService,
+    private readonly teamService: TeamService,
   ) {}
 
   async getStatus(userId = DEFAULT_USER_ID) {
     const record = await this.getMyRecord(userId);
-    const monster = this.battleService.createTowerMonster(record.currentFloor);
+    const monster =
+      this.battleService.createTowerMonster(
+        record.currentFloor,
+      );
 
     return {
       success: true,
@@ -32,28 +38,47 @@ export class TowerService {
       maxFloor: record.maxFloor,
       monster,
       record,
-      rewardPreview: this.getReward(record.currentFloor),
+      rewardPreview: this.getReward(
+        record.currentFloor,
+      ),
     };
   }
 
-  async challengeTower(userId: number, petId?: number) {
-    const pet = petId ? await this.petService.getPetById(petId) : await this.petService.getMainPet(userId);
+  async challengeTower(
+    userId: number,
+    petId?: number,
+  ) {
+    const pet = petId
+      ? await this.petService.getPetById(petId)
+      : await this.petService.getMainPet(
+          userId,
+        );
 
-    if (!pet || pet.ownerId !== userId || pet.isEgg) {
+    if (
+      !pet ||
+      pet.ownerId !== userId ||
+      pet.isEgg
+    ) {
       return {
         success: false,
         message: 'Player pet not found',
       };
     }
 
-    const record = await this.getMyRecord(userId);
+    const record =
+      await this.getMyRecord(userId);
     const floor = record.currentFloor;
-    const monster = this.battleService.createTowerMonster(floor);
-    const result = this.battleService.simulateBattle(
-      this.battleService.fromPet(pet),
-      monster,
-    );
-    const win = result.winnerSide === 'left';
+    const monster =
+      this.battleService.createTowerMonster(
+        floor,
+      );
+    const result =
+      this.battleService.simulateBattle(
+        this.battleService.fromPet(pet),
+        monster,
+      );
+    const win =
+      result.winnerSide === 'left';
 
     if (!win) {
       return {
@@ -68,7 +93,10 @@ export class TowerService {
     }
 
     const reward = this.getReward(floor);
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user =
+      await this.userRepository.findOne({
+        where: { id: userId },
+      });
 
     if (user) {
       user.gold += reward.gold;
@@ -76,12 +104,28 @@ export class TowerService {
       await this.userRepository.save(user);
     }
 
-    await this.petService.addExp(pet, reward.exp);
+    const updatedPet =
+      await this.petService.addExp(
+        pet,
+        reward.exp,
+      );
 
     record.currentFloor += 1;
-    record.maxFloor = Math.max(record.maxFloor || 0, floor);
-    record.totalRewardGold += reward.gold;
-    const savedRecord = await this.towerRecordRepository.save(record);
+    record.maxFloor = Math.max(
+      record.maxFloor || 0,
+      floor,
+    );
+    record.totalRewardGold +=
+      reward.gold;
+    const savedRecord =
+      await this.towerRecordRepository.save(
+        record,
+      );
+
+    await this.dailyTaskService.completeTask(
+      userId,
+      'towerCompleted',
+    );
 
     return {
       success: true,
@@ -91,26 +135,105 @@ export class TowerService {
       reward,
       record: savedRecord,
       user,
-      pet,
+      pet: updatedPet,
       battleLog: result.battleLog,
       message: `Challenge floor ${floor} cleared`,
     };
   }
 
-  async getMyRecord(userId: number) {
-    let record = await this.towerRecordRepository.findOne({
-      where: { userId },
-    });
+  async challengeTeam(userId = DEFAULT_USER_ID) {
+    const teamResult = await this.teamService.getTeam(userId);
+    const pets = Array.isArray(teamResult?.pets)
+      ? teamResult.pets.filter((pet: any) => !pet.isEgg).slice(0, 3)
+      : [];
 
-    if (!record) {
-      record = this.towerRecordRepository.create({
-        userId,
-        currentFloor: 1,
-        maxFloor: 0,
-        totalRewardGold: 0,
+    if (!pets.length) {
+      return {
+        success: false,
+        message: 'Active team is empty',
+      };
+    }
+
+    const record = await this.getMyRecord(userId);
+    const floor = Number(record.currentFloor || 1);
+    const monsters = pets.map((_: any, index: number) =>
+      this.battleService.createTowerMonster(floor + index),
+    );
+    const result = this.battleService.simulateTeamBattle(
+      pets.map((pet: any) => this.battleService.fromPet(pet)),
+      monsters,
+    );
+    const win = result.winnerSide === 'left';
+
+    if (!win) {
+      return {
+        success: true,
+        mode: 'team',
+        result: 'lose',
+        floor,
+        monsters,
+        record,
+        battleLog: result.battleLog,
+        combatResult: result,
+        message: `Team challenge floor ${floor} failed`,
+      };
+    }
+
+    const reward = this.getReward(floor);
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (user) {
+      user.gold += reward.gold;
+      user.diamond += reward.diamond;
+      await this.userRepository.save(user);
+    }
+
+    const expEach = Math.max(1, Math.floor(reward.exp / pets.length));
+    const updatedPets = [];
+    for (const pet of pets) {
+      updatedPets.push(await this.petService.addExp(pet, expEach));
+    }
+
+    record.currentFloor += 1;
+    record.maxFloor = Math.max(record.maxFloor || 0, floor);
+    record.totalRewardGold += reward.gold;
+    const savedRecord = await this.towerRecordRepository.save(record);
+    await this.dailyTaskService.completeTask(userId, 'towerCompleted');
+
+    return {
+      success: true,
+      mode: 'team',
+      result: 'win',
+      floor,
+      monsters,
+      reward: { ...reward, expEach },
+      record: savedRecord,
+      user,
+      pets: updatedPets,
+      battleLog: result.battleLog,
+      combatResult: result,
+      message: `Team challenge floor ${floor} cleared`,
+    };
+  }
+
+  async getMyRecord(userId: number) {
+    let record =
+      await this.towerRecordRepository.findOne({
+        where: { userId },
       });
 
-      record = await this.towerRecordRepository.save(record);
+    if (!record) {
+      record =
+        this.towerRecordRepository.create({
+          userId,
+          currentFloor: 1,
+          maxFloor: 0,
+          totalRewardGold: 0,
+        });
+
+      record =
+        await this.towerRecordRepository.save(
+          record,
+        );
     }
 
     return record;

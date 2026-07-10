@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { FriendService } from '../friend/friend.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
+import { TeamService } from '../team/team.service';
 import { Battle } from './battle.entity';
 
 type DamageType = 'physical' | 'magic';
@@ -59,6 +61,8 @@ export class BattleService {
     private readonly petService: PetService,
 
     private readonly friendService: FriendService,
+    private readonly dailyTaskService: DailyTaskService,
+    private readonly teamService: TeamService,
   ) {}
 
   async pve(userId = DEFAULT_USER_ID, petId?: number) {
@@ -77,6 +81,10 @@ export class BattleService {
     const result = this.simulateBattle(this.fromPet(pet), monster);
 
     await this.saveBattle(userId, pet.id, 0, 0, result);
+    await this.dailyTaskService.completeTask(
+      userId,
+      'battleCompleted',
+    );
 
     return {
       success: true,
@@ -126,6 +134,10 @@ export class BattleService {
       friendPet.id,
       result,
     );
+    await this.dailyTaskService.completeTask(
+      userId,
+      'battleCompleted',
+    );
 
     return {
       success: true,
@@ -145,6 +157,162 @@ export class BattleService {
     targetPetId: number,
   ) {
     return this.friendBattle(userId, myPetId, targetPetId);
+  }
+
+  async teamPve(userId = DEFAULT_USER_ID) {
+    const teamResult = await this.teamService.getTeam(userId);
+    const pets = Array.isArray(teamResult?.pets)
+      ? teamResult.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      : [];
+
+    if (!pets.length) {
+      return {
+        success: false,
+        message: 'Active team is empty',
+      };
+    }
+
+    const averageLevel = Math.max(
+      1,
+      Math.round(
+        pets.reduce((sum: number, pet: Pet) => sum + Number(pet.level || 1), 0) /
+          pets.length,
+      ),
+    );
+    const enemies = pets.map((_, index) =>
+      this.createMonster(Math.max(1, averageLevel + index)),
+    );
+    const result = this.simulateTeamBattle(
+      pets.map((pet: Pet) => this.fromPet(pet)),
+      enemies,
+    );
+
+    await this.saveBattle(userId, pets[0].id, 0, 0, result);
+    await this.dailyTaskService.completeTask(userId, 'battleCompleted');
+
+    return {
+      success: true,
+      mode: 'team-pve',
+      result: result.winnerSide === 'left' ? 'win' : 'lose',
+      winner: result.winnerName,
+      playerTeam: pets,
+      enemyTeam: enemies,
+      battleLog: result.battleLog,
+      combatResult: result,
+    };
+  }
+
+  async friendTeamBattle(
+    userId = DEFAULT_USER_ID,
+    friendUserId?: number,
+  ) {
+    const teamResult = await this.teamService.getTeam(userId);
+    const myPets = Array.isArray(teamResult?.pets)
+      ? teamResult.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      : [];
+
+    const friendResult = await this.friendService.getMockFriends(userId);
+    const friend = friendUserId
+      ? friendResult.friends.find(
+          (item: any) => Number(item.userId || item.id) === Number(friendUserId),
+        )
+      : friendResult.friends[0];
+    const friendPets = Array.isArray(friend?.pets)
+      ? friend.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      : [];
+
+    if (!myPets.length || !friendPets.length) {
+      return {
+        success: false,
+        message: 'Player or friend team is empty',
+      };
+    }
+
+    const result = this.simulateTeamBattle(
+      myPets.map((pet: Pet) => this.fromPet(pet)),
+      friendPets.map((pet: Pet) => this.fromPet(pet)),
+    );
+    await this.saveBattle(
+      userId,
+      myPets[0].id,
+      Number(friend?.userId || friend?.id || 0),
+      friendPets[0].id,
+      result,
+    );
+    await this.dailyTaskService.completeTask(userId, 'battleCompleted');
+
+    return {
+      success: true,
+      mode: 'team-friend',
+      result: result.winnerSide === 'left' ? 'win' : 'lose',
+      winner: result.winnerName,
+      playerTeam: myPets,
+      friend: friend
+        ? {
+            id: Number(friend.userId || friend.id || 0),
+            nickname: friend.nickname,
+          }
+        : null,
+      friendTeam: friendPets,
+      battleLog: result.battleLog,
+      combatResult: result,
+    };
+  }
+
+  simulateTeamBattle(
+    leftTeamInput: Combatant[],
+    rightTeamInput: Combatant[],
+  ) {
+    const leftTeam = leftTeamInput.slice(0, 3).map((pet) => this.cloneCombatant(pet));
+    const rightTeam = rightTeamInput.slice(0, 3).map((pet) => this.cloneCombatant(pet));
+    const battleLog: string[] = [];
+    const duelResults: any[] = [];
+    let leftIndex = 0;
+    let rightIndex = 0;
+
+    while (leftIndex < leftTeam.length && rightIndex < rightTeam.length) {
+      const left = leftTeam[leftIndex];
+      const right = rightTeam[rightIndex];
+      battleLog.push(
+        `出战：${left.name} VS ${right.name}（${leftIndex + 1}/${leftTeam.length} 对 ${rightIndex + 1}/${rightTeam.length}）`,
+      );
+      const duel = this.simulateBattle(left, right);
+      duelResults.push({
+        leftPetId: left.id,
+        rightPetId: right.id,
+        ...duel,
+      });
+      battleLog.push(...duel.battleLog.map((line: string) => `  ${line}`));
+
+      if (duel.winnerSide === 'left') {
+        left.hp = Math.max(1, Number(duel.leftHp || 1));
+        left.shield = Math.max(0, Number(duel.leftShield || 0));
+        rightIndex += 1;
+      } else {
+        right.hp = Math.max(1, Number(duel.rightHp || 1));
+        right.shield = Math.max(0, Number(duel.rightShield || 0));
+        leftIndex += 1;
+      }
+    }
+
+    const winnerSide = leftIndex < leftTeam.length ? 'left' : 'right';
+    const winner = winnerSide === 'left'
+      ? leftTeam[Math.min(leftIndex, leftTeam.length - 1)]
+      : rightTeam[Math.min(rightIndex, rightTeam.length - 1)];
+    battleLog.push(
+      winnerSide === 'left' ? '我方队伍获胜' : '对方队伍获胜',
+    );
+
+    return {
+      winnerSide,
+      winnerName: winner?.name || '',
+      leftRemaining: Math.max(0, leftTeam.length - leftIndex),
+      rightRemaining: Math.max(0, rightTeam.length - rightIndex),
+      leftIndex,
+      rightIndex,
+      duelResults,
+      battleLog,
+    };
   }
 
   simulateBattle(leftInput: Combatant, rightInput: Combatant) {

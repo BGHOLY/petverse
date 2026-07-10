@@ -8,7 +8,7 @@ export class BattleController {
   constructor(private readonly battleService: BattleService) {}
 
   @Post('pve')
-  async pve(@Body() body: any) {
+  pve(@Body() body: any) {
     return this.battleService.pve(
       DEFAULT_USER_ID,
       Number(body?.petId || body?.myPetId || 0) || undefined,
@@ -16,7 +16,7 @@ export class BattleController {
   }
 
   @Post('friend')
-  async friend(@Body() body: any) {
+  friend(@Body() body: any) {
     return this.battleService.friendBattle(
       DEFAULT_USER_ID,
       Number(body?.petId || body?.myPetId || 0) || undefined,
@@ -25,11 +25,24 @@ export class BattleController {
   }
 
   @Post('start')
-  async startBattle(@Body() body: any) {
+  startBattle(@Body() body: any) {
     return this.battleService.startBattle(
       DEFAULT_USER_ID,
       Number(body?.myPetId || body?.petId || 0),
       Number(body?.targetPetId || body?.friendPetId || 0),
+    );
+  }
+
+  @Post('team-pve')
+  teamPve() {
+    return this.battleService.teamPve(DEFAULT_USER_ID);
+  }
+
+  @Post('team-friend')
+  teamFriend(@Body() body: any) {
+    return this.battleService.friendTeamBattle(
+      DEFAULT_USER_ID,
+      Number(body?.friendUserId || body?.targetUserId || 0) || undefined,
     );
   }
 }

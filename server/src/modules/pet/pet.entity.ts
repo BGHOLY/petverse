@@ -26,6 +26,21 @@ export class Pet {
   @Column({ default: false })
   isMutant: boolean;
 
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ default: false })
+  isFavorite: boolean;
+
+  @Column({ default: 'unknown' })
+  gender: string;
+
+  @Column({ default: 0 })
+  breedCount: number;
+
+  @Column({ default: 0 })
+  fusionCount: number;
+
   @Column({ default: 1 })
   rarity: number;
 

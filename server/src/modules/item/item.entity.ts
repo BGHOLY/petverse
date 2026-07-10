@@ -1,8 +1,9 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('items')
@@ -13,7 +14,7 @@ export class Item {
   @Column({ unique: true })
   itemCode: string;
 
-  @Column({ length: 50 })
+  @Column({ length: 80 })
   name: string;
 
   @Column({ default: '' })
@@ -34,9 +35,21 @@ export class Item {
   @Column({ default: '' })
   effect: string;
 
-  @Column({ default: 0 })
+  @Column({ type: 'float', default: 0 })
   effectValue: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  effectData: Record<string, any>;
+
+  @Column({ default: true })
+  enabled: boolean;
+
+  @Column({ default: '2.1.0' })
+  version: string;
 
   @CreateDateColumn()
   createTime: Date;
+
+  @UpdateDateColumn()
+  updateTime: Date;
 }

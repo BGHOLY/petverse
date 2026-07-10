@@ -1,20 +1,19 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { EconomyModule } from '../economy/economy.module';
+import { InventoryModule } from '../inventory/inventory.module';
+import { Item } from '../item/item.entity';
+import { ItemModule } from '../item/item.module';
+import { ShopController } from './shop.controller';
 import { ShopItem } from './shop-item.entity';
 import { ShopService } from './shop.service';
-import { ShopController } from './shop.controller';
-
-import { User } from '../user/user.entity';
-import { Item } from '../item/item.entity';
-import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       ShopItem,
-      User,
       Item,
     ]),
     JwtModule.register({
@@ -25,7 +24,9 @@ import { InventoryModule } from '../inventory/inventory.module';
         expiresIn: '7d',
       },
     }),
+    ItemModule,
     InventoryModule,
+    EconomyModule,
   ],
   controllers: [ShopController],
   providers: [ShopService],

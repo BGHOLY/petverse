@@ -1,12 +1,14 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('inventories')
+@Index(['userId', 'itemCode'], { unique: true })
 export class Inventory {
   @PrimaryGeneratedColumn()
   id: number;

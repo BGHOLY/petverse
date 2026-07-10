@@ -1,21 +1,28 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { EconomyModule } from '../economy/economy.module';
+import { Friend } from '../friend/friend.entity';
+import { FusionRecord } from '../fusion/fusion-record.entity';
+import { Marriage } from '../marriage/marriage.entity';
+import { Pet } from '../pet/pet.entity';
+import { SignRecord } from '../sign/sign-record.entity';
+import { TowerRecord } from '../tower/tower-record.entity';
+import { AchievementController } from './achievement.controller';
 import { Achievement } from './achievement.entity';
 import { AchievementService } from './achievement.service';
-import { AchievementController } from './achievement.controller';
-
-import { User } from '../user/user.entity';
-import { InventoryModule } from '../inventory/inventory.module';
-import { Item } from '../item/item.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Achievement,
-      User,
-      Item,
+      Pet,
+      TowerRecord,
+      SignRecord,
+      Friend,
+      FusionRecord,
+      Marriage,
     ]),
     JwtModule.register({
       secret:
@@ -25,9 +32,10 @@ import { Item } from '../item/item.entity';
         expiresIn: '7d',
       },
     }),
-    InventoryModule,
+    EconomyModule,
   ],
   controllers: [AchievementController],
   providers: [AchievementService],
+  exports: [AchievementService],
 })
 export class AchievementModule {}
