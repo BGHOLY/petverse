@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
+import { InventoryService } from '../inventory/inventory.service';
 import { OffspringBlueprint, PetService } from '../pet/pet.service';
 
 @Injectable()
@@ -9,14 +10,27 @@ export class HatcheryService {
   constructor(
     private readonly eggService: EggService,
     private readonly petService: PetService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async getEggs(userId = DEFAULT_USER_ID) {
     const eggs = await this.eggService.getUserEggViews(userId, true);
+    const activeEgg = eggs.find((egg: any) =>
+      ['incubating', 'hatching'].includes(String(egg?.status || '')),
+    ) || null;
+    const warehouse = eggs.filter(
+      (egg: any) => String(egg?.status || '') === 'stored',
+    );
     return {
       success: true,
       eggs,
-      data: eggs,
+      activeEgg,
+      warehouse,
+      data: {
+        eggs,
+        activeEgg,
+        warehouse,
+      },
     };
   }
 
@@ -39,6 +53,149 @@ export class HatcheryService {
     };
   }
 
+  async startIncubation(userId: number, eggId: number) {
+    if (!eggId) {
+      return {
+        success: false,
+        message: 'Missing eggId',
+      };
+    }
+
+    const existing = await this.eggService.getActiveEgg(userId);
+    if (existing) {
+      return {
+        success: false,
+        message: 'Incubator is already occupied',
+        activeEgg: this.eggService.toEggView(existing),
+      };
+    }
+
+    const egg = await this.eggService.getEggById(eggId);
+    if (!egg || egg.ownerId !== userId) {
+      return {
+        success: false,
+        message: 'Egg not found',
+      };
+    }
+    if (egg.status !== 'stored') {
+      return {
+        success: false,
+        message: 'Only warehouse eggs can enter the incubator',
+        egg: this.eggService.toEggView(egg),
+      };
+    }
+
+    const started = await this.eggService.startIncubation(eggId, userId);
+    if (!started) {
+      return {
+        success: false,
+        message: 'Failed to occupy incubator',
+      };
+    }
+
+    const eggs = await this.eggService.getUserEggViews(userId, true);
+    return {
+      success: true,
+      message: 'Egg placed into incubator',
+      egg: this.eggService.toEggView(started),
+      eggs,
+      data: {
+        egg: this.eggService.toEggView(started),
+        eggs,
+      },
+    };
+  }
+
+  async accelerate(
+    userId: number,
+    eggId: number,
+    itemCode: string,
+    quantity = 1,
+  ) {
+    const normalizedCode = String(itemCode || '').trim();
+    const normalizedQuantity = Math.max(
+      1,
+      Math.min(99, Math.floor(Number(quantity || 1))),
+    );
+    const egg = await this.eggService.getEggById(eggId);
+    if (
+      !egg ||
+      egg.ownerId !== userId ||
+      egg.status !== 'incubating'
+    ) {
+      return {
+        success: false,
+        message: 'Incubating egg not found',
+      };
+    }
+
+    const remainingSeconds = this.eggService.getRemainingSeconds(egg);
+    if (remainingSeconds <= 0) {
+      return {
+        success: false,
+        message: 'Egg is already ready to hatch',
+        egg: this.eggService.toEggView(egg),
+      };
+    }
+
+    const inventory = await this.inventoryService.getUserInventory(userId);
+    const item = inventory.find(
+      (entry: any) => String(entry?.itemCode || '') === normalizedCode,
+    );
+    if (
+      !item ||
+      String(item?.effect || '') !== 'hatch_acceleration' ||
+      Number(item?.quantity || 0) < normalizedQuantity
+    ) {
+      return {
+        success: false,
+        message: 'Hatch accelerator not available',
+      };
+    }
+
+    const secondsPerItem = Math.max(1, Number(item?.effectValue || 0));
+    const consumed = await this.inventoryService.consumeItem(
+      userId,
+      normalizedCode,
+      normalizedQuantity,
+    );
+    if (!consumed) {
+      return {
+        success: false,
+        message: 'Accelerator consumption failed',
+      };
+    }
+
+    const accelerated = await this.eggService.accelerateIncubation(
+      eggId,
+      userId,
+      secondsPerItem * normalizedQuantity,
+    );
+    if (!accelerated) {
+      return {
+        success: false,
+        message: 'Egg acceleration failed',
+      };
+    }
+
+    const nextInventory =
+      await this.inventoryService.getUserInventory(userId);
+    const eggs = await this.eggService.getUserEggViews(userId, true);
+    return {
+      success: true,
+      message: 'Incubation accelerated',
+      reducedSeconds: secondsPerItem * normalizedQuantity,
+      egg: this.eggService.toEggView(accelerated),
+      eggs,
+      inventory: nextInventory,
+      data: {
+        egg: this.eggService.toEggView(accelerated),
+        eggs,
+        inventory: nextInventory,
+      },
+    };
+  }
+
   async hatch(userId: number, eggId?: number, force = false) {
     let egg = eggId ? await this.eggService.getEggById(eggId) : null;
 
@@ -46,10 +203,10 @@ export class HatcheryService {
       const availableEggs = await this.eggService.getUserEggs(userId, false);
       egg =
         availableEggs.find(
-          (candidate) => this.eggService.getRemainingSeconds(candidate) <= 0,
-        ) ||
-        availableEggs[0] ||
-        null;
+          (candidate) =>
+            candidate.status === 'incubating' &&
+            this.eggService.getRemainingSeconds(candidate) <= 0,
+        ) || null;
     }
 
     if (!egg || egg.ownerId !== userId) {
@@ -59,13 +216,15 @@ export class HatcheryService {
       };
     }
 
-    if (egg.status !== 'unhatched') {
+    if (egg.status !== 'incubating') {
       return {
         success: false,
         message:
           egg.status === 'hatched'
             ? 'Egg already hatched'
-            : 'Egg is being hatched',
+            : egg.status === 'stored'
+              ? 'Place egg into incubator first'
+              : 'Egg is being hatched',
         egg: this.eggService.toEggView(egg),
       };
     }

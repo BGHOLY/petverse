@@ -25,6 +25,7 @@ export class PanelManager extends Component {
     showBattle() { MainUI.instance?.showTower(); }
     showTower() { MainUI.instance?.showTower(); }
     showRanking() { MainUI.instance?.showRanking(); }
+    showSettings() { MainUI.instance?.showSettings(); }
 }
 
 export default PanelManager;

@@ -25,7 +25,7 @@ export interface ShopSeedConfig {
   quantity: number;
 }
 
-export const ITEM_CONFIG_VERSION = '2.2.0';
+export const ITEM_CONFIG_VERSION = '2.4.0';
 
 export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
   {
@@ -211,6 +211,34 @@ export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
     version: ITEM_CONFIG_VERSION,
   },
   {
+    itemCode: 'hatch_sandglass_small',
+    name: '初级孵化沙漏',
+    description: '在孵化装置中使用，立即减少10分钟孵化时间。',
+    type: 'hatch_accelerator',
+    rarity: 2,
+    maxStack: 999,
+    usable: false,
+    effect: 'hatch_acceleration',
+    effectValue: 600,
+    effectData: { seconds: 600 },
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
+  {
+    itemCode: 'hatch_sandglass_large',
+    name: '高级孵化沙漏',
+    description: '在孵化装置中使用，立即减少1小时孵化时间。',
+    type: 'hatch_accelerator',
+    rarity: 4,
+    maxStack: 999,
+    usable: false,
+    effect: 'hatch_acceleration',
+    effectValue: 3600,
+    effectData: { seconds: 3600 },
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
+  {
     itemCode: 'season_token',
     name: '赛季徽章',
     description: '赛季结算与赛季商店使用的纪念货币。',
@@ -274,6 +302,8 @@ export const SHOP_ITEM_CONFIGS: ShopSeedConfig[] = [
   { itemCode: 'skill_lock', currencyType: 'gold', price: 120, quantity: 1 },
   { itemCode: 'mutation_essence', currencyType: 'diamond', price: 25, quantity: 1 },
   { itemCode: 'pet_capacity_ticket', currencyType: 'diamond', price: 50, quantity: 1 },
+  { itemCode: 'hatch_sandglass_small', currencyType: 'gold', price: 200, quantity: 1 },
+  { itemCode: 'hatch_sandglass_large', currencyType: 'diamond', price: 12, quantity: 1 },
   ...lowBooks.map((item) => ({
     itemCode: item.itemCode,
     currencyType: 'gold' as const,

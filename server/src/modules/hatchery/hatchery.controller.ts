@@ -17,6 +17,24 @@ export class HatcheryController {
     return this.hatcheryService.getEggDetail(DEFAULT_USER_ID, Number(id));
   }
 
+  @Post('start')
+  async start(@Body() body: any) {
+    return this.hatcheryService.startIncubation(
+      DEFAULT_USER_ID,
+      Number(body?.eggId || 0),
+    );
+  }
+
+  @Post('accelerate')
+  async accelerate(@Body() body: any) {
+    return this.hatcheryService.accelerate(
+      DEFAULT_USER_ID,
+      Number(body?.eggId || 0),
+      String(body?.itemCode || ''),
+      Number(body?.quantity || 1),
+    );
+  }
+
   @Post('hatch')
   async hatch(@Body() body: any) {
     return this.hatcheryService.hatch(

@@ -10,6 +10,7 @@ import {
     UITransform,
     Vec3,
 } from 'cc';
+import CuteFeedback from './CuteFeedback';
 
 export const DESIGN_WIDTH = 720;
 export const DESIGN_HEIGHT = 1280;
@@ -219,6 +220,8 @@ export function button(
         selected?: boolean;
         disabled?: boolean;
         icon?: string;
+        iconPath?: string;
+        iconSize?: number;
         subtitle?: string;
         border?: Color;
     } = {},
@@ -252,23 +255,48 @@ export function button(
         options.selected ? 4 : 2,
     );
 
-    if (options.icon) {
+    if (options.iconPath) {
+        const iconSize = Math.min(options.iconSize || height - 12, height - 8, 64);
+        image(face, 'IconImage', options.iconPath, -width / 2 + iconSize / 2 + 8, 0, iconSize, iconSize, fill);
+        const textLeft = -width / 2 + iconSize + 18;
+        const textWidth = Math.max(40, width - iconSize - 30);
+        text(face, 'Title', title, textLeft, options.subtitle ? 9 : 0, textWidth, options.subtitle ? 26 : height - 10, options.fontSize || 16, options.textColor || CuteTheme.caramel, 'left', true);
+        if (options.subtitle) {
+            text(face, 'Subtitle', options.subtitle, textLeft, -15, textWidth, 22, 11, options.textColor || CuteTheme.muted, 'left', false);
+        }
+    } else if (options.icon) {
         text(face, 'Icon', options.icon, 0, options.subtitle ? 16 : 8, width - 12, height * 0.55, Math.min(34, height * 0.36), CuteTheme.caramel, 'center', true);
         text(face, 'Title', title, 0, options.subtitle ? -18 : -height * 0.28, width - 12, 28, options.fontSize || 17, options.textColor || CuteTheme.caramel, 'center', true);
+        if (options.subtitle) {
+            text(face, 'Subtitle', options.subtitle, 0, -height * 0.28, width - 16, 24, 12, CuteTheme.muted, 'center', false);
+        }
     } else {
         text(face, 'Title', title, 0, options.subtitle ? 10 : 0, width - 16, options.subtitle ? height * 0.55 : height - 8, options.fontSize || 18, options.textColor || CuteTheme.caramel, 'center', true);
-    }
-
-    if (options.subtitle) {
-        text(face, 'Subtitle', options.subtitle, 0, -height * 0.28, width - 16, 24, 12, CuteTheme.muted, 'center', false);
+        if (options.subtitle) {
+            text(face, 'Subtitle', options.subtitle, 0, -height * 0.28, width - 16, 24, 12, CuteTheme.muted, 'center', false);
+        }
     }
 
     const comp = node.getComponent(Button) || node.addComponent(Button);
+
+    // Do not call node.off(TOUCH_START / TOUCH_END / TOUCH_CANCEL) here.
+    // Button registers its own touch listeners on the same node; removing all
+    // listeners also removes Button's internal click dispatcher and makes every
+    // button appear unresponsive in Cocos preview. Use the built-in SCALE
+    // transition for press feedback instead.
     comp.transition = Button.Transition.SCALE;
     comp.zoomScale = 0.94;
     comp.interactable = !disabled;
+
+    // Re-rendering reuses the node, so replace only our public click callback.
+    // The Button component's internal touch listeners remain untouched.
     node.off(Button.EventType.CLICK);
-    if (!disabled) node.on(Button.EventType.CLICK, onClick);
+    if (!disabled) {
+        node.on(Button.EventType.CLICK, () => {
+            CuteFeedback.playClick();
+            onClick();
+        });
+    }
     return node;
 }
 

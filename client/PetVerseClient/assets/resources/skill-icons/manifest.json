@@ -1,0 +1,352 @@
+[
+  {
+    "code": "LOW_PHYSICAL_COMBO",
+    "name": "连击",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PHYSICAL_COMBO",
+    "name": "高级连击",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_PHYSICAL_CRIT",
+    "name": "必杀",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PHYSICAL_CRIT",
+    "name": "高级必杀",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_PHYSICAL_POWER",
+    "name": "强力",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PHYSICAL_POWER",
+    "name": "高级强力",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_AMBUSH",
+    "name": "偷袭",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_AMBUSH",
+    "name": "高级偷袭",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_PURSUIT",
+    "name": "追击",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PURSUIT",
+    "name": "高级追击",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_COMBO",
+    "name": "法术连击",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_COMBO",
+    "name": "高级法术连击",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_CRIT",
+    "name": "法术暴击",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_CRIT",
+    "name": "高级法术暴击",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_VARIANCE",
+    "name": "法术波动",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_VARIANCE",
+    "name": "高级法术波动",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_POWER",
+    "name": "灵能",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_POWER",
+    "name": "高级灵能",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_PIERCE",
+    "name": "法术穿透",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_PIERCE",
+    "name": "高级法术穿透",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_PHYSICAL_GUARD",
+    "name": "防御",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PHYSICAL_GUARD",
+    "name": "高级防御",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAGIC_GUARD",
+    "name": "固法",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAGIC_GUARD",
+    "name": "高级固法",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_PARRY",
+    "name": "招架",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_PARRY",
+    "name": "高级招架",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_REFLECT",
+    "name": "反震",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_REFLECT",
+    "name": "高级反震",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_OPENING_SHIELD",
+    "name": "护盾",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_OPENING_SHIELD",
+    "name": "高级护盾",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_MAX_HP",
+    "name": "强壮",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_MAX_HP",
+    "name": "高级强壮",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_REGEN",
+    "name": "再生",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_REGEN",
+    "name": "高级再生",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_LIFESTEAL",
+    "name": "吸血",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_LIFESTEAL",
+    "name": "高级吸血",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_DEATH_SAVE",
+    "name": "神佑",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_DEATH_SAVE",
+    "name": "高级神佑",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_LAST_STAND",
+    "name": "不屈",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_LAST_STAND",
+    "name": "高级不屈",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_SPEED_UP",
+    "name": "敏捷",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_SPEED_UP",
+    "name": "高级敏捷",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_SLOW_TANK",
+    "name": "迟缓",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_SLOW_TANK",
+    "name": "高级迟缓",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_ACCURACY",
+    "name": "精准",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_ACCURACY",
+    "name": "高级精准",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_CONTROL_RESIST",
+    "name": "抗控",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_CONTROL_RESIST",
+    "name": "高级抗控",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_DISPEL",
+    "name": "驱散",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_DISPEL",
+    "name": "高级驱散",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_HEALING_POWER",
+    "name": "治愈",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_HEALING_POWER",
+    "name": "高级治愈",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_ENERGY_GAIN",
+    "name": "回能",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_ENERGY_GAIN",
+    "name": "高级回能",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_CLEANSE",
+    "name": "净化",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_CLEANSE",
+    "name": "高级净化",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_GUARD_ALLY",
+    "name": "援护",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_GUARD_ALLY",
+    "name": "高级援护",
+    "tier": "high"
+  },
+  {
+    "code": "LOW_HEALING_ECHO",
+    "name": "复苏",
+    "tier": "low"
+  },
+  {
+    "code": "HIGH_HEALING_ECHO",
+    "name": "高级复苏",
+    "tier": "high"
+  },
+  {
+    "code": "SPECIAL_PET001",
+    "name": "焚心尾焰",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET002",
+    "name": "玄甲回响",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET003",
+    "name": "时跃残影",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET004",
+    "name": "月相祈愿",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET005",
+    "name": "雷霆蓄势",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET006",
+    "name": "潮汐逆流",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET007",
+    "name": "暗影狩猎",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET008",
+    "name": "生命共鸣",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET009",
+    "name": "星界共鸣",
+    "tier": "special"
+  },
+  {
+    "code": "SPECIAL_PET010",
+    "name": "霜封预言",
+    "tier": "special"
+  }
+]

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 
 import { OffspringBlueprint } from '../breeding/breeding.service';
 import { calculateGeneScore, normalizeGeneCode } from '../pet/utils/gene.util';
@@ -56,7 +56,6 @@ export class EggService {
       data.hatchDurationSeconds === undefined
         ? this.getDefaultHatchDurationSeconds(rarity)
         : Math.max(0, Math.floor(Number(data.hatchDurationSeconds || 0)));
-    const hatchReadyAt = new Date(Date.now() + hatchDurationSeconds * 1000);
     const aptitudes = data.aptitudes || {
       hp: 1200,
       attack: 1200,
@@ -105,9 +104,9 @@ export class EggService {
       randomSeed: data.randomSeed || data.offspringData?.seed || '',
       configVersion: data.configVersion || data.offspringData?.configVersion || '2.0.0',
       source: data.source,
-      status: 'unhatched',
+      status: 'stored',
       hatchDurationSeconds,
-      hatchReadyAt,
+      hatchReadyAt: null,
       hatchedPetId: 0,
     });
 
@@ -115,15 +114,17 @@ export class EggService {
   }
 
   async getUserEggs(userId: number, includeHatched = true) {
-    return this.eggRepository.find({
-      where: includeHatched
-        ? { ownerId: userId }
-        : { ownerId: userId, status: 'unhatched' },
+    await this.migrateLegacyEggs(userId);
+    const eggs = await this.eggRepository.find({
+      where: { ownerId: userId },
       order: {
         status: 'ASC',
         id: 'ASC',
       },
     });
+    return includeHatched
+      ? eggs
+      : eggs.filter((egg) => egg.status !== 'hatched');
   }
 
   async getUserEggViews(userId: number, includeHatched = true) {
@@ -132,9 +133,7 @@ export class EggService {
   }
 
   async getEggById(id: number) {
-    return this.eggRepository.findOne({
-      where: { id },
-    });
+    return this.eggRepository.findOne({ where: { id } });
   }
 
   async getEggViewById(id: number) {
@@ -142,12 +141,57 @@ export class EggService {
     return egg ? this.toEggView(egg) : null;
   }
 
+  async getActiveEgg(userId: number) {
+    return this.eggRepository.findOne({
+      where: {
+        ownerId: userId,
+        status: In(['incubating', 'hatching']),
+      },
+      order: { id: 'ASC' },
+    });
+  }
+
+  async startIncubation(eggId: number, ownerId: number) {
+    const active = await this.getActiveEgg(ownerId);
+    if (active) return null;
+
+    const egg = await this.eggRepository.findOne({
+      where: { id: eggId, ownerId, status: 'stored' },
+    });
+    if (!egg) return null;
+
+    egg.status = 'incubating';
+    egg.hatchReadyAt = new Date(
+      Date.now() + Math.max(0, Number(egg.hatchDurationSeconds || 0)) * 1000,
+    );
+    return this.eggRepository.save(egg);
+  }
+
+  async accelerateIncubation(
+    eggId: number,
+    ownerId: number,
+    seconds: number,
+  ) {
+    const egg = await this.eggRepository.findOne({
+      where: { id: eggId, ownerId, status: 'incubating' },
+    });
+    if (!egg) return null;
+
+    const currentReadyAt = egg.hatchReadyAt
+      ? new Date(egg.hatchReadyAt).getTime()
+      : Date.now();
+    egg.hatchReadyAt = new Date(
+      Math.max(Date.now(), currentReadyAt - Math.max(0, seconds) * 1000),
+    );
+    return this.eggRepository.save(egg);
+  }
+
   async tryMarkHatching(eggId: number, ownerId: number) {
     const result = await this.eggRepository.update(
       {
         id: eggId,
         ownerId,
-        status: 'unhatched',
+        status: 'incubating',
       },
       {
         status: 'hatching',
@@ -165,7 +209,7 @@ export class EggService {
         status: 'hatching',
       },
       {
-        status: 'unhatched',
+        status: 'incubating',
       },
     );
 
@@ -195,10 +239,20 @@ export class EggService {
 
   toEggView(egg: Egg) {
     const remainingSeconds = this.getRemainingSeconds(egg);
+    const incubating = egg.status === 'incubating' || egg.status === 'hatching';
 
     return {
       ...egg,
-      canHatch: egg.status === 'unhatched' && remainingSeconds <= 0,
+      deviceState: egg.status === 'stored'
+        ? 'warehouse'
+        : incubating
+          ? remainingSeconds <= 0
+            ? 'ready'
+            : 'incubating'
+          : egg.status,
+      canStart: egg.status === 'stored',
+      canAccelerate: egg.status === 'incubating' && remainingSeconds > 0,
+      canHatch: egg.status === 'incubating' && remainingSeconds <= 0,
       remainingSeconds,
       aptitudes: {
         hp: egg.hpAptitude,
@@ -211,11 +265,21 @@ export class EggService {
   }
 
   getRemainingSeconds(egg: Egg) {
+    if (egg.status === 'stored') {
+      return Math.max(0, Number(egg.hatchDurationSeconds || 0));
+    }
     if (!egg.hatchReadyAt) return 0;
 
     return Math.max(
       0,
       Math.ceil((new Date(egg.hatchReadyAt).getTime() - Date.now()) / 1000),
+    );
+  }
+
+  private async migrateLegacyEggs(userId: number) {
+    await this.eggRepository.update(
+      { ownerId: userId, status: 'unhatched' },
+      { status: 'stored', hatchReadyAt: null },
     );
   }
 
