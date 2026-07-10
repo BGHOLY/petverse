@@ -29,6 +29,39 @@ export class Egg {
   @Column({ default: '' })
   species: string;
 
+  @Column({ default: 'PET004' })
+  speciesCode: string;
+
+  @Column({ default: false })
+  isMutant: boolean;
+
+  @Column({ default: 3 })
+  skillSlotCount: number;
+
+  @Column({ default: 1200 })
+  hpAptitude: number;
+
+  @Column({ default: 1200 })
+  attackAptitude: number;
+
+  @Column({ default: 1200 })
+  defenseAptitude: number;
+
+  @Column({ default: 1200 })
+  magicAptitude: number;
+
+  @Column({ default: 1200 })
+  speedAptitude: number;
+
+  @Column({ type: 'float', default: 1.1 })
+  growth: number;
+
+  @Column({ default: 1 })
+  generation: number;
+
+  @Column({ default: 0 })
+  specialSkillCount: number;
+
   @Column({ default: 'AAAA' })
   geneCode: string;
 
@@ -52,6 +85,15 @@ export class Egg {
 
   @Column({ type: 'simple-json', nullable: true })
   parentSnapshot: any;
+
+  @Column({ type: 'simple-json', nullable: true })
+  offspringData: any;
+
+  @Column({ default: '' })
+  randomSeed: string;
+
+  @Column({ default: '2.0.0' })
+  configVersion: string;
 
   @Column({ default: 'unhatched' })
   status: string;

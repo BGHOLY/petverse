@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { OffspringBlueprint } from '../breeding/breeding.service';
 import { calculateGeneScore, normalizeGeneCode } from '../pet/utils/gene.util';
 import { Egg } from './egg.entity';
 
-interface CreateEggData {
+export interface CreateEggData {
   ownerId: number;
   parentAId?: number;
   parentBId?: number;
@@ -13,6 +14,19 @@ interface CreateEggData {
   source: string;
   quality?: number;
   species?: string;
+  speciesCode?: string;
+  isMutant?: boolean;
+  skillSlotCount?: number;
+  aptitudes?: {
+    hp: number;
+    attack: number;
+    defense: number;
+    magic: number;
+    speed: number;
+  };
+  growth?: number;
+  generation?: number;
+  specialSkillCount?: number;
   geneCode?: string;
   geneScore?: number;
   bodyType?: string;
@@ -21,6 +35,9 @@ interface CreateEggData {
   inheritedSkills?: any[];
   mutationData?: any;
   parentSnapshot?: any;
+  offspringData?: Partial<OffspringBlueprint>;
+  randomSeed?: string;
+  configVersion?: string;
   hatchDurationSeconds?: number;
 }
 
@@ -39,6 +56,13 @@ export class EggService {
         ? this.getDefaultHatchDurationSeconds(rarity)
         : Math.max(0, Math.floor(Number(data.hatchDurationSeconds || 0)));
     const hatchReadyAt = new Date(Date.now() + hatchDurationSeconds * 1000);
+    const aptitudes = data.aptitudes || {
+      hp: 1200,
+      attack: 1200,
+      defense: 1200,
+      magic: 1200,
+      speed: 1200,
+    };
 
     const egg = this.eggRepository.create({
       ownerId: data.ownerId,
@@ -47,18 +71,38 @@ export class EggService {
       rarityPotential: rarity,
       quality: this.clampQuality(data.quality ?? 100),
       species: data.species || '',
+      speciesCode: data.speciesCode || 'PET004',
+      isMutant: Boolean(data.isMutant),
+      skillSlotCount: this.clampSkillSlotCount(data.skillSlotCount || 3),
+      hpAptitude: Number(aptitudes.hp || 1200),
+      attackAptitude: Number(aptitudes.attack || 1200),
+      defenseAptitude: Number(aptitudes.defense || 1200),
+      magicAptitude: Number(aptitudes.magic || 1200),
+      speedAptitude: Number(aptitudes.speed || 1200),
+      growth: Number(data.growth || 1.1),
+      generation: Math.max(1, Number(data.generation || 1)),
+      specialSkillCount: Math.max(0, Number(data.specialSkillCount || 0)),
       geneCode,
       geneScore: Number(data.geneScore || calculateGeneScore(geneCode)),
       bodyType: data.bodyType || 'normal',
       color: data.color || 'white',
       pattern: data.pattern || 'none',
-      inheritedSkills: Array.isArray(data.inheritedSkills) ? data.inheritedSkills : [],
+      inheritedSkills: Array.isArray(data.inheritedSkills)
+        ? data.inheritedSkills
+        : [],
       mutationData: data.mutationData || {
+        naturalMutation: false,
+        mutationRate: 0,
         geneMutationCount: 0,
         geneMutationLoci: [],
         mutatedTraits: [],
+        inheritedSpecialSkillCodes: [],
+        rejectedSpecialSkillCodes: [],
       },
       parentSnapshot: data.parentSnapshot || null,
+      offspringData: data.offspringData || null,
+      randomSeed: data.randomSeed || data.offspringData?.seed || '',
+      configVersion: data.configVersion || data.offspringData?.configVersion || '2.0.0',
       source: data.source,
       status: 'unhatched',
       hatchDurationSeconds,
@@ -98,7 +142,6 @@ export class EggService {
   }
 
   async tryMarkHatching(eggId: number, ownerId: number) {
-    // 使用条件更新抢占孵化权，避免两个并发请求同时生成两只后代。
     const result = await this.eggRepository.update(
       {
         id: eggId,
@@ -110,10 +153,7 @@ export class EggService {
       },
     );
 
-    if (Number(result.affected || 0) !== 1) {
-      return null;
-    }
-
+    if (Number(result.affected || 0) !== 1) return null;
     return this.getEggById(eggId);
   }
 
@@ -148,10 +188,7 @@ export class EggService {
     }
 
     const updated = await this.getEggById(egg.id);
-    if (!updated) {
-      throw new Error('Hatched egg record not found');
-    }
-
+    if (!updated) throw new Error('Hatched egg record not found');
     return updated;
   }
 
@@ -162,13 +199,18 @@ export class EggService {
       ...egg,
       canHatch: egg.status === 'unhatched' && remainingSeconds <= 0,
       remainingSeconds,
+      aptitudes: {
+        hp: egg.hpAptitude,
+        attack: egg.attackAptitude,
+        defense: egg.defenseAptitude,
+        magic: egg.magicAptitude,
+        speed: egg.speedAptitude,
+      },
     };
   }
 
   getRemainingSeconds(egg: Egg) {
-    if (!egg.hatchReadyAt) {
-      return 0;
-    }
+    if (!egg.hatchReadyAt) return 0;
 
     return Math.max(
       0,
@@ -177,7 +219,6 @@ export class EggService {
   }
 
   private getDefaultHatchDurationSeconds(rarity: number) {
-    // Beta 阶段使用短时长便于联调，正式运营时只需调整此表。
     const durations: Record<number, number> = {
       1: 30,
       2: 45,
@@ -196,5 +237,9 @@ export class EggService {
 
   private clampQuality(quality: number) {
     return Math.max(80, Math.min(120, Math.round(Number(quality || 100))));
+  }
+
+  private clampSkillSlotCount(value: number) {
+    return Math.max(2, Math.min(10, Math.floor(Number(value || 3))));
   }
 }

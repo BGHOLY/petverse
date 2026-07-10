@@ -20,13 +20,18 @@ export class Pet {
   @Column()
   species: string;
 
+  @Column({ default: 'PET004' })
+  speciesCode: string;
+
+  @Column({ default: false })
+  isMutant: boolean;
+
   @Column({ default: 1 })
   rarity: number;
 
   @Column({ default: '普通 Common' })
   rarityName: string;
 
-  // 资质百分比。100 表示标准成长，不重复叠加稀有度和等级。
   @Column({ default: 100 })
   quality: number;
 
@@ -39,6 +44,7 @@ export class Pet {
   @Column({ default: 100 })
   nextExp: number;
 
+  // 兼容旧战斗与前端字段。新最终属性由资质、成长和等级计算。
   @Column({ default: 100 })
   hp: number;
 
@@ -56,6 +62,36 @@ export class Pet {
 
   @Column({ default: 20 })
   intelligence: number;
+
+  @Column({ default: 1200 })
+  hpAptitude: number;
+
+  @Column({ default: 1200 })
+  attackAptitude: number;
+
+  @Column({ default: 1200 })
+  defenseAptitude: number;
+
+  @Column({ default: 1200 })
+  magicAptitude: number;
+
+  @Column({ default: 1200 })
+  speedAptitude: number;
+
+  @Column({ type: 'float', default: 1.1 })
+  growth: number;
+
+  @Column({ default: 1 })
+  generation: number;
+
+  @Column({ default: 0 })
+  specialSkillCount: number;
+
+  @Column({ default: 'created' })
+  sourceType: string;
+
+  @Column({ default: '2.0.0' })
+  configVersion: string;
 
   @Column({ default: 100 })
   hunger: number;
@@ -75,7 +111,6 @@ export class Pet {
   @Column({ default: 12 })
   geneScore: number;
 
-  // 外观基因。保留独立字段，方便 Cocos 直接读取和后续繁殖继承。
   @Column({ default: 'normal' })
   bodyType: string;
 
@@ -100,7 +135,7 @@ export class Pet {
   @Column({ default: 0 })
   marriedPetId: number;
 
-  @Column({ default: 2 })
+  @Column({ default: 3 })
   skillSlotCount: number;
 
   @Column({ type: 'simple-json', nullable: true })
@@ -109,16 +144,10 @@ export class Pet {
   @Column({ default: false })
   isEgg: boolean;
 
-  @Column({
-    type: 'timestamp',
-    nullable: true,
-  })
+  @Column({ type: 'timestamp', nullable: true })
   hatchTime: Date;
 
-  @Column({
-    type: 'timestamp',
-    default: () => 'CURRENT_TIMESTAMP',
-  })
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   lastStatusUpdate: Date;
 
   @CreateDateColumn()

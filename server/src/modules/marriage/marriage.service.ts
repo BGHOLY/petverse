@@ -136,8 +136,17 @@ export class MarriageService {
     };
   }
 
-  async layEgg(userId: number, marriageId?: number, petId?: number) {
-    const marriage = await this.findMarriageForLayEgg(userId, marriageId, petId);
+  async layEgg(
+    userId: number,
+    marriageId?: number,
+    petId?: number,
+    requestedSeed?: string,
+  ) {
+    const marriage = await this.findMarriageForLayEgg(
+      userId,
+      marriageId,
+      petId,
+    );
 
     if (!marriage) {
       return {
@@ -156,8 +165,12 @@ export class MarriageService {
       };
     }
 
-    const petA = await this.petRepository.findOne({ where: { id: marriage.petAId } });
-    const petB = await this.petRepository.findOne({ where: { id: marriage.petBId } });
+    const petA = await this.petRepository.findOne({
+      where: { id: marriage.petAId },
+    });
+    const petB = await this.petRepository.findOne({
+      where: { id: marriage.petBId },
+    });
 
     if (!petA || !petB) {
       return {
@@ -173,7 +186,14 @@ export class MarriageService {
       };
     }
 
-    const blueprint = this.petService.buildOffspringBlueprint(petA, petB);
+    const blueprint = this.petService.buildOffspringBlueprint(
+      petA,
+      petB,
+      undefined,
+      'breed',
+      requestedSeed,
+    );
+
     const egg = await this.eggService.createEgg({
       ownerId: userId,
       parentAId: petA.id,
@@ -181,6 +201,13 @@ export class MarriageService {
       rarityPotential: blueprint.rarity,
       quality: blueprint.quality,
       species: blueprint.species,
+      speciesCode: blueprint.speciesCode,
+      isMutant: blueprint.isMutant,
+      skillSlotCount: blueprint.skillSlotCount,
+      aptitudes: blueprint.aptitudes,
+      growth: blueprint.growth,
+      generation: blueprint.generation,
+      specialSkillCount: blueprint.specialSkillCount,
       geneCode: blueprint.geneCode,
       geneScore: blueprint.geneScore,
       bodyType: blueprint.bodyType,
@@ -188,15 +215,17 @@ export class MarriageService {
       pattern: blueprint.pattern,
       inheritedSkills: blueprint.inheritedSkills,
       mutationData: blueprint.mutationData,
-      parentSnapshot: {
-        parentA: this.toParentSnapshot(petA),
-        parentB: this.toParentSnapshot(petB),
-      },
+      parentSnapshot: blueprint.parentSnapshot,
+      offspringData: blueprint,
+      randomSeed: blueprint.seed,
+      configVersion: blueprint.configVersion,
       source: 'marriage',
     });
 
     marriage.eggCount = Number(marriage.eggCount || 0) + 1;
-    marriage.cooldownEndAt = new Date(Date.now() + this.getMarriageCooldownSeconds() * 1000);
+    marriage.cooldownEndAt = new Date(
+      Date.now() + this.getMarriageCooldownSeconds() * 1000,
+    );
     await this.marriageRepository.save(marriage);
 
     return {
@@ -248,35 +277,18 @@ export class MarriageService {
     });
   }
 
-  private toParentSnapshot(pet: Pet) {
-    return {
-      id: pet.id,
-      ownerId: pet.ownerId,
-      nickname: pet.nickname,
-      species: pet.species,
-      rarity: pet.rarity,
-      quality: pet.quality,
-      geneCode: pet.geneCode,
-      geneScore: pet.geneScore,
-      bodyType: pet.bodyType,
-      color: pet.color,
-      pattern: pet.pattern,
-    };
-  }
-
   private getCooldownRemainingSeconds(marriage: Marriage) {
-    if (!marriage.cooldownEndAt) {
-      return 0;
-    }
+    if (!marriage.cooldownEndAt) return 0;
 
     return Math.max(
       0,
-      Math.ceil((new Date(marriage.cooldownEndAt).getTime() - Date.now()) / 1000),
+      Math.ceil(
+        (new Date(marriage.cooldownEndAt).getTime() - Date.now()) / 1000,
+      ),
     );
   }
 
   private getMarriageCooldownSeconds() {
-    // Beta 阶段为 60 秒，正式运营时再替换为策划配置。
     return 60;
   }
 }

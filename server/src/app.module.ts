@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-
 import { databaseConfig } from './config/database.config';
 
 import { PetModule } from './modules/pet/pet.module';
@@ -26,6 +25,7 @@ import { SkillModule } from './modules/skill/skill.module';
 import { EggModule } from './modules/egg/egg.module';
 import { MarriageModule } from './modules/marriage/marriage.module';
 import { HatcheryModule } from './modules/hatchery/hatchery.module';
+import { FusionModule } from './modules/fusion/fusion.module';
 import { DevModule } from './modules/dev/dev.module';
 
 @Module({
@@ -55,6 +55,7 @@ import { DevModule } from './modules/dev/dev.module';
     EggModule,
     MarriageModule,
     HatcheryModule,
+    FusionModule,
     DevModule,
   ],
   controllers: [AppController],

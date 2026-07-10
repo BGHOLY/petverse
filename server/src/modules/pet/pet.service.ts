@@ -3,40 +3,40 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import {
+  BreedingMode,
+} from '../breeding/config/breeding.config';
+import {
+  OffspringBlueprint,
+  PetAptitudes,
+  BreedingService,
+} from '../breeding/breeding.service';
+import {
   DEFAULT_USER_ID,
   RARITY_NAMES,
-  SPECIES_POOL,
-  STAT_RANGES,
 } from '../game-data';
+import { isSpecialSkill } from '../skill/config/skill.config';
 import { SkillService } from '../skill/skill.service';
+import {
+  findPetSpeciesConfig,
+  getAptitudeRange,
+  getGrowthRange,
+  PET_CONFIG_VERSION,
+  PetSpeciesConfig,
+} from './config/pet-species.config';
 import { Pet } from './pet.entity';
 import {
   calculateGeneScore,
   generateGeneCode,
-  inheritGeneCode,
   normalizeGeneCode,
 } from './utils/gene.util';
 
-export interface OffspringBlueprint {
-  rarity: number;
-  quality: number;
-  species: string;
-  geneCode: string;
-  geneScore: number;
-  bodyType: string;
-  color: string;
-  pattern: string;
-  inheritedSkills: any[];
-  mutationData: {
-    geneMutationCount: number;
-    geneMutationLoci: number[];
-    mutatedTraits: string[];
-  };
-}
+export { OffspringBlueprint };
 
 interface CreatePetData {
   nickname?: string;
   species?: string;
+  speciesCode?: string;
+  isMutant?: boolean;
   rarity?: number;
   quality?: number;
   geneCode?: string;
@@ -46,6 +46,12 @@ interface CreatePetData {
   fatherId?: number;
   motherId?: number;
   skills?: any[];
+  skillSlotCount?: number;
+  aptitudes?: Partial<PetAptitudes>;
+  growth?: number;
+  generation?: number;
+  sourceType?: string;
+  configVersion?: string;
 }
 
 @Injectable()
@@ -55,6 +61,7 @@ export class PetService {
     private readonly petRepository: Repository<Pet>,
 
     private readonly skillService: SkillService,
+    private readonly breedingService: BreedingService,
   ) {}
 
   async getAllPets() {
@@ -74,7 +81,8 @@ export class PetService {
       success: true,
       pets,
       data: pets,
-      currentPet: pets.find((pet) => pet.ownerId === DEFAULT_USER_ID && !pet.isEgg) || null,
+      currentPet:
+        pets.find((pet) => pet.ownerId === DEFAULT_USER_ID && !pet.isEgg) || null,
     };
   }
 
@@ -109,9 +117,7 @@ export class PetService {
       where: { id },
     });
 
-    if (!pet) {
-      return null;
-    }
+    if (!pet) return null;
 
     if (!pet.isEgg) {
       await this.updatePetStatus(pet);
@@ -123,30 +129,99 @@ export class PetService {
 
   async getPetDetail(id: number) {
     const pet = await this.getPetById(id);
+    if (!pet) return null;
 
-    if (!pet) {
-      return null;
-    }
+    const speciesConfig = findPetSpeciesConfig(
+      pet.speciesCode || pet.species,
+    );
 
     return {
       ...pet,
+      speciesConfig: {
+        speciesCode: speciesConfig.speciesCode,
+        name: speciesConfig.name,
+        element: speciesConfig.element,
+        roleTags: speciesConfig.roleTags,
+        mainAptitudes: speciesConfig.mainAptitudes,
+      },
+      aptitudes: this.getPetAptitudes(pet),
       lineage: {
         fatherId: Number(pet.fatherId || 0),
         motherId: Number(pet.motherId || 0),
+        generation: Number(pet.generation || 1),
       },
       finalAttributes: this.calculateFinalAttributes(pet),
     };
   }
 
   calculateFinalAttributes(pet: Pet) {
-    // 当前基础属性已经包含稀有度初始值和升级成长，这里只应用资质。
-    const qualityRate = this.clampQuality(Number(pet.quality || 100)) / 100;
+    const species = findPetSpeciesConfig(pet.speciesCode || pet.species);
+    const level = Math.max(1, Number(pet.level || 1));
+    const growth = Math.max(0.8, Number(pet.growth || 1.1));
+    const aptitudes = this.getPetAptitudes(pet);
+
+    const hasNewAptitudes = Object.values(aptitudes).every((value) => value > 0);
+    if (!hasNewAptitudes) {
+      const qualityRate = this.clampQuality(Number(pet.quality || 100)) / 100;
+      return {
+        hp: Math.max(1, Math.round(Number(pet.hp || 100) * qualityRate)),
+        attack: Math.max(
+          1,
+          Math.round(Number(pet.attack || 20) * qualityRate),
+        ),
+        defense: Math.max(
+          1,
+          Math.round(Number(pet.defense || 20) * qualityRate),
+        ),
+        magic: Math.max(
+          1,
+          Math.round(Number(pet.intelligence || 20) * qualityRate),
+        ),
+        speed: Math.max(
+          1,
+          Math.round(
+            Number(pet.speed || pet.agility || 20) * qualityRate,
+          ),
+        ),
+      };
+    }
 
     return {
-      hp: Math.max(1, Math.round(Number(pet.hp || 100) * qualityRate)),
-      attack: Math.max(1, Math.round(Number(pet.attack || 20) * qualityRate)),
-      defense: Math.max(1, Math.round(Number(pet.defense || 20) * qualityRate)),
-      speed: Math.max(1, Math.round(Number(pet.speed || pet.agility || 20) * qualityRate)),
+      hp: Math.max(
+        1,
+        Math.round(
+          species.baseStats.hp +
+            level * aptitudes.hp * growth * 0.08,
+        ),
+      ),
+      attack: Math.max(
+        1,
+        Math.round(
+          species.baseStats.attack +
+            level * aptitudes.attack * growth * 0.012,
+        ),
+      ),
+      defense: Math.max(
+        1,
+        Math.round(
+          species.baseStats.defense +
+            level * aptitudes.defense * growth * 0.011,
+        ),
+      ),
+      magic: Math.max(
+        1,
+        Math.round(
+          species.baseStats.magic +
+            level * aptitudes.magic * growth * 0.012,
+        ),
+      ),
+      speed: Math.max(
+        1,
+        Math.round(
+          species.baseStats.speed +
+            level * aptitudes.speed * growth * 0.01,
+        ),
+      ),
     };
   }
 
@@ -162,10 +237,7 @@ export class PetService {
     });
 
     const pet = pets[0] || null;
-    if (pet) {
-      await this.ensureBetaFields(pet);
-    }
-
+    if (pet) await this.ensureBetaFields(pet);
     return pet;
   }
 
@@ -174,20 +246,72 @@ export class PetService {
   }
 
   async createPet(userId: number, data: CreatePetData = {}) {
-    const rarity = this.clampRarity(Number(data.rarity || this.randomRarity()));
-    const species = data.species || this.randomSpecies();
-    const geneCode = normalizeGeneCode(data.geneCode || generateGeneCode('AAAA', 'AAAA'));
-    const stats = this.generateStats(rarity);
-    const skillSlotCount = rarity + 1;
-    const skills = await this.resolvePetSkills(rarity, skillSlotCount, data.skills);
+    const speciesConfig = findPetSpeciesConfig(
+      data.speciesCode || data.species,
+    );
+    const rarity = this.clampRarity(
+      Number(data.rarity || this.randomRarity()),
+    );
+    const isMutant = Boolean(data.isMutant);
+    const initial = this.breedingService.generateInitialAptitudes(
+      speciesConfig.speciesCode,
+      isMutant,
+    );
+    const aptitudes: PetAptitudes = {
+      hp: Number(data.aptitudes?.hp || initial.aptitudes.hp),
+      attack: Number(data.aptitudes?.attack || initial.aptitudes.attack),
+      defense: Number(data.aptitudes?.defense || initial.aptitudes.defense),
+      magic: Number(data.aptitudes?.magic || initial.aptitudes.magic),
+      speed: Number(data.aptitudes?.speed || initial.aptitudes.speed),
+    };
+    const growth = this.clampGrowthForSpecies(
+      Number(data.growth || initial.growth),
+      speciesConfig,
+      isMutant,
+    );
+    const geneCode = normalizeGeneCode(
+      data.geneCode || generateGeneCode('AAAA', 'AAAA'),
+    );
+    const skillSlotCount = this.clampSkillSlotCount(
+      Number(data.skillSlotCount || this.randomInt(3, 5)),
+    );
+    const skills = await this.resolvePetSkills(
+      rarity,
+      skillSlotCount,
+      data.skills,
+      speciesConfig.speciesCode,
+      isMutant,
+    );
+    const stats = this.generateLegacyStats(
+      speciesConfig,
+      rarity,
+      aptitudes,
+      growth,
+    );
+
+    const quality =
+      data.quality === undefined
+        ? this.calculateQualityFromProfile(
+            speciesConfig,
+            isMutant,
+            aptitudes,
+            growth,
+          )
+        : this.clampQuality(Number(data.quality));
 
     const pet = this.petRepository.create({
       ownerId: userId,
-      nickname: data.nickname || `${species}-${Date.now().toString().slice(-4)}`,
-      species,
+      nickname:
+        data.nickname ||
+        `${isMutant ? '变异' : ''}${speciesConfig.name}-${Date.now()
+          .toString()
+          .slice(-4)}`,
+      species: speciesConfig.name,
+      speciesCode: speciesConfig.speciesCode,
+      isMutant,
       rarity,
       rarityName: RARITY_NAMES[rarity],
-      quality: this.clampQuality(data.quality ?? 100),
+      quality,
       level: 1,
       exp: 0,
       nextExp: 100,
@@ -196,7 +320,17 @@ export class PetService {
       defense: stats.defense,
       agility: stats.speed,
       speed: stats.speed,
-      intelligence: 10 + rarity * 5,
+      intelligence: stats.magic,
+      hpAptitude: aptitudes.hp,
+      attackAptitude: aptitudes.attack,
+      defenseAptitude: aptitudes.defense,
+      magicAptitude: aptitudes.magic,
+      speedAptitude: aptitudes.speed,
+      growth,
+      generation: Math.max(1, Number(data.generation || 1)),
+      specialSkillCount: skills.filter((skill) => isSpecialSkill(skill)).length,
+      sourceType: data.sourceType || 'created',
+      configVersion: data.configVersion || PET_CONFIG_VERSION,
       hunger: 100,
       happiness: 100,
       cleanliness: 100,
@@ -222,72 +356,24 @@ export class PetService {
   }
 
   buildOffspringBlueprint(
-    parentA?: Pet | null,
-    parentB?: Pet | null,
+    parentA: Pet,
+    parentB: Pet,
     forcedRarity?: number,
+    mode: BreedingMode = 'breed',
+    seed?: string,
   ): OffspringBlueprint {
-    const geneResult = inheritGeneCode(
-      parentA?.geneCode || 'AAAA',
-      parentB?.geneCode || 'AAAA',
+    const blueprint = this.breedingService.buildOffspring(
+      parentA,
+      parentB,
+      mode,
+      seed,
     );
-    const mutatedTraits: string[] = [];
 
-    const speciesResult = this.inheritTrait(
-      parentA?.species,
-      parentB?.species,
-      SPECIES_POOL,
-      this.randomSpecies(),
-      0.06,
-    );
-    if (speciesResult.mutated) mutatedTraits.push('species');
+    if (forcedRarity) {
+      blueprint.rarity = this.clampRarity(forcedRarity);
+    }
 
-    const bodyTypeResult = this.inheritTrait(
-      parentA?.bodyType,
-      parentB?.bodyType,
-      ['normal', 'small', 'large'],
-      'normal',
-      0.05,
-    );
-    if (bodyTypeResult.mutated) mutatedTraits.push('bodyType');
-
-    const colorResult = this.inheritTrait(
-      parentA?.color,
-      parentB?.color,
-      ['white', 'black', 'brown', 'gold', 'gray', 'cream'],
-      'white',
-      0.06,
-    );
-    if (colorResult.mutated) mutatedTraits.push('color');
-
-    const patternResult = this.inheritTrait(
-      parentA?.pattern,
-      parentB?.pattern,
-      ['none', 'stripe', 'spot', 'gradient', 'mask'],
-      'none',
-      0.06,
-    );
-    if (patternResult.mutated) mutatedTraits.push('pattern');
-
-    const rarity = forcedRarity
-      ? this.clampRarity(forcedRarity)
-      : this.rollOffspringRarity(parentA, parentB);
-
-    return {
-      rarity,
-      quality: this.inheritQuality(parentA, parentB, geneResult.mutationCount),
-      species: speciesResult.value,
-      geneCode: geneResult.geneCode,
-      geneScore: calculateGeneScore(geneResult.geneCode),
-      bodyType: bodyTypeResult.value,
-      color: colorResult.value,
-      pattern: patternResult.value,
-      inheritedSkills: this.inheritParentSkills(parentA, parentB, rarity),
-      mutationData: {
-        geneMutationCount: geneResult.mutationCount,
-        geneMutationLoci: geneResult.mutationLoci,
-        mutatedTraits,
-      },
-    };
+    return blueprint;
   }
 
   async createPetFromEgg(
@@ -297,51 +383,155 @@ export class PetService {
     parentB?: Pet | null,
     storedBlueprint?: Partial<OffspringBlueprint>,
   ) {
-    const generated = this.buildOffspringBlueprint(parentA, parentB, rarity);
-    const blueprint: OffspringBlueprint = {
-      ...generated,
-      ...this.cleanStoredBlueprint(storedBlueprint),
-      rarity: this.clampRarity(Number(storedBlueprint?.rarity || rarity || generated.rarity)),
-      quality: this.clampQuality(Number(storedBlueprint?.quality || generated.quality)),
-      geneCode: normalizeGeneCode(storedBlueprint?.geneCode || generated.geneCode),
-      geneScore: calculateGeneScore(storedBlueprint?.geneCode || generated.geneCode),
-      inheritedSkills: Array.isArray(storedBlueprint?.inheritedSkills)
-        ? storedBlueprint.inheritedSkills
-        : generated.inheritedSkills,
-      mutationData: storedBlueprint?.mutationData || generated.mutationData,
-    };
+    let blueprint: OffspringBlueprint;
 
-    return this.createPet(userId, {
-      nickname: `${RARITY_NAMES[blueprint.rarity]} ${blueprint.species}`,
-      species: blueprint.species,
-      rarity: blueprint.rarity,
-      quality: blueprint.quality,
-      geneCode: blueprint.geneCode,
-      bodyType: blueprint.bodyType,
-      color: blueprint.color,
-      pattern: blueprint.pattern,
-      fatherId: parentA?.id || 0,
-      motherId: parentB?.id || 0,
+    if (
+      storedBlueprint?.speciesCode &&
+      storedBlueprint?.aptitudes &&
+      Array.isArray(storedBlueprint?.inheritedSkills)
+    ) {
+      blueprint = this.normalizeStoredBlueprint(
+        storedBlueprint,
+        parentA,
+        parentB,
+        rarity,
+      );
+    } else if (parentA && parentB) {
+      blueprint = this.buildOffspringBlueprint(
+        parentA,
+        parentB,
+        rarity,
+        'breed',
+      );
+    } else {
+      const temporaryA = await this.createUnsavedTemplatePet(
+        storedBlueprint?.speciesCode || storedBlueprint?.species,
+      );
+      const temporaryB = await this.createUnsavedTemplatePet(
+        storedBlueprint?.speciesCode || storedBlueprint?.species,
+      );
+      blueprint = this.buildOffspringBlueprint(
+        temporaryA,
+        temporaryB,
+        rarity,
+        'breed',
+      );
+    }
+
+    return this.createPetFromBlueprint(
+      userId,
+      blueprint,
+      parentA || null,
+      parentB || null,
+      'hatch',
+    );
+  }
+
+  async createPetFromBlueprint(
+    userId: number,
+    blueprint: OffspringBlueprint,
+    parentA?: Pet | null,
+    parentB?: Pet | null,
+    sourceType?: string,
+  ) {
+    const data = this.buildPetCreateDataFromBlueprint(
+      userId,
+      blueprint,
+      parentA,
+      parentB,
+      sourceType,
+    );
+    return this.petRepository.save(this.petRepository.create(data));
+  }
+
+  buildPetCreateDataFromBlueprint(
+    userId: number,
+    blueprint: OffspringBlueprint,
+    parentA?: Pet | null,
+    parentB?: Pet | null,
+    sourceType?: string,
+  ): Partial<Pet> {
+    const species = findPetSpeciesConfig(
+      blueprint.speciesCode || blueprint.species,
+    );
+    const aptitudes = blueprint.aptitudes;
+    const stats = this.generateLegacyStats(
+      species,
+      blueprint.rarity,
+      aptitudes,
+      blueprint.growth,
+    );
+
+    return {
+      ownerId: userId,
+      nickname: `${blueprint.isMutant ? '变异' : ''}${
+        RARITY_NAMES[this.clampRarity(blueprint.rarity)]
+      } ${species.name}`,
+      species: species.name,
+      speciesCode: species.speciesCode,
+      isMutant: Boolean(blueprint.isMutant),
+      rarity: this.clampRarity(blueprint.rarity),
+      rarityName: RARITY_NAMES[this.clampRarity(blueprint.rarity)],
+      quality: this.clampQuality(blueprint.quality),
+      level: 1,
+      exp: 0,
+      nextExp: 100,
+      hp: stats.hp,
+      attack: stats.attack,
+      defense: stats.defense,
+      agility: stats.speed,
+      speed: stats.speed,
+      intelligence: stats.magic,
+      hpAptitude: Number(aptitudes.hp),
+      attackAptitude: Number(aptitudes.attack),
+      defenseAptitude: Number(aptitudes.defense),
+      magicAptitude: Number(aptitudes.magic),
+      speedAptitude: Number(aptitudes.speed),
+      growth: Number(blueprint.growth),
+      generation: Number(blueprint.generation || 1),
+      specialSkillCount: Number(blueprint.specialSkillCount || 0),
+      sourceType: sourceType || blueprint.mode,
+      configVersion: blueprint.configVersion || PET_CONFIG_VERSION,
+      hunger: 100,
+      happiness: 100,
+      cleanliness: 100,
+      stamina: 100,
+      geneCode: normalizeGeneCode(blueprint.geneCode || 'AAAA'),
+      geneScore: calculateGeneScore(blueprint.geneCode || 'AAAA'),
+      bodyType: blueprint.bodyType || 'normal',
+      color: blueprint.color || 'white',
+      pattern: blueprint.pattern || 'none',
+      fatherId: Number(parentA?.id || 0),
+      motherId: Number(parentB?.id || 0),
+      married: false,
+      partnerId: 0,
+      marriedPetId: 0,
+      skillSlotCount: this.clampSkillSlotCount(
+        blueprint.skillSlotCount,
+      ),
       skills: blueprint.inheritedSkills,
-    });
+      isEgg: false,
+      hatchTime: new Date(),
+      lastStatusUpdate: new Date(),
+    };
   }
 
   async seedDefaultPet(userId = DEFAULT_USER_ID) {
     const existing = await this.getMainPet(userId);
-
-    if (existing) {
-      return existing;
-    }
+    if (existing) return existing;
 
     return this.createPet(userId, {
       nickname: 'Mochi',
-      species: 'Cat',
+      speciesCode: 'PET004',
       rarity: 2,
+      sourceType: 'starter',
     });
   }
 
   async feedPet(userId: number, petId?: number) {
-    const pet = petId ? await this.getPetById(petId) : await this.getMainPet(userId);
+    const pet = petId
+      ? await this.getPetById(petId)
+      : await this.getMainPet(userId);
 
     if (!pet || pet.ownerId !== userId || pet.isEgg) {
       return {
@@ -352,7 +542,10 @@ export class PetService {
 
     pet.hunger = Math.min(100, Number(pet.hunger || 0) + 20);
     pet.happiness = Math.min(100, Number(pet.happiness || 0) + 10);
-    pet.cleanliness = Math.min(100, Number(pet.cleanliness || 0) + 5);
+    pet.cleanliness = Math.min(
+      100,
+      Number(pet.cleanliness || 0) + 5,
+    );
 
     return {
       success: true,
@@ -361,8 +554,14 @@ export class PetService {
     };
   }
 
-  async levelUpPet(userId: number, petId?: number, exp = 100) {
-    const pet = petId ? await this.getPetById(petId) : await this.getMainPet(userId);
+  async levelUpPet(
+    userId: number,
+    petId?: number,
+    exp = 100,
+  ) {
+    const pet = petId
+      ? await this.getPetById(petId)
+      : await this.getMainPet(userId);
 
     if (!pet || pet.ownerId !== userId || pet.isEgg) {
       return {
@@ -379,17 +578,29 @@ export class PetService {
   }
 
   async addExp(pet: Pet, exp: number) {
-    pet.exp = Number(pet.exp || 0) + Math.max(0, Number(exp || 0));
-    pet.nextExp = Number(pet.nextExp || pet.level * 100 || 100);
+    pet.exp =
+      Number(pet.exp || 0) + Math.max(0, Number(exp || 0));
+    pet.nextExp = Number(
+      pet.nextExp || pet.level * 100 || 100,
+    );
 
     while (pet.exp >= pet.nextExp) {
       pet.exp -= pet.nextExp;
       pet.level = Number(pet.level || 1) + 1;
-      pet.hp = Math.round(Number(pet.hp || 100) * 1.1);
-      pet.attack = Math.round(Number(pet.attack || 20) * 1.08);
-      pet.defense = Math.round(Number(pet.defense || 20) * 1.08);
-      pet.speed = Math.round(Number(pet.speed || pet.agility || 20) * 1.05);
+      pet.hp = Math.round(Number(pet.hp || 100) * 1.06);
+      pet.attack = Math.round(
+        Number(pet.attack || 20) * 1.04,
+      );
+      pet.defense = Math.round(
+        Number(pet.defense || 20) * 1.04,
+      );
+      pet.speed = Math.round(
+        Number(pet.speed || pet.agility || 20) * 1.03,
+      );
       pet.agility = pet.speed;
+      pet.intelligence = Math.round(
+        Number(pet.intelligence || 20) * 1.04,
+      );
       pet.nextExp = pet.level * 100;
     }
 
@@ -404,17 +615,29 @@ export class PetService {
       return this.petRepository.save(pet);
     }
 
-    const diff = now.getTime() - new Date(pet.lastStatusUpdate).getTime();
+    const diff =
+      now.getTime() -
+      new Date(pet.lastStatusUpdate).getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
 
-    if (hours <= 0) {
-      return pet;
-    }
+    if (hours <= 0) return pet;
 
-    pet.hunger = Math.max(0, Number(pet.hunger || 0) - hours);
-    pet.happiness = Math.max(0, Number(pet.happiness || 0) - hours);
-    pet.cleanliness = Math.max(0, Number(pet.cleanliness || 0) - hours);
-    pet.stamina = Math.max(0, Number(pet.stamina || 0) - hours);
+    pet.hunger = Math.max(
+      0,
+      Number(pet.hunger || 0) - hours,
+    );
+    pet.happiness = Math.max(
+      0,
+      Number(pet.happiness || 0) - hours,
+    );
+    pet.cleanliness = Math.max(
+      0,
+      Number(pet.cleanliness || 0) - hours,
+    );
+    pet.stamina = Math.max(
+      0,
+      Number(pet.stamina || 0) - hours,
+    );
     pet.lastStatusUpdate = now;
 
     return this.petRepository.save(pet);
@@ -423,8 +646,9 @@ export class PetService {
   async hatchStarterEgg(userId: number) {
     const pet = await this.createPet(userId, {
       nickname: 'Starter Buddy',
-      species: this.randomSpecies(),
+      speciesCode: 'PET004',
       rarity: 1,
+      sourceType: 'starter-egg',
     });
     const pets = await this.getUserPets(userId);
 
@@ -437,26 +661,152 @@ export class PetService {
     };
   }
 
-  private cleanStoredBlueprint(stored?: Partial<OffspringBlueprint>) {
-    if (!stored) {
-      return {};
-    }
+  private normalizeStoredBlueprint(
+    stored: Partial<OffspringBlueprint>,
+    parentA: Pet | null | undefined,
+    parentB: Pet | null | undefined,
+    rarity: number,
+  ): OffspringBlueprint {
+    const species = findPetSpeciesConfig(
+      stored.speciesCode || stored.species,
+    );
+    const initial = this.breedingService.generateInitialAptitudes(
+      species.speciesCode,
+      Boolean(stored.isMutant),
+      stored.seed,
+    );
 
-    const cleaned: Partial<OffspringBlueprint> = {};
-    if (stored.species) cleaned.species = stored.species;
-    if (stored.bodyType) cleaned.bodyType = stored.bodyType;
-    if (stored.color) cleaned.color = stored.color;
-    if (stored.pattern) cleaned.pattern = stored.pattern;
-    if (stored.geneCode) cleaned.geneCode = stored.geneCode;
-    if (stored.geneScore) cleaned.geneScore = stored.geneScore;
-    if (stored.mutationData) cleaned.mutationData = stored.mutationData;
-    return cleaned;
+    return {
+      mode: stored.mode || 'breed',
+      seed: stored.seed || initial.seed,
+      configVersion:
+        stored.configVersion || PET_CONFIG_VERSION,
+      speciesCode: species.speciesCode,
+      species: species.name,
+      isMutant: Boolean(stored.isMutant),
+      rarity: this.clampRarity(
+        Number(stored.rarity || rarity || 1),
+      ),
+      quality: this.clampQuality(
+        Number(stored.quality || 100),
+      ),
+      skillSlotCount: this.clampSkillSlotCount(
+        Number(
+          stored.skillSlotCount ||
+            stored.inheritedSkills?.length ||
+            3,
+        ),
+      ),
+      aptitudes: {
+        hp: Number(stored.aptitudes?.hp || initial.aptitudes.hp),
+        attack: Number(
+          stored.aptitudes?.attack || initial.aptitudes.attack,
+        ),
+        defense: Number(
+          stored.aptitudes?.defense ||
+            initial.aptitudes.defense,
+        ),
+        magic: Number(
+          stored.aptitudes?.magic || initial.aptitudes.magic,
+        ),
+        speed: Number(
+          stored.aptitudes?.speed || initial.aptitudes.speed,
+        ),
+      },
+      growth: Number(stored.growth || initial.growth),
+      generation: Math.max(
+        1,
+        Number(
+          stored.generation ||
+            Math.max(
+              Number(parentA?.generation || 0),
+              Number(parentB?.generation || 0),
+            ) +
+              1,
+        ),
+      ),
+      specialSkillCount: Number(
+        stored.specialSkillCount ||
+          stored.inheritedSkills?.filter((skill) =>
+            isSpecialSkill(skill),
+          ).length ||
+          0,
+      ),
+      inheritedSkills: Array.isArray(
+        stored.inheritedSkills,
+      )
+        ? stored.inheritedSkills
+        : [],
+      geneCode: normalizeGeneCode(
+        stored.geneCode || 'AAAA',
+      ),
+      geneScore: calculateGeneScore(
+        stored.geneCode || 'AAAA',
+      ),
+      bodyType: stored.bodyType || 'normal',
+      color: stored.color || 'white',
+      pattern: stored.pattern || 'none',
+      mutationData: stored.mutationData || {
+        naturalMutation: Boolean(stored.isMutant),
+        mutationRate: 0,
+        geneMutationCount: 0,
+        geneMutationLoci: [],
+        mutatedTraits: [],
+        inheritedSpecialSkillCodes: [],
+        rejectedSpecialSkillCodes: [],
+      },
+      parentSnapshot: stored.parentSnapshot || {
+        parentA: {},
+        parentB: {},
+      },
+    };
+  }
+
+  private async createUnsavedTemplatePet(
+    speciesValue?: string,
+  ): Promise<Pet> {
+    const species = findPetSpeciesConfig(speciesValue);
+    const initial =
+      this.breedingService.generateInitialAptitudes(
+        species.speciesCode,
+      );
+    const template = new Pet();
+    Object.assign(template, {
+      id: 0,
+      ownerId: 0,
+      nickname: 'template',
+      species: species.name,
+      speciesCode: species.speciesCode,
+      isMutant: false,
+      rarity: 1,
+      quality: 100,
+      skillSlotCount: 3,
+      skills: await this.skillService.generateRandomSkills(
+        1,
+        3,
+        species.speciesCode,
+      ),
+      hpAptitude: initial.aptitudes.hp,
+      attackAptitude: initial.aptitudes.attack,
+      defenseAptitude: initial.aptitudes.defense,
+      magicAptitude: initial.aptitudes.magic,
+      speedAptitude: initial.aptitudes.speed,
+      growth: initial.growth,
+      generation: 1,
+      geneCode: 'AAAA',
+      bodyType: 'normal',
+      color: 'white',
+      pattern: 'none',
+    });
+    return template;
   }
 
   private async ensureBetaFields(pet: Pet) {
     let changed = false;
     const rarity = this.clampRarity(Number(pet.rarity || 1));
-    const slotCount = rarity + 1;
+    const species = findPetSpeciesConfig(
+      pet.speciesCode || pet.species,
+    );
 
     if (pet.rarity !== rarity) {
       pet.rarity = rarity;
@@ -468,8 +818,26 @@ export class PetService {
       changed = true;
     }
 
+    if (pet.speciesCode !== species.speciesCode) {
+      pet.speciesCode = species.speciesCode;
+      changed = true;
+    }
+
+    if (pet.species !== species.name) {
+      pet.species = species.name;
+      changed = true;
+    }
+
+    if (pet.isMutant === undefined || pet.isMutant === null) {
+      pet.isMutant = false;
+      changed = true;
+    }
+
     if (!pet.nextExp || pet.nextExp < 1) {
-      pet.nextExp = Math.max(100, Number(pet.level || 1) * 100);
+      pet.nextExp = Math.max(
+        100,
+        Number(pet.level || 1) * 100,
+      );
       changed = true;
     }
 
@@ -483,28 +851,105 @@ export class PetService {
       changed = true;
     }
 
-    if (pet.skillSlotCount !== slotCount) {
+    let slotCount = Number(pet.skillSlotCount || 0);
+    if (slotCount < 2 || slotCount > 10) {
+      slotCount = this.clampSkillSlotCount(
+        Array.isArray(pet.skills) && pet.skills.length
+          ? pet.skills.length
+          : 3,
+      );
       pet.skillSlotCount = slotCount;
       changed = true;
     }
 
-    if (!Array.isArray(pet.skills) || pet.skills.length !== slotCount) {
-      pet.skills = await this.resolvePetSkills(rarity, slotCount, pet.skills);
+    if (
+      !Array.isArray(pet.skills) ||
+      pet.skills.length !== slotCount
+    ) {
+      pet.skills = await this.resolvePetSkills(
+        rarity,
+        slotCount,
+        pet.skills,
+        species.speciesCode,
+        Boolean(pet.isMutant),
+      );
       changed = true;
     }
 
-    if (pet.marriedPetId === undefined || pet.marriedPetId === null) {
+    const initial =
+      this.breedingService.generateInitialAptitudes(
+        species.speciesCode,
+        Boolean(pet.isMutant),
+        `migrate-${pet.id}-${species.speciesCode}`,
+      );
+
+    const aptitudeFields: Array<
+      [keyof Pet, number]
+    > = [
+      ['hpAptitude', initial.aptitudes.hp],
+      ['attackAptitude', initial.aptitudes.attack],
+      ['defenseAptitude', initial.aptitudes.defense],
+      ['magicAptitude', initial.aptitudes.magic],
+      ['speedAptitude', initial.aptitudes.speed],
+    ];
+
+    for (const [field, fallback] of aptitudeFields) {
+      if (!Number(pet[field] || 0)) {
+        (pet as any)[field] = fallback;
+        changed = true;
+      }
+    }
+
+    if (!Number(pet.growth || 0)) {
+      pet.growth = initial.growth;
+      changed = true;
+    }
+
+    if (!Number(pet.generation || 0)) {
+      pet.generation = 1;
+      changed = true;
+    }
+
+    const specialSkillCount = pet.skills.filter((skill) =>
+      isSpecialSkill(skill),
+    ).length;
+    if (
+      Number(pet.specialSkillCount || 0) !==
+      specialSkillCount
+    ) {
+      pet.specialSkillCount = specialSkillCount;
+      changed = true;
+    }
+
+    if (!pet.sourceType) {
+      pet.sourceType = 'legacy';
+      changed = true;
+    }
+
+    if (!pet.configVersion) {
+      pet.configVersion = PET_CONFIG_VERSION;
+      changed = true;
+    }
+
+    if (
+      pet.marriedPetId === undefined ||
+      pet.marriedPetId === null
+    ) {
       pet.marriedPetId = Number(pet.partnerId || 0);
       changed = true;
     }
 
-    const quality = this.clampQuality(Number(pet.quality || 100));
+    const quality = this.clampQuality(
+      Number(pet.quality || 100),
+    );
     if (pet.quality !== quality) {
       pet.quality = quality;
       changed = true;
     }
 
-    const geneCode = normalizeGeneCode(pet.geneCode || 'AAAA');
+    const geneCode = normalizeGeneCode(
+      pet.geneCode || 'AAAA',
+    );
     if (pet.geneCode !== geneCode) {
       pet.geneCode = geneCode;
       changed = true;
@@ -531,142 +976,240 @@ export class PetService {
       changed = true;
     }
 
-    if (changed) {
-      await this.petRepository.save(pet);
-    }
-
+    if (changed) await this.petRepository.save(pet);
     return pet;
   }
 
-  private generateStats(rarity: number) {
-    const ranges = STAT_RANGES[this.clampRarity(rarity)];
+  private generateLegacyStats(
+    species: PetSpeciesConfig,
+    rarity: number,
+    aptitudes?: PetAptitudes,
+    growth = 1.1,
+  ) {
+    // 旧战斗模块仍读取 pets 表中的 hp/attack/defense/speed。
+    // 因此新宝宝在落库时就写入 1 级资质与成长结算后的面板，
+    // 保证在战斗模块完全配置化之前，资质与成长已经真实生效。
+    if (
+      aptitudes &&
+      Object.values(aptitudes).every((value) => Number(value) > 0)
+    ) {
+      const safeGrowth = Math.max(0.8, Number(growth || 1.1));
+      return {
+        hp: Math.max(
+          1,
+          Math.round(
+            species.baseStats.hp +
+              Number(aptitudes.hp) * safeGrowth * 0.08,
+          ),
+        ),
+        attack: Math.max(
+          1,
+          Math.round(
+            species.baseStats.attack +
+              Number(aptitudes.attack) * safeGrowth * 0.012,
+          ),
+        ),
+        defense: Math.max(
+          1,
+          Math.round(
+            species.baseStats.defense +
+              Number(aptitudes.defense) * safeGrowth * 0.011,
+          ),
+        ),
+        magic: Math.max(
+          1,
+          Math.round(
+            species.baseStats.magic +
+              Number(aptitudes.magic) * safeGrowth * 0.012,
+          ),
+        ),
+        speed: Math.max(
+          1,
+          Math.round(
+            species.baseStats.speed +
+              Number(aptitudes.speed) * safeGrowth * 0.01,
+          ),
+        ),
+      };
+    }
+
+    const rarityRate =
+      0.85 + this.clampRarity(rarity) * 0.15;
     return {
-      hp: this.randomInt(ranges.hp[0], ranges.hp[1]),
-      attack: this.randomInt(ranges.attack[0], ranges.attack[1]),
-      defense: this.randomInt(ranges.defense[0], ranges.defense[1]),
-      speed: this.randomInt(ranges.speed[0], ranges.speed[1]),
+      hp: Math.round(species.baseStats.hp * rarityRate),
+      attack: Math.round(
+        species.baseStats.attack * rarityRate,
+      ),
+      defense: Math.round(
+        species.baseStats.defense * rarityRate,
+      ),
+      magic: Math.round(
+        species.baseStats.magic * rarityRate,
+      ),
+      speed: Math.round(
+        species.baseStats.speed * rarityRate,
+      ),
     };
   }
 
-  private async resolvePetSkills(rarity: number, slotCount: number, inherited?: any[]) {
+  private async resolvePetSkills(
+    rarity: number,
+    slotCount: number,
+    inherited?: any[],
+    speciesCode = '',
+    isMutant = false,
+  ) {
     const selected: any[] = [];
     const usedCodes = new Set<string>();
+    const usedFamilies = new Set<string>();
+    const usedConflictGroups = new Set<string>();
 
-    for (const skill of Array.isArray(inherited) ? inherited : []) {
+    const tryAdd = (skill: any) => {
       const code = String(skill?.skillCode || '');
-      if (!code || usedCodes.has(code) || selected.length >= slotCount) {
-        continue;
+      const family = String(
+        skill?.familyCode || skill?.skillCode || '',
+      );
+      const conflictGroup = String(
+        skill?.conflictGroup || '',
+      );
+
+      if (
+        !code ||
+        usedCodes.has(code) ||
+        selected.length >= slotCount
+      ) {
+        return false;
       }
-      usedCodes.add(code);
+      if (family && usedFamilies.has(family)) return false;
+      if (
+        conflictGroup &&
+        usedConflictGroups.has(conflictGroup)
+      ) {
+        return false;
+      }
+
       selected.push(skill);
+      usedCodes.add(code);
+      if (family) usedFamilies.add(family);
+      if (conflictGroup) {
+        usedConflictGroups.add(conflictGroup);
+      }
+      return true;
+    };
+
+    if (isMutant) {
+      const specialCode =
+        findPetSpeciesConfig(speciesCode)
+          .mutationSpecialSkillCode;
+      const special =
+        await this.skillService.getSkillSnapshot(
+          specialCode,
+        );
+      if (special) tryAdd(special);
+    }
+
+    for (const rawSkill of Array.isArray(inherited)
+      ? inherited
+      : []) {
+      const skill =
+        (await this.skillService.getSkillSnapshot(
+          rawSkill?.skillCode,
+        )) || rawSkill;
+      tryAdd(skill);
     }
 
     if (selected.length < slotCount) {
-      const generated = await this.skillService.generateRandomSkills(rarity, slotCount);
+      const generated =
+        await this.skillService.generateRandomSkills(
+          rarity,
+          slotCount * 2,
+          speciesCode,
+        );
       for (const skill of generated) {
-        const code = String(skill?.skillCode || '');
-        if (!code || usedCodes.has(code) || selected.length >= slotCount) {
-          continue;
-        }
-        usedCodes.add(code);
-        selected.push(skill);
+        if (selected.length >= slotCount) break;
+        tryAdd(skill);
       }
     }
 
     return selected.slice(0, slotCount);
   }
 
-  private inheritParentSkills(parentA: Pet | null | undefined, parentB: Pet | null | undefined, rarity: number) {
-    const pool = [...(parentA?.skills || []), ...(parentB?.skills || [])];
-    const unique = new Map<string, any>();
-
-    for (const skill of pool) {
-      const code = String(skill?.skillCode || '');
-      if (code && !unique.has(code)) {
-        unique.set(code, skill);
-      }
-    }
-
-    const candidates = [...unique.values()].sort(() => Math.random() - 0.5);
-    const maxInherited = Math.max(1, Math.ceil((rarity + 1) / 2));
-    const inherited = candidates.filter(() => Math.random() < 0.55).slice(0, maxInherited);
-
-    if (!inherited.length && candidates.length && Math.random() < 0.65) {
-      inherited.push(candidates[0]);
-    }
-
-    return inherited;
+  private getPetAptitudes(pet: Pet): PetAptitudes {
+    return {
+      hp: Number(pet.hpAptitude || 0),
+      attack: Number(pet.attackAptitude || 0),
+      defense: Number(pet.defenseAptitude || 0),
+      magic: Number(pet.magicAptitude || 0),
+      speed: Number(pet.speedAptitude || 0),
+    };
   }
 
-  private rollOffspringRarity(parentA?: Pet | null, parentB?: Pet | null) {
-    const rarityA = this.clampRarity(Number(parentA?.rarity || 1));
-    const rarityB = this.clampRarity(Number(parentB?.rarity || rarityA));
-    const base = this.clampRarity(Math.round((rarityA + rarityB) / 2));
-    const averageQuality = (Number(parentA?.quality || 100) + Number(parentB?.quality || 100)) / 2;
-    const averageGeneScore =
-      (Number(parentA?.geneScore || calculateGeneScore(parentA?.geneCode || 'AAAA')) +
-        Number(parentB?.geneScore || calculateGeneScore(parentB?.geneCode || 'AAAA'))) /
-      2;
-
-    const bonus = Math.max(
-      -0.06,
-      Math.min(0.1, (averageQuality - 100) / 200 + (averageGeneScore - 12) / 100),
+  private calculateQualityFromProfile(
+    species: PetSpeciesConfig,
+    isMutant: boolean,
+    aptitudes: PetAptitudes,
+    growth: number,
+  ) {
+    const percentileValues = (
+      Object.keys(aptitudes) as Array<
+        keyof PetAptitudes
+      >
+    ).map((key) => {
+      const range = getAptitudeRange(
+        species,
+        key,
+        isMutant,
+      );
+      return this.toPercentile(
+        aptitudes[key],
+        range[0],
+        range[1],
+      );
+    });
+    const growthRange = getGrowthRange(
+      species,
+      isMutant,
     );
-    const downgradeChance = Math.max(0.08, Math.min(0.2, 0.15 - bonus * 0.5));
-    const upgradeTwoChance = Math.max(0.03, Math.min(0.12, 0.08 + bonus * 0.3));
-    const upgradeOneChance = Math.max(0.18, Math.min(0.36, 0.27 + bonus * 0.7));
-    const sameChance = Math.max(0, 1 - downgradeChance - upgradeOneChance - upgradeTwoChance);
-    const roll = Math.random();
-
-    if (roll < downgradeChance) return this.clampRarity(base - 1);
-    if (roll < downgradeChance + sameChance) return base;
-    if (roll < downgradeChance + sameChance + upgradeOneChance) {
-      return this.clampRarity(base + 1);
-    }
-    return this.clampRarity(base + 2);
+    percentileValues.push(
+      this.toPercentile(
+        growth,
+        growthRange[0],
+        growthRange[1],
+      ),
+    );
+    const average =
+      percentileValues.reduce(
+        (sum, value) => sum + value,
+        0,
+      ) / percentileValues.length;
+    return this.clampQuality(
+      Math.round(80 + average * 40),
+    );
   }
 
-  private inheritQuality(
-    parentA?: Pet | null,
-    parentB?: Pet | null,
-    geneMutationCount = 0,
+  private clampGrowthForSpecies(
+    growth: number,
+    species: PetSpeciesConfig,
+    isMutant: boolean,
   ) {
-    const qualities = [parentA?.quality, parentB?.quality]
-      .map((value) => Number(value || 0))
-      .filter((value) => value > 0);
-
-    if (!qualities.length) {
-      return 100;
-    }
-
-    const average = qualities.reduce((sum, value) => sum + value, 0) / qualities.length;
-    const mutationBonus = geneMutationCount > 0 ? this.randomInt(0, Math.min(3, geneMutationCount + 1)) : 0;
-    return this.clampQuality(Math.round(average) + this.randomInt(-4, 4) + mutationBonus);
+    const range = getGrowthRange(species, isMutant);
+    const value = Math.max(
+      range[0],
+      Math.min(range[1], Number(growth || range[0])),
+    );
+    return Math.round(value * 1000) / 1000;
   }
 
-  private inheritTrait(
-    parentAValue: string | undefined,
-    parentBValue: string | undefined,
-    mutationPool: string[],
-    fallback: string,
-    mutationRate: number,
+  private toPercentile(
+    value: number,
+    min: number,
+    max: number,
   ) {
-    const parentValues = [parentAValue, parentBValue].filter(Boolean) as string[];
-    const inherited = parentValues.length
-      ? parentValues[Math.floor(Math.random() * parentValues.length)]
-      : fallback;
-
-    if (Math.random() >= mutationRate || mutationPool.length < 2) {
-      return { value: inherited, mutated: false };
-    }
-
-    const candidates = mutationPool.filter((value) => value !== inherited);
-    const value = candidates[Math.floor(Math.random() * candidates.length)] || inherited;
-    return { value, mutated: value !== inherited };
-  }
-
-  private randomSpecies() {
-    return SPECIES_POOL[Math.floor(Math.random() * SPECIES_POOL.length)];
+    if (max <= min) return 0.5;
+    return Math.max(
+      0,
+      Math.min(1, (Number(value) - min) / (max - min)),
+    );
   }
 
   private randomRarity() {
@@ -680,14 +1223,30 @@ export class PetService {
   }
 
   private clampQuality(quality: number) {
-    return Math.max(80, Math.min(120, Math.round(quality || 100)));
+    return Math.max(
+      80,
+      Math.min(120, Math.round(quality || 100)),
+    );
   }
 
   private clampRarity(rarity: number) {
-    return Math.max(1, Math.min(6, Math.floor(rarity || 1)));
+    return Math.max(
+      1,
+      Math.min(6, Math.floor(rarity || 1)),
+    );
+  }
+
+  private clampSkillSlotCount(slotCount: number) {
+    return Math.max(
+      2,
+      Math.min(10, Math.floor(slotCount || 3)),
+    );
   }
 
   private randomInt(min: number, max: number) {
-    return min + Math.floor(Math.random() * (max - min + 1));
+    return (
+      min +
+      Math.floor(Math.random() * (max - min + 1))
+    );
   }
 }

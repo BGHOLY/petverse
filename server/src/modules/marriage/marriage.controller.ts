@@ -25,6 +25,7 @@ export class MarriageController {
       DEFAULT_USER_ID,
       Number(body?.marriageId || 0) || undefined,
       Number(body?.petId || body?.petAId || 0) || undefined,
+      body?.seed ? String(body.seed) : undefined,
     );
   }
 }

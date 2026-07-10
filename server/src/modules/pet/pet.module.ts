@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { Pet } from './pet.entity';
-import { PetController } from './pet.controller';
-import { PetService } from './pet.service';
+import { BreedingModule } from '../breeding/breeding.module';
 import { SkillModule } from '../skill/skill.module';
+import { PetController } from './pet.controller';
+import { Pet } from './pet.entity';
+import { PetService } from './pet.service';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SkillModule } from '../skill/skill.module';
       },
     }),
     SkillModule,
+    BreedingModule,
   ],
   controllers: [PetController],
   providers: [PetService],

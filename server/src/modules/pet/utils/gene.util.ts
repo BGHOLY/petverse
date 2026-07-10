@@ -25,6 +25,7 @@ export function inheritGeneCode(
   fatherGene = 'AAAA',
   motherGene = 'AAAA',
   mutationRate = 0.06,
+  random: () => number = Math.random,
 ): GeneInheritanceResult {
   const father = normalizeGeneCode(fatherGene);
   const mother = normalizeGeneCode(motherGene);
@@ -32,12 +33,16 @@ export function inheritGeneCode(
   let result = '';
 
   for (let index = 0; index < GENE_LENGTH; index += 1) {
-    const inherited = Math.random() < 0.5 ? father[index] : mother[index];
+    const inherited = random() < 0.5 ? father[index] : mother[index];
     let gene = inherited;
 
-    if (Math.random() < Math.max(0, Math.min(1, mutationRate))) {
-      const mutationPool = VALID_GENES.filter((candidate) => candidate !== inherited);
-      gene = mutationPool[Math.floor(Math.random() * mutationPool.length)];
+    if (random() < Math.max(0, Math.min(1, mutationRate))) {
+      const mutationPool = VALID_GENES.filter(
+        (candidate) => candidate !== inherited,
+      );
+      gene =
+        mutationPool[Math.floor(random() * mutationPool.length)] ||
+        inherited;
       mutationLoci.push(index);
     }
 
@@ -51,8 +56,10 @@ export function inheritGeneCode(
   };
 }
 
-// 保留旧函数名，避免已有模块调用失效。
-export function generateGeneCode(fatherGene = 'AAAA', motherGene = 'AAAA') {
+export function generateGeneCode(
+  fatherGene = 'AAAA',
+  motherGene = 'AAAA',
+) {
   return inheritGeneCode(fatherGene, motherGene).geneCode;
 }
 

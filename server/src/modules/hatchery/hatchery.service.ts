@@ -45,7 +45,9 @@ export class HatcheryService {
     if (!egg) {
       const availableEggs = await this.eggService.getUserEggs(userId, false);
       egg =
-        availableEggs.find((candidate) => this.eggService.getRemainingSeconds(candidate) <= 0) ||
+        availableEggs.find(
+          (candidate) => this.eggService.getRemainingSeconds(candidate) <= 0,
+        ) ||
         availableEggs[0] ||
         null;
     }
@@ -60,7 +62,10 @@ export class HatcheryService {
     if (egg.status !== 'unhatched') {
       return {
         success: false,
-        message: egg.status === 'hatched' ? 'Egg already hatched' : 'Egg is being hatched',
+        message:
+          egg.status === 'hatched'
+            ? 'Egg already hatched'
+            : 'Egg is being hatched',
         egg: this.eggService.toEggView(egg),
       };
     }
@@ -78,23 +83,46 @@ export class HatcheryService {
       };
     }
 
-    const parentA = egg.parentAId ? await this.petService.getPetById(egg.parentAId) : null;
-    const parentB = egg.parentBId ? await this.petService.getPetById(egg.parentBId) : null;
-    const hasStoredBlueprint = Boolean(egg.parentSnapshot || egg.mutationData || egg.species);
-    const storedBlueprint: Partial<OffspringBlueprint> | undefined = hasStoredBlueprint
-      ? {
-          rarity: egg.rarityPotential,
-          quality: egg.quality,
-          species: egg.species,
-          geneCode: egg.geneCode,
-          geneScore: egg.geneScore,
-          bodyType: egg.bodyType,
-          color: egg.color,
-          pattern: egg.pattern,
-          inheritedSkills: egg.inheritedSkills,
-          mutationData: egg.mutationData,
-        }
-      : undefined;
+    const parentA = egg.parentAId
+      ? await this.petService.getPetById(egg.parentAId)
+      : null;
+    const parentB = egg.parentBId
+      ? await this.petService.getPetById(egg.parentBId)
+      : null;
+
+    const storedBlueprint: Partial<OffspringBlueprint> =
+      egg.offspringData || {
+        mode: 'breed',
+        seed: egg.randomSeed,
+        configVersion: egg.configVersion,
+        rarity: egg.rarityPotential,
+        quality: egg.quality,
+        species: egg.species,
+        speciesCode: egg.speciesCode,
+        isMutant: egg.isMutant,
+        skillSlotCount: egg.skillSlotCount,
+        aptitudes: {
+          hp: egg.hpAptitude,
+          attack: egg.attackAptitude,
+          defense: egg.defenseAptitude,
+          magic: egg.magicAptitude,
+          speed: egg.speedAptitude,
+        },
+        growth: egg.growth,
+        generation: egg.generation,
+        specialSkillCount: egg.specialSkillCount,
+        geneCode: egg.geneCode,
+        geneScore: egg.geneScore,
+        bodyType: egg.bodyType,
+        color: egg.color,
+        pattern: egg.pattern,
+        inheritedSkills: egg.inheritedSkills,
+        mutationData: egg.mutationData,
+        parentSnapshot: egg.parentSnapshot || {
+          parentA: {},
+          parentB: {},
+        },
+      };
 
     const lockedEgg = await this.eggService.tryMarkHatching(egg.id, userId);
     if (!lockedEgg) {

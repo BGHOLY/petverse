@@ -16,8 +16,10 @@ import { Mail } from '../modules/mail/mail.entity';
 import { ShopItem } from '../modules/shop/shop-item.entity';
 import { Achievement } from '../modules/achievement/achievement.entity';
 import { Skill } from '../modules/skill/skill.entity';
+import { SkillLearningLog } from '../modules/skill/skill-learning-log.entity';
 import { Marriage } from '../modules/marriage/marriage.entity';
 import { Egg } from '../modules/egg/egg.entity';
+import { FusionRecord } from '../modules/fusion/fusion-record.entity';
 
 dotenv.config();
 
@@ -30,23 +32,25 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DB_DATABASE || 'petverse',
 
   entities: [
-  User,
-  Pet,
-  Item,
-  Inventory,
-  Battle,
-  TowerRecord,
-  SignRecord,
-  DailyTask,
-  OfflineReward,
-  Friend,
-  FriendRequest,
-  Mail,
-  ShopItem,
-  Achievement,
-  Skill,
-  Marriage,
-  Egg,
-],
+    User,
+    Pet,
+    Item,
+    Inventory,
+    Battle,
+    TowerRecord,
+    SignRecord,
+    DailyTask,
+    OfflineReward,
+    Friend,
+    FriendRequest,
+    Mail,
+    ShopItem,
+    Achievement,
+    Skill,
+    SkillLearningLog,
+    Marriage,
+    Egg,
+    FusionRecord,
+  ],
   synchronize: true,
 };
