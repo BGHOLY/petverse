@@ -76,6 +76,7 @@ export class MainUI extends Component {
     private loadingLayer: Node | null = null;
     private drawerLayer: Node | null = null;
     private modalLayer: Node | null = null;
+    private battleLayer: Node | null = null;
 
     private currentPage: PageName = 'home';
     private drawerOpen = false;
@@ -85,6 +86,13 @@ export class MainUI extends Component {
     private fusionParentAId = 0;
     private fusionParentBId = 0;
     private fusionPreview: any = null;
+    private adventureMode: 'tower' | 'pve' | 'friend' = 'tower';
+    private teamPetIds: number[] = [];
+    private teamPets: any[] = [];
+    private teamEditing = false;
+    private selectedFriendUserId = 0;
+    private battleResult: any | null = null;
+    private battleTitle = '';
     private eggSyncRunning = false;
     private busy = new Set<string>();
     private countdownAccumulator = 0;
@@ -194,6 +202,7 @@ export class MainUI extends Component {
                 ApiClient.get('/friend/list'),
                 ApiClient.get('/tower/status'),
                 ApiClient.get('/ranking/tower'),
+                ApiClient.get('/team'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -203,6 +212,8 @@ export class MainUI extends Component {
             GameStore.setList('friends', results[4]);
             GameStore.setTower(results[5]);
             GameStore.setList('ranking', results[6]);
+            this.applyTeamResult(results[7]);
+            this.ensureSelectedFriend();
             await this.syncEggItemsToHatchery();
         } catch (error) {
             console.error('[CuteMainUI] bootstrap failed:', error);
@@ -283,8 +294,17 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'adventure': {
-                    const tower = await ApiClient.get('/tower/status');
+                    const [tower, team, pets, friends] = await Promise.all([
+                        ApiClient.get('/tower/status'),
+                        ApiClient.get('/team'),
+                        ApiClient.get('/pet/my'),
+                        ApiClient.get('/friend/list'),
+                    ]);
                     if (tower?.success !== false) GameStore.setTower(tower);
+                    if (pets?.success !== false) GameStore.setPets(pets);
+                    if (friends?.success !== false) GameStore.setList('friends', friends);
+                    this.applyTeamResult(team);
+                    this.ensureSelectedFriend();
                     break;
                 }
                 case 'ranking': {
@@ -337,6 +357,10 @@ export class MainUI extends Component {
         root.addChild(this.modalLayer);
         setRect(this.modalLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
+        this.battleLayer = new Node('CuteBattleResultLayer');
+        root.addChild(this.battleLayer);
+        setRect(this.battleLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+
         this.toastLayer = new Node('CuteToastLayer');
         root.addChild(this.toastLayer);
         setRect(this.toastLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
@@ -372,6 +396,7 @@ export class MainUI extends Component {
         this.renderCurrentPage(false);
         this.renderDrawer();
         this.renderSkillModal();
+        this.renderBattleResultModal();
     }
 
     private renderTopBar() {
@@ -866,43 +891,157 @@ export class MainUI extends Component {
     private renderAdventure() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'AdventureSign', '绘本冒险', 0, 456, 220, 66);
+        cloudSign(root, 'AdventureSign', '冒险营地', 0, 456, 220, 66);
 
-        const map = panel(root, 'AdventureMap', 0, 48, 680, 690, new Color(225, 242, 218, 255), 40, true, CuteTheme.white, 4);
-        text(map, 'Clouds', '☁　　　☁　　　　　☁', 0, 276, 600, 70, 42, CuteTheme.white, 'center', true);
-        text(map, 'Path', '○　•　○　•　○　•　★', 0, 85, 550, 80, 46, CuteTheme.honeyDark, 'center', true);
-        text(map, 'Trees', '🌳　　🌲　　　🌳　　🌲', 0, -75, 580, 90, 48, CuteTheme.mintDark, 'center', true);
+        const page = panel(root, 'AdventurePage', 0, 0, 692, 905, new Color(239, 247, 221, 255), 40, true, CuteTheme.caramelSoft, 4);
 
-        const floor = Number(GameStore.tower?.currentFloor || 1);
-        const maxFloor = Number(GameStore.tower?.maxFloor || 0);
-        headingTag(map, 'FloorTitle', `第 ${floor} 层`, 0, 205, 160, CuteTheme.paperWarm);
-        text(map, 'FloorInfo', `最高纪录 ${maxFloor} 层`, 0, 157, 260, 34, 18, CuteTheme.caramel, 'center', true);
+        const teamCard = panel(page, 'TeamCard', 0, 286, 640, 230, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        headingTag(teamCard, 'TeamTitle', '出战编队', -235, 84, 142, CuteTheme.paperWarm);
+        text(teamCard, 'TeamPower', `总战力 ${formatNumber(this.teamPower())}`, 286, 84, 170, 32, 15, CuteTheme.caramel, 'right', true);
 
-        button(map, 'Challenge', '开始冒险', 0, -230, 230, 70, () => this.showToast('战斗动画界面将在下一批接入'), {
-            icon: '⚔',
-            fill: CuteTheme.honey,
-            fontSize: 20,
-            radius: 30,
+        for (let index = 0; index < 3; index += 1) {
+            const pet = this.teamPets[index] || null;
+            this.adventureTeamSlot(teamCard, `TeamSlot${index}`, pet, -190 + index * 190, -15, index + 1);
+        }
+
+        button(teamCard, 'EditTeam', this.teamEditing ? '返回模式' : '调整编队', 248, -82, 126, 46, () => {
+            this.teamEditing = !this.teamEditing;
+            this.renderCurrentPage(false);
+        }, {
+            icon: this.teamEditing ? '↩' : '✎',
+            fill: this.teamEditing ? CuteTheme.peach : CuteTheme.mint,
+            fontSize: 14,
+            radius: 21,
         });
 
-        const ranking = panel(root, 'MiniRanking', 0, -373, 680, 120, CuteTheme.paper, 28, true, CuteTheme.caramelSoft, 2);
-        text(ranking, 'RankingTitle', '森林庆典榜', -305, 32, 150, 32, 18, CuteTheme.caramel, 'left', true);
-        const top = GameStore.ranking.slice(0, 3);
-        text(
-            ranking,
-            'RankingList',
-            top.length
-                ? top.map((item, index) => `${index + 1}. ${safeName(item?.playerName || item?.nickname, '玩家')}  ${Number(item?.maxFloor || item?.floor || 0)}层`).join('　')
-                : '排行榜正在布置中',
-            0,
-            -18,
-            620,
-            52,
-            14,
-            CuteTheme.muted,
-            'center',
-            true,
-        );
+        if (this.teamEditing) {
+            this.renderTeamEditor(page);
+            return;
+        }
+
+        const modes = [
+            { key: 'tower' as const, title: '爬塔', icon: '🏯', fill: CuteTheme.paperWarm },
+            { key: 'pve' as const, title: '日常试炼', icon: '⚔', fill: CuteTheme.mint },
+            { key: 'friend' as const, title: '好友切磋', icon: '🤝', fill: CuteTheme.peach },
+        ];
+        modes.forEach((mode, index) => {
+            button(page, `Mode_${mode.key}`, mode.title, -210 + index * 210, 118, 184, 66, () => {
+                this.adventureMode = mode.key;
+                this.renderCurrentPage(false);
+            }, {
+                icon: mode.icon,
+                selected: this.adventureMode === mode.key,
+                fill: mode.fill,
+                textColor: this.adventureMode === mode.key ? CuteTheme.white : CuteTheme.caramel,
+                fontSize: 15,
+                radius: 27,
+            });
+        });
+
+        const content = panel(page, 'ModeContent', 0, -155, 640, 430, CuteTheme.paper, 30, false, CuteTheme.caramelSoft, 2);
+        if (this.adventureMode === 'tower') this.renderTowerMode(content);
+        else if (this.adventureMode === 'pve') this.renderPveMode(content);
+        else this.renderFriendMode(content);
+    }
+
+    private renderTeamEditor(page: Node) {
+        const editor = panel(page, 'TeamEditor', 0, -135, 640, 455, new Color(255, 250, 232, 255), 30, false, CuteTheme.caramelSoft, 2);
+        headingTag(editor, 'EditorTitle', '选择1～3只宝宝', 0, 186, 210, CuteTheme.mint);
+        text(editor, 'EditorHint', '点击宝宝加入或移出编队；寄售中的宝宝不能出战。', 0, 146, 550, 32, 14, CuteTheme.muted, 'center', true);
+
+        const available = GameStore.pets
+            .filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed' && !pet?.tradeListingId)
+            .slice(0, 6);
+        available.forEach((pet, index) => {
+            const selected = this.teamPetIds.includes(Number(pet?.id || 0));
+            const col = index % 3;
+            const row = Math.floor(index / 3);
+            button(editor, `PetChoice${pet?.id}`, safeName(pet?.nickname, `宝宝${index + 1}`), -205 + col * 205, 62 - row * 120, 176, 102, () => this.toggleTeamPet(Number(pet?.id || 0)), {
+                icon: selected ? '✓' : '🐾',
+                selected,
+                fill: selected ? CuteTheme.mint : CuteTheme.paperWarm,
+                textColor: selected ? CuteTheme.white : CuteTheme.caramel,
+                fontSize: 14,
+                radius: 24,
+                subtitle: `Lv.${Number(pet?.level || 1)} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,
+            });
+        });
+
+        if (!available.length) {
+            text(editor, 'EmptyPets', '暂无可出战宝宝，请先完成孵化。', 0, 30, 500, 60, 20, CuteTheme.muted, 'center', true);
+        }
+
+        text(editor, 'SelectedCount', `已选择 ${this.teamPetIds.length}/3`, -260, -154, 180, 32, 16, CuteTheme.caramel, 'left', true);
+        button(editor, 'CancelTeam', '取消', 108, -160, 132, 54, () => {
+            this.teamEditing = false;
+            this.renderCurrentPage(false);
+        }, { fill: CuteTheme.paperWarm, fontSize: 16, radius: 24 });
+        button(editor, 'SaveTeam', '保存编队', 248, -160, 150, 54, () => void this.saveTeam(), {
+            icon: '✓', fill: CuteTheme.honey, fontSize: 16, radius: 24,
+            disabled: !this.teamPetIds.length || this.busy.has('team:save'),
+        });
+    }
+
+    private renderTowerMode(parent: Node) {
+        const tower = GameStore.tower || {};
+        const floor = Number(tower?.currentFloor || tower?.record?.currentFloor || 1);
+        const maxFloor = Number(tower?.maxFloor || tower?.record?.maxFloor || 0);
+        const monster = tower?.monster || {};
+        const reward = tower?.rewardPreview || {};
+
+        headingTag(parent, 'TowerHeading', `第 ${floor} 层`, -215, 170, 150, CuteTheme.paperWarm);
+        tag(parent, 'TowerRecord', `最高 ${maxFloor} 层`, 225, 170, 150, CuteTheme.mint);
+        text(parent, 'MonsterIcon', '👹', -228, 62, 120, 120, 66, CuteTheme.peachDark, 'center', true);
+        text(parent, 'MonsterName', safeName(monster?.name, `守关怪物·${floor}`), -120, 104, 300, 38, 22, CuteTheme.caramel, 'left', true);
+        text(parent, 'MonsterStats', `生命 ${formatNumber(monster?.maxHp || monster?.hp || floor * 180)}\n攻击 ${formatNumber(monster?.attack || floor * 22)}　防御 ${formatNumber(monster?.defense || floor * 15)}\n速度 ${formatNumber(monster?.speed || floor * 8)}`, -120, 22, 315, 105, 16, CuteTheme.muted, 'left', true);
+
+        const rewardCard = panel(parent, 'RewardCard', 188, -48, 210, 145, new Color(255, 243, 206, 255), 24, false, CuteTheme.honey, 2);
+        text(rewardCard, 'Title', '通关奖励', 0, 46, 170, 30, 17, CuteTheme.caramel, 'center', true);
+        text(rewardCard, 'Reward', `金币 ${formatNumber(reward?.gold || floor * 100)}\n钻石 ${formatNumber(reward?.diamond || 0)}\n经验 ${formatNumber(reward?.exp || floor * 30)}`, 0, -18, 170, 86, 15, CuteTheme.caramel, 'center', true);
+
+        text(parent, 'TowerTip', '使用当前三宠编队连续迎战守关怪物，胜利后自动进入下一层。', 0, -100, 560, 46, 14, CuteTheme.muted, 'center', true);
+        button(parent, 'TowerChallenge', '挑战本层', 0, -164, 240, 66, () => void this.startAdventureBattle('tower'), {
+            icon: '🏯', fill: CuteTheme.honey, fontSize: 19, radius: 28,
+            disabled: !this.teamPetIds.length || this.busy.has('battle:tower'),
+        });
+    }
+
+    private renderPveMode(parent: Node) {
+        const averageLevel = this.teamPets.length
+            ? Math.round(this.teamPets.reduce((sum, pet) => sum + Number(pet?.level || 1), 0) / this.teamPets.length)
+            : 1;
+        headingTag(parent, 'PveHeading', '日常试炼', 0, 170, 170, CuteTheme.mint);
+        text(parent, 'PveDecor', '🌲　⚔　🐾　⚔　🌲', 0, 88, 520, 70, 42, CuteTheme.mintDark, 'center', true);
+        text(parent, 'PveTitle', '森林训练场', 0, 28, 420, 46, 26, CuteTheme.caramel, 'center', true);
+        text(parent, 'PveInfo', `队伍平均等级 Lv.${averageLevel}\n系统会按队伍等级生成3名训练对手\n该模式用于验证编队、技能与战斗搭配`, 0, -50, 520, 100, 16, CuteTheme.muted, 'center', false);
+        button(parent, 'PveChallenge', '开始试炼', 0, -164, 240, 66, () => void this.startAdventureBattle('pve'), {
+            icon: '⚔', fill: CuteTheme.mint, fontSize: 19, radius: 28,
+            disabled: !this.teamPetIds.length || this.busy.has('battle:pve'),
+        });
+    }
+
+    private renderFriendMode(parent: Node) {
+        this.ensureSelectedFriend();
+        const friend = this.selectedFriend();
+        headingTag(parent, 'FriendHeading', '好友切磋', 0, 170, 180, CuteTheme.peach);
+        if (!friend) {
+            text(parent, 'NoFriend', '暂时没有可挑战好友。\n先前往好友相册添加好友吧。', 0, 36, 500, 100, 20, CuteTheme.muted, 'center', true);
+            button(parent, 'GoFriend', '前往好友', 0, -140, 210, 62, () => this.showPage('friends'), {
+                icon: '📷', fill: CuteTheme.peach, fontSize: 18, radius: 27,
+            });
+            return;
+        }
+
+        text(parent, 'FriendAvatar', '📷', -220, 50, 100, 100, 54, CuteTheme.peachDark, 'center', true);
+        text(parent, 'FriendName', safeName(friend?.nickname || friend?.playerName, '好友玩家'), -120, 80, 330, 42, 24, CuteTheme.caramel, 'left', true);
+        text(parent, 'FriendMeta', `玩家等级 Lv.${Number(friend?.level || 1)}\n可见宝宝 ${Array.isArray(friend?.pets) ? friend.pets.length : 0} 只`, -120, 22, 300, 64, 16, CuteTheme.muted, 'left', true);
+        button(parent, 'PrevFriend', '上一个', -168, -68, 135, 50, () => this.cycleFriend(-1), { fill: CuteTheme.paperWarm, fontSize: 14, radius: 22 });
+        button(parent, 'NextFriend', '下一个', 0, -68, 135, 50, () => this.cycleFriend(1), { fill: CuteTheme.paperWarm, fontSize: 14, radius: 22 });
+        button(parent, 'FriendChallenge', '发起切磋', 180, -68, 170, 54, () => void this.startAdventureBattle('friend'), {
+            icon: '🤝', fill: CuteTheme.peach, fontSize: 16, radius: 24,
+            disabled: this.busy.has('battle:friend'),
+        });
+        text(parent, 'FriendTip', '好友切磋会记录胜负和赛季积分，不消耗宝宝。', 0, -150, 540, 40, 14, CuteTheme.muted, 'center', true);
     }
 
     private renderMoreLanding() {
@@ -1259,6 +1398,198 @@ export class MainUI extends Component {
             this.busy.delete('fusion:execute');
             this.renderCurrentPage(false);
         }
+    }
+
+    private applyTeamResult(result: any) {
+        if (!result || result?.success === false) return;
+        const pets = Array.isArray(result?.pets)
+            ? result.pets
+            : Array.isArray(result?.data?.pets)
+                ? result.data.pets
+                : [];
+        const ids = Array.isArray(result?.petIds)
+            ? result.petIds
+            : Array.isArray(result?.team?.petIds)
+                ? result.team.petIds
+                : pets.map((pet: any) => pet?.id);
+        this.teamPetIds = ids.map((id: any) => Number(id || 0)).filter((id: number) => id > 0).slice(0, 3);
+        const byId = new Map(GameStore.pets.map((pet) => [Number(pet?.id || 0), pet]));
+        this.teamPets = this.teamPetIds
+            .map((id) => pets.find((pet: any) => Number(pet?.id || 0) === id) || byId.get(id))
+            .filter(Boolean);
+    }
+
+    private adventureTeamSlot(parent: Node, name: string, pet: any, x: number, y: number, index: number) {
+        const slot = panel(parent, name, x, y, 164, 142, pet ? new Color(255, 250, 232, 255) : new Color(242, 235, 218, 255), 24, false, pet ? CuteTheme.honey : CuteTheme.caramelSoft, 2);
+        tag(slot, 'Index', `${index}号位`, 0, 50, 82, pet ? CuteTheme.mint : CuteTheme.paperWarm);
+        if (!pet) {
+            text(slot, 'EmptyIcon', '＋', 0, 4, 60, 60, 36, CuteTheme.muted, 'center', true);
+            text(slot, 'EmptyText', '空位', 0, -43, 100, 28, 15, CuteTheme.muted, 'center', true);
+            return;
+        }
+        text(slot, 'PetIcon', '🐾', -53, 4, 48, 48, 27, CuteTheme.honeyDark, 'center', true);
+        text(slot, 'PetName', safeName(pet?.nickname, '宝宝'), -22, 15, 104, 30, 15, CuteTheme.caramel, 'left', true);
+        text(slot, 'PetMeta', `Lv.${Number(pet?.level || 1)}\n战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -22, -28, 105, 52, 13, CuteTheme.muted, 'left', true);
+    }
+
+    private teamPower() {
+        return this.teamPets.reduce((sum, pet) => sum + this.battleAttributesOf(pet).power, 0);
+    }
+
+    private toggleTeamPet(petId: number) {
+        if (!petId) return;
+        if (this.teamPetIds.includes(petId)) {
+            this.teamPetIds = this.teamPetIds.filter((id) => id !== petId);
+        } else if (this.teamPetIds.length < 3) {
+            this.teamPetIds.push(petId);
+        } else {
+            this.showToast('出战编队最多3只宝宝');
+        }
+        const byId = new Map(GameStore.pets.map((pet) => [Number(pet?.id || 0), pet]));
+        this.teamPets = this.teamPetIds.map((id) => byId.get(id)).filter(Boolean);
+        this.renderCurrentPage(false);
+    }
+
+    private async saveTeam() {
+        if (!this.teamPetIds.length || this.busy.has('team:save')) return;
+        this.busy.add('team:save');
+        try {
+            const result = await ApiClient.post('/team/set', { petIds: this.teamPetIds });
+            if (result?.success === false) {
+                this.showToast(result?.message || '编队保存失败');
+                return;
+            }
+            this.applyTeamResult(result);
+            this.teamEditing = false;
+            this.showToast('出战编队已保存');
+        } catch (error) {
+            console.error('[CuteMainUI] save team failed:', error);
+            this.showToast('编队保存失败，请检查后端');
+        } finally {
+            this.busy.delete('team:save');
+            this.renderCurrentPage(false);
+        }
+    }
+
+    private ensureSelectedFriend() {
+        const friends = GameStore.friends || [];
+        if (!friends.length) {
+            this.selectedFriendUserId = 0;
+            return;
+        }
+        const exists = friends.some((friend) => Number(friend?.userId || friend?.id || 0) === this.selectedFriendUserId);
+        if (!exists) this.selectedFriendUserId = Number(friends[0]?.userId || friends[0]?.id || 0);
+    }
+
+    private selectedFriend() {
+        return GameStore.friends.find((friend) => Number(friend?.userId || friend?.id || 0) === this.selectedFriendUserId) || GameStore.friends[0] || null;
+    }
+
+    private cycleFriend(direction: number) {
+        const friends = GameStore.friends || [];
+        if (!friends.length) return;
+        const current = friends.findIndex((friend) => Number(friend?.userId || friend?.id || 0) === this.selectedFriendUserId);
+        const next = (current + direction + friends.length) % friends.length;
+        this.selectedFriendUserId = Number(friends[next]?.userId || friends[next]?.id || 0);
+        this.renderCurrentPage(false);
+    }
+
+    private async startAdventureBattle(mode: 'tower' | 'pve' | 'friend') {
+        const key = `battle:${mode}`;
+        if (this.busy.has(key)) return;
+        if (!this.teamPetIds.length) {
+            this.showToast('请先设置出战编队');
+            return;
+        }
+        this.busy.add(key);
+        this.setLoading(true, mode === 'tower' ? '正在挑战守关怪物…' : mode === 'friend' ? '正在前往好友庭院…' : '正在进入训练场…');
+        try {
+            const result = mode === 'tower'
+                ? await ApiClient.post('/tower/challenge-team', {})
+                : mode === 'friend'
+                    ? await ApiClient.post('/battle/team-friend', { friendUserId: this.selectedFriendUserId || undefined })
+                    : await ApiClient.post('/battle/team-pve', {});
+            if (result?.success === false) {
+                this.showToast(result?.message || '战斗发起失败');
+                return;
+            }
+            this.battleResult = result;
+            this.battleTitle = mode === 'tower' ? '爬塔战报' : mode === 'friend' ? '好友切磋战报' : '日常试炼战报';
+            await this.refreshAfterBattle();
+        } catch (error) {
+            console.error('[CuteMainUI] battle failed:', error);
+            this.showToast('战斗失败，请检查后端');
+        } finally {
+            this.busy.delete(key);
+            this.setLoading(false);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async refreshAfterBattle() {
+        const [profile, pets, team, tower, ranking] = await Promise.all([
+            ApiClient.get('/user/profile'),
+            ApiClient.get('/pet/my'),
+            ApiClient.get('/team'),
+            ApiClient.get('/tower/status'),
+            ApiClient.get('/ranking/tower'),
+        ]);
+        if (profile?.success !== false) GameStore.setProfile(profile);
+        if (pets?.success !== false) GameStore.setPets(pets);
+        this.applyTeamResult(team);
+        if (tower?.success !== false) GameStore.setTower(tower);
+        if (ranking?.success !== false) GameStore.setList('ranking', ranking);
+    }
+
+    private renderBattleResultModal() {
+        if (!this.battleLayer) return;
+        clearNode(this.battleLayer);
+        this.battleLayer.active = Boolean(this.battleResult);
+        if (!this.battleResult) return;
+        if (!this.battleLayer.getComponent(BlockInputEvents)) this.battleLayer.addComponent(BlockInputEvents);
+
+        const result = this.battleResult;
+        const won = String(result?.result || '').toLowerCase() === 'win';
+        const dim = panel(this.battleLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 128), 0, false, CuteTheme.transparent, 0);
+        dim.on(Node.EventType.TOUCH_END, () => this.closeBattleResult());
+        const card = panel(this.battleLayer, 'BattleResult', 0, 5, 620, 920, CuteTheme.paper, 40, true, won ? CuteTheme.honey : CuteTheme.peachDark, 4);
+        headingTag(card, 'Title', this.battleTitle || '战斗结果', 0, 398, 210, won ? CuteTheme.paperWarm : CuteTheme.peach);
+        text(card, 'ResultIcon', won ? '🏆' : '💦', 0, 305, 110, 100, 64, won ? CuteTheme.honeyDark : CuteTheme.caramelSoft, 'center', true);
+        text(card, 'ResultText', won ? '挑战胜利' : '挑战失败', 0, 245, 360, 54, 32, won ? CuteTheme.honeyDark : CuteTheme.peachDark, 'center', true);
+
+        const reward = result?.reward || {};
+        const season = result?.seasonResult || result?.seasonSync || {};
+        const summary = panel(card, 'Summary', 0, 150, 550, 110, new Color(255, 249, 224, 255), 24, false, CuteTheme.caramelSoft, 2);
+        text(summary, 'Winner', `胜方：${safeName(result?.winner, won ? '我方队伍' : '对方队伍')}`, -240, 30, 470, 28, 16, CuteTheme.caramel, 'left', true);
+        text(summary, 'Reward', reward?.gold || reward?.diamond || reward?.exp
+            ? `奖励：金币${formatNumber(reward?.gold || 0)}　钻石${formatNumber(reward?.diamond || 0)}　经验${formatNumber(reward?.exp || reward?.expEach || 0)}`
+            : '本场为切磋或训练，不额外消耗宝宝。', -240, -8, 480, 28, 14, CuteTheme.muted, 'left', true);
+        const seasonText = season?.player?.points !== undefined
+            ? `赛季积分 ${Number(season.player.points || 0)}　评分 ${Number(season.player.rating || 0)}`
+            : season?.ratingAfter !== undefined
+                ? `赛季评分 ${Number(season.ratingAfter || 0)}（${Number(season.ratingDelta || 0) >= 0 ? '+' : ''}${Number(season.ratingDelta || 0)}）`
+                : '';
+        if (seasonText) text(summary, 'Season', seasonText, -240, -42, 480, 26, 13, CuteTheme.peachDark, 'left', true);
+
+        headingTag(card, 'LogTitle', '战斗记录', -205, 72, 142, CuteTheme.mint);
+        const logs = Array.isArray(result?.battleLog) ? result.battleLog : [];
+        const logText = logs.length ? logs.slice(0, 11).map((line: any, index: number) => `${index + 1}. ${String(line)}`).join('\n') : '服务器未返回战斗记录。';
+        const logCard = panel(card, 'LogCard', 0, -135, 550, 365, new Color(248, 246, 231, 255), 22, false, CuteTheme.caramelSoft, 2);
+        text(logCard, 'Logs', logText, -250, 0, 500, 330, 13, CuteTheme.caramel, 'left', false);
+        if (logs.length > 11) text(card, 'MoreLogs', `仅显示前11条，共${logs.length}条`, 0, -335, 360, 26, 12, CuteTheme.muted, 'center', true);
+
+        button(card, 'CloseResult', won ? '继续冒险' : '调整后再战', 0, -400, 220, 60, () => this.closeBattleResult(), {
+            icon: won ? '🧭' : '↩', fill: won ? CuteTheme.honey : CuteTheme.mint, fontSize: 17, radius: 27,
+        });
+        card.setScale(new Vec3(0.92, 0.92, 1));
+        tween(card).to(0.2, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+    }
+
+    private closeBattleResult() {
+        this.battleResult = null;
+        this.battleTitle = '';
+        this.renderBattleResultModal();
+        this.renderCurrentPage(false);
     }
 
     private playPageEnter() {
