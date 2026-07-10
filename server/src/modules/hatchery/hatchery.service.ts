@@ -96,7 +96,20 @@ export class HatcheryService {
         }
       : undefined;
 
-    await this.eggService.markHatching(egg);
+    const lockedEgg = await this.eggService.tryMarkHatching(egg.id, userId);
+    if (!lockedEgg) {
+      const latest = await this.eggService.getEggById(egg.id);
+      return {
+        success: false,
+        message:
+          latest?.status === 'hatched'
+            ? 'Egg already hatched'
+            : 'Egg is being hatched',
+        egg: latest ? this.eggService.toEggView(latest) : null,
+      };
+    }
+
+    egg = lockedEgg;
 
     try {
       const pet = await this.petService.createPetFromEgg(

@@ -97,20 +97,62 @@ export class EggService {
     return egg ? this.toEggView(egg) : null;
   }
 
-  async markHatching(egg: Egg) {
-    egg.status = 'hatching';
-    return this.eggRepository.save(egg);
+  async tryMarkHatching(eggId: number, ownerId: number) {
+    // 使用条件更新抢占孵化权，避免两个并发请求同时生成两只后代。
+    const result = await this.eggRepository.update(
+      {
+        id: eggId,
+        ownerId,
+        status: 'unhatched',
+      },
+      {
+        status: 'hatching',
+      },
+    );
+
+    if (Number(result.affected || 0) !== 1) {
+      return null;
+    }
+
+    return this.getEggById(eggId);
   }
 
   async markUnhatched(egg: Egg) {
-    egg.status = 'unhatched';
-    return this.eggRepository.save(egg);
+    await this.eggRepository.update(
+      {
+        id: egg.id,
+        status: 'hatching',
+      },
+      {
+        status: 'unhatched',
+      },
+    );
+
+    return (await this.getEggById(egg.id)) || egg;
   }
 
   async markHatched(egg: Egg, petId: number) {
-    egg.status = 'hatched';
-    egg.hatchedPetId = petId;
-    return this.eggRepository.save(egg);
+    const result = await this.eggRepository.update(
+      {
+        id: egg.id,
+        status: 'hatching',
+      },
+      {
+        status: 'hatched',
+        hatchedPetId: petId,
+      },
+    );
+
+    if (Number(result.affected || 0) !== 1) {
+      throw new Error('Egg hatch state changed unexpectedly');
+    }
+
+    const updated = await this.getEggById(egg.id);
+    if (!updated) {
+      throw new Error('Hatched egg record not found');
+    }
+
+    return updated;
   }
 
   toEggView(egg: Egg) {
