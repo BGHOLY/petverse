@@ -55,20 +55,20 @@ export class BreedPanel extends Component {
     private ensureView() {
         createPageBackground(this.node, TXT_BREED, BREED_PAGE_BG);
 
-        const myPanel = createPanel(this.node, 'MyPetPanel', -230, 240, 180, 460);
-        createLabel(myPanel, 'MyPetTitleLabel', TXT_MY_PET, 0, 200, 150, 28, 14);
-        this.myPetContent = this.ensureContent(myPanel, 'MyPetContent', 0, -20, 170, 390);
+        const myPanel = createPanel(this.node, 'MyPetPanel', -230, 250, 180, 480);
+        createLabel(myPanel, 'MyPetTitleLabel', TXT_MY_PET, 0, 210, 150, 30, 15);
+        this.myPetContent = this.ensureContent(myPanel, 'MyPetContent', 0, -20, 170, 410);
 
-        const otherPanel = createPanel(this.node, 'FriendPetPanel', 0, 240, 180, 460);
-        createLabel(otherPanel, 'FriendPetTitleLabel', TXT_OTHER_PET, 0, 200, 150, 28, 14);
-        this.otherPetContent = this.ensureContent(otherPanel, 'FriendPetContent', 0, -20, 170, 390);
+        const otherPanel = createPanel(this.node, 'FriendPetPanel', 0, 250, 180, 480);
+        createLabel(otherPanel, 'FriendPetTitleLabel', TXT_OTHER_PET, 0, 210, 150, 30, 15);
+        this.otherPetContent = this.ensureContent(otherPanel, 'FriendPetContent', 0, -20, 170, 410);
 
-        const infoPanel = createPanel(this.node, 'BreedInfoPanel', 230, 240, 180, 460);
-        createLabel(infoPanel, 'BreedInfoTitleLabel', TXT_BREED_INFO, 0, 200, 150, 28, 14);
-        this.infoContent = this.ensureContent(infoPanel, 'BreedInfoContent', 0, -20, 165, 390);
-        this.infoLabel = createInfoText(this.infoContent, 'BreedInfoText', '', -78, 180, 156, 350, 12);
+        const infoPanel = createPanel(this.node, 'BreedInfoPanel', 230, 250, 180, 480);
+        createLabel(infoPanel, 'BreedInfoTitleLabel', TXT_BREED_INFO, 0, 210, 150, 30, 15);
+        this.infoContent = this.ensureContent(infoPanel, 'BreedInfoContent', 0, -20, 165, 410);
+        this.infoLabel = createInfoText(this.infoContent, 'BreedInfoText', '', -78, 190, 156, 370, 13);
 
-        const rulePanel = createPanel(this.node, 'BreedRulePanel', 0, -330, 660, 220);
+        const rulePanel = createPanel(this.node, 'BreedRulePanel', 0, -320, 660, 220);
         createInfoText(
             rulePanel,
             'BreedRuleLabel',
@@ -116,14 +116,14 @@ export class BreedPanel extends Component {
             const disabled = pet.married || pet.marriedPetId;
             const text = `${pet.nickname || `Pet${index + 1}`}\n${disabled ? '\u5df2\u5a5a' : '\u672a\u5a5a'}`;
 
-            createButton(this.myPetContent!, `MyPetButton${index}`, text, 0, 152 - index * 48, 148, 38, () => {
+            createButton(this.myPetContent!, `MyPetButton${index}`, text, 0, 168 - index * 50, 140, 42, () => {
                 this.selectedMyIndex = index;
                 if (this.selectedFriendIndex === index && this.pets.length > 1) this.selectedFriendIndex = index === 0 ? 1 : 0;
                 this.renderPetLists();
                 this.renderSelectedInfo();
             }, this, index === this.selectedMyIndex, 10);
 
-            createButton(this.otherPetContent!, `FriendPetButton${index}`, text, 0, 152 - index * 48, 148, 38, () => {
+            createButton(this.otherPetContent!, `FriendPetButton${index}`, text, 0, 168 - index * 50, 140, 42, () => {
                 this.selectedFriendIndex = index;
                 if (this.selectedMyIndex === index && this.pets.length > 1) this.selectedMyIndex = index === 0 ? 1 : 0;
                 this.renderPetLists();

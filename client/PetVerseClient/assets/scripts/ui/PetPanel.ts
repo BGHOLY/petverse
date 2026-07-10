@@ -13,7 +13,6 @@ import {
     getOrCreateNode,
     normalizeList,
     PET_PAGE_BG,
-    setNodeRect,
 } from './UiKit';
 
 const { ccclass } = _decorator;
@@ -56,21 +55,21 @@ export class PetPanel extends Component {
     private ensureView() {
         createPageBackground(this.node, TXT_PET, PET_PAGE_BG);
 
-        const listPanel = createPanel(this.node, 'PetListPanel', -230, 240, 180, 420);
-        createLabel(listPanel, 'PetListTitleLabel', TXT_PET_LIST, 0, 180, 150, 28, 15);
-        this.petListContent = this.ensureContent(listPanel, 'PetListContent', 0, -20, 170, 350);
+        const listPanel = createPanel(this.node, 'PetListPanel', -230, 250, 180, 500);
+        createLabel(listPanel, 'PetListTitleLabel', TXT_PET_LIST, 0, 220, 150, 30, 16);
+        this.petListContent = this.ensureContent(listPanel, 'PetListContent', 0, -20, 170, 430);
 
-        const shapePanel = createPanel(this.node, 'PetShapePanel', 0, 240, 240, 420);
-        createLabel(shapePanel, 'PetShapeTitleLabel', TXT_PET_SHAPE, 0, 180, 180, 28, 15);
-        this.petShapeContent = this.ensureContent(shapePanel, 'PetShapeContent', 0, -20, 220, 350);
-        this.shapeLabel = createLabel(this.petShapeContent, 'PetShapeLabel', '', 0, 0, 200, 300, 22);
+        const shapePanel = createPanel(this.node, 'PetShapePanel', 0, 250, 220, 500);
+        createLabel(shapePanel, 'PetShapeTitleLabel', TXT_PET_SHAPE, 0, 220, 180, 30, 16);
+        this.petShapeContent = this.ensureContent(shapePanel, 'PetShapeContent', 0, -20, 205, 430);
+        this.shapeLabel = createLabel(this.petShapeContent, 'PetShapeLabel', '', 0, 0, 190, 370, 24);
 
-        const detailPanel = createPanel(this.node, 'PetDetailPanel', 230, 240, 180, 420);
-        createLabel(detailPanel, 'PetDetailTitleLabel', TXT_PET_DETAIL, 0, 180, 150, 28, 15);
-        this.petDetailContent = this.ensureContent(detailPanel, 'PetDetailContent', 0, -20, 165, 350);
-        this.detailLabel = createInfoText(this.petDetailContent, 'PetDetailLabel', '', -78, 160, 156, 330, 12);
+        const detailPanel = createPanel(this.node, 'PetDetailPanel', 230, 250, 180, 500);
+        createLabel(detailPanel, 'PetDetailTitleLabel', TXT_PET_DETAIL, 0, 220, 150, 30, 16);
+        this.petDetailContent = this.ensureContent(detailPanel, 'PetDetailContent', 0, -20, 165, 430);
+        this.detailLabel = createInfoText(this.petDetailContent, 'PetDetailLabel', '', -78, 198, 156, 405, 13);
 
-        const actionPanel = createPanel(this.node, 'PetActionPanel', 0, -330, 660, 220);
+        const actionPanel = createPanel(this.node, 'PetActionPanel', 0, -360, 660, 220);
         createButton(actionPanel, 'SetBattlePetButton', TXT_BATTLE, -240, 55, 118, 48, () => this.setBattlePet(), this, false, 15);
         createButton(actionPanel, 'OpenSkillButton', TXT_SKILL, -80, 55, 118, 48, () => this.openSkillTips(), this, false, 15);
         createButton(actionPanel, 'MarriageStatusButton', TXT_MARRIAGE, 80, 55, 118, 48, () => this.showMarriageStatus(), this, false, 15);
@@ -116,9 +115,9 @@ export class PetPanel extends Component {
                 `PetListButton${index}`,
                 `${index + 1}.${pet.nickname || TXT_PET}`,
                 0,
-                142 - index * 46,
-                148,
-                36,
+                184 - index * 52,
+                140,
+                44,
                 () => {
                     this.selectedIndex = index;
                     this.drawPetListButtons();

@@ -31,28 +31,28 @@ export class AdventurePanel extends Component {
     private ensureView() {
         createPageBackground(this.node, TXT_ADVENTURE, ADVENTURE_PAGE_BG);
 
-        const panelW = 200;
-        const panelH = 460;
+        const panelW = 190;
+        const panelH = 520;
         const y = 180;
 
         createPanel(this.node, 'BattleEntryPanel', -220, y, panelW, panelH);
-        createLabel(this.node, 'BattleEntryTitle', '\u597d\u53cb\u5bf9\u6218', -220, y + 175, panelW - 24, 32, 18);
-        createInfoText(this.node, 'BattleEntryDesc', '\u6311\u6218\u597d\u53cb\u5ba0\u7269\u3002\n\u6d4b\u8bd5\u7248\u5148\u4f7f\u7528\u540e\u7aef\u6a21\u62df\u6218\u6597\u3002', -300, y + 78, 160, 130, 13);
-        createButton(this.node, 'StartBattleButton', '\u5bf9\u6218', -220, y - 170, 150, 46, () => {
+        createLabel(this.node, 'BattleEntryTitle', '\u597d\u53cb\u5bf9\u6218', -220, y + 210, panelW - 24, 34, 18);
+        createInfoText(this.node, 'BattleEntryDesc', '\u6311\u6218\u597d\u53cb\u5ba0\u7269\u3002\n\u6d4b\u8bd5\u7248\u5148\u4f7f\u7528\u540e\u7aef\u6a21\u62df\u6218\u6597\u3002', -295, y + 92, 150, 170, 13);
+        createButton(this.node, 'StartBattleButton', '\u5bf9\u6218', -220, y - 205, 142, 48, () => {
             void this.challengeFriend();
         }, this, false, 15);
 
         createPanel(this.node, 'TowerEntryPanel', 0, y, panelW, panelH);
-        createLabel(this.node, 'TowerEntryTitle', '\u722c\u5854', 0, y + 175, panelW - 24, 32, 18);
-        this.towerLabel = createInfoText(this.node, 'TowerEntryDesc', '\u5f53\u524d\u5c42\u6570\u52a0\u8f7d\u4e2d...', -80, y + 78, 160, 130, 13);
-        createButton(this.node, 'StartTowerButton', '\u6311\u6218', 0, y - 170, 150, 46, () => {
+        createLabel(this.node, 'TowerEntryTitle', '\u722c\u5854', 0, y + 210, panelW - 24, 34, 18);
+        this.towerLabel = createInfoText(this.node, 'TowerEntryDesc', '\u5f53\u524d\u5c42\u6570\u52a0\u8f7d\u4e2d...', -75, y + 92, 150, 170, 13);
+        createButton(this.node, 'StartTowerButton', '\u6311\u6218', 0, y - 205, 142, 48, () => {
             void this.challengeTower();
         }, this, false, 15);
 
         createPanel(this.node, 'RankingEntryPanel', 220, y, panelW, panelH);
-        createLabel(this.node, 'RankingEntryTitle', '\u6392\u884c\u699c', 220, y + 175, panelW - 24, 32, 18);
-        this.rankingLabel = createInfoText(this.node, 'RankingPreviewLabel', '\u52a0\u8f7d\u4e2d...', 140, y + 78, 160, 130, 13);
-        createButton(this.node, 'OpenRankingButton', '\u5237\u65b0', 220, y - 170, 150, 46, () => {
+        createLabel(this.node, 'RankingEntryTitle', '\u6392\u884c\u699c', 220, y + 210, panelW - 24, 34, 18);
+        this.rankingLabel = createInfoText(this.node, 'RankingPreviewLabel', '\u52a0\u8f7d\u4e2d...', 145, y + 92, 150, 170, 13);
+        createButton(this.node, 'OpenRankingButton', '\u5237\u65b0', 220, y - 205, 142, 48, () => {
             void this.loadRankingPreview();
         }, this, false, 15);
     }

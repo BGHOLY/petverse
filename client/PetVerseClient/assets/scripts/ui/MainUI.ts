@@ -51,11 +51,13 @@ export class MainUI extends Component {
 
     onEnable() {
         UIEventCenter.on('USER_UPDATED', this.onUserUpdated);
+        UIEventCenter.on('USER_DATA_REFRESH_ONLY', this.onUserDataRefreshOnly);
         UIEventCenter.on('SHOW_HOME', this.showHomeByEvent);
     }
 
     onDisable() {
         UIEventCenter.off('USER_UPDATED', this.onUserUpdated);
+        UIEventCenter.off('USER_DATA_REFRESH_ONLY', this.onUserDataRefreshOnly);
         UIEventCenter.off('SHOW_HOME', this.showHomeByEvent);
     }
 
@@ -101,6 +103,16 @@ export class MainUI extends Component {
         if (this.diamondLabel) this.diamondLabel.string = `${TXT_DIAMOND}: ${user.diamond ?? 0}`;
     }
 
+    async refreshTopBarOnly() {
+        const userResult = await ApiClient.get('/user');
+        const user = userResult?.user || userResult?.data || userResult || {};
+        PlayerData.user = {
+            ...(PlayerData.user || {}),
+            ...user,
+        };
+        this.refreshUI();
+    }
+
     showHome() {
         this.bindStaticScene();
 
@@ -124,6 +136,10 @@ export class MainUI extends Component {
         void this.loadUserAndPets();
     };
 
+    private onUserDataRefreshOnly = () => {
+        void this.refreshTopBarOnly();
+    };
+
     private bindStaticScene() {
         this.canvas = find('Canvas') || this.node.parent || this.node;
 
@@ -131,14 +147,10 @@ export class MainUI extends Component {
         this.pageLayer = this.getOrCreateChild(this.canvas, 'PageLayer', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
         this.toastLayer = this.getOrCreateChild(this.canvas, 'ToastLayer', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
-        this.topBar = this.getOrCreateChild(this.homeLayer, 'TopBar', 0, 590, 680, 64);
-        this.leftActivity = this.getOrCreateChild(this.homeLayer, 'LeftActivityButtons', -300, 220, 118, 260);
+        this.topBar = this.getOrCreateChild(this.homeLayer, 'TopBar', 0, 575, 680, 60);
+        this.leftActivity = this.getOrCreateChild(this.homeLayer, 'LeftActivityButtons', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
         this.homePetAnchor = this.getOrCreateChild(this.homeLayer, 'HomePetAnchor', 0, -20, 260, 300);
-        this.bottomMenu = this.getOrCreateChild(this.homeLayer, 'BottomMenu', 0, -560, 680, 96);
-
-        this.homeLayer.active = true;
-        this.pageLayer.active = false;
-        this.toastLayer.active = true;
+        this.bottomMenu = this.getOrCreateChild(this.homeLayer, 'BottomMenu', 0, -570, 680, 90);
     }
 
     private ensurePanelManager() {
@@ -151,32 +163,32 @@ export class MainUI extends Component {
     private bindHomeTopBar() {
         if (!this.topBar) return;
 
-        createPanel(this.topBar, 'TopBarBg', 0, 0, 680, 64);
-        this.vipLabel = createLabel(this.topBar, 'VipLabel', 'VIP 0', -255, 0, 120, 38, 14);
-        this.nicknameLabel = createLabel(this.topBar, 'PlayerLabel', `${TXT_PLAYER}: PetVerse`, -75, 0, 210, 38, 14);
-        this.goldLabel = createLabel(this.topBar, 'GoldLabel', `${TXT_GOLD}: 0`, 110, 0, 150, 38, 14);
-        this.diamondLabel = createLabel(this.topBar, 'DiamondLabel', `${TXT_DIAMOND}: 0`, 265, 0, 140, 38, 14);
+        createPanel(this.topBar, 'TopBarBg', 0, 0, 680, 60);
+        this.vipLabel = createLabel(this.topBar, 'VipLabel', 'VIP 0', -255, 0, 160, 40, 18);
+        this.nicknameLabel = createLabel(this.topBar, 'PlayerLabel', `${TXT_PLAYER}: PetVerse`, -85, 0, 160, 40, 18);
+        this.goldLabel = createLabel(this.topBar, 'GoldLabel', `${TXT_GOLD}: 0`, 85, 0, 160, 40, 18);
+        this.diamondLabel = createLabel(this.topBar, 'DiamondLabel', `${TXT_DIAMOND}: 0`, 255, 0, 160, 40, 18);
     }
 
     private bindLeftActivityButtons() {
         if (!this.leftActivity) return;
 
         const items = [
-            { name: 'VipButton', text: 'VIP', y: 75, action: () => ToastManager.show('VIP \u7a0d\u540e\u63a5\u5165') },
-            { name: 'SignButton', text: '\u7b7e\u5230', y: 25, action: () => ToastManager.show('\u7b7e\u5230\u7a0d\u540e\u63a5\u5165') },
-            { name: 'GiftButton', text: '\u793c\u5305', y: -25, action: () => ToastManager.show('\u793c\u5305\u7a0d\u540e\u63a5\u5165') },
-            { name: 'RankButton', text: '\u6392\u884c', y: -75, action: () => this.onClickAdventure() },
+            { name: 'VipButton', text: 'VIP', y: 360, action: () => ToastManager.show('VIP \u7a0d\u540e\u63a5\u5165') },
+            { name: 'SignButton', text: '\u7b7e\u5230', y: 300, action: () => ToastManager.show('\u7b7e\u5230\u7a0d\u540e\u63a5\u5165') },
+            { name: 'GiftButton', text: '\u793c\u5305', y: 240, action: () => ToastManager.show('\u793c\u5305\u7a0d\u540e\u63a5\u5165') },
+            { name: 'RankButton', text: '\u6392\u884c', y: 180, action: () => this.onClickAdventure() },
         ];
 
         for (const item of items) {
-            createButton(this.leftActivity, item.name, item.text, 0, item.y, 94, 38, item.action, this, false, 13);
+            createButton(this.leftActivity, item.name, item.text, -305, item.y, 92, 42, item.action, this, false, 15);
         }
     }
 
     private bindBottomMainMenu() {
         if (!this.bottomMenu) return;
 
-        createPanel(this.bottomMenu, 'BottomMenuBg', 0, 0, 680, 96);
+        createPanel(this.bottomMenu, 'BottomMenuBg', 0, 0, 680, 90);
 
         const items = [
             { name: 'PetButton', text: TXT_PET, x: -272, action: () => this.onClickPet() },
@@ -187,7 +199,7 @@ export class MainUI extends Component {
         ];
 
         for (const item of items) {
-            createButton(this.bottomMenu, item.name, item.text, item.x, 0, 118, 58, item.action, this, false, 16);
+            createButton(this.bottomMenu, item.name, item.text, item.x, 0, 112, 58, item.action, this, false, 20);
         }
     }
 

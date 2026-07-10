@@ -3,6 +3,10 @@ import { UIEffects } from './UIEffects';
 
 export const DESIGN_WIDTH = 720;
 export const DESIGN_HEIGHT = 1280;
+export const LEFT = -360;
+export const RIGHT = 360;
+export const TOP = 640;
+export const BOTTOM = -640;
 
 export const TEXT_DARK = new Color(76, 49, 26, 255);
 export const TEXT_LIGHT = new Color(255, 255, 255, 255);
@@ -53,10 +57,10 @@ export function getPageLayout(node?: Node): PageLayout {
         h: DESIGN_HEIGHT,
         pageW: DESIGN_WIDTH,
         pageH: DESIGN_HEIGHT,
-        left: -DESIGN_WIDTH / 2,
-        right: DESIGN_WIDTH / 2,
-        top: DESIGN_HEIGHT / 2,
-        bottom: -DESIGN_HEIGHT / 2,
+        left: LEFT,
+        right: RIGHT,
+        top: TOP,
+        bottom: BOTTOM,
         titleY: 590,
     };
 }
@@ -131,7 +135,7 @@ export function createPageBackground(parent: Node, title: string, fill: Color = 
     bg.setSiblingIndex(0);
 
     createPanel(parent, 'PageHeaderBar', 0, layout.titleY, layout.pageW, 60, new Color(255, 250, 230, 255), PANEL_BORDER, 0, 0);
-    createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW, 60, 24, TEXT_DARK);
+    createLabel(parent, 'PageTitle', title, 0, layout.titleY, 200, 50, 30, TEXT_DARK);
     return layout;
 }
 
@@ -156,7 +160,7 @@ export function createLabel(
     const label = node.getComponent(Label) || node.addComponent(Label);
     label.string = text;
     label.fontSize = fontSize;
-    label.lineHeight = Math.floor(fontSize + 5);
+    label.lineHeight = Math.floor(fontSize + 4);
     label.color = color;
     label.enableWrapText = true;
     label.horizontalAlign = Label.HorizontalAlign.CENTER;
@@ -275,7 +279,7 @@ export const getOrCreateButton = createButton;
 export const getOrCreateLabel = createLabel;
 export function createPageTitle(parent: Node, title: string): Label {
     const layout = getPageLayout(parent);
-    return createLabel(parent, 'PageTitle', title, 0, layout.titleY, layout.pageW, 60, 24, TEXT_DARK);
+    return createLabel(parent, 'PageTitle', title, 0, layout.titleY, 200, 50, 30, TEXT_DARK);
 }
 export function createStatusLabel(parent: Node, name = 'StatusLabel'): Label {
     const layout = getPageLayout(parent);

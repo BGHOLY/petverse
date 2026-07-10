@@ -1,4 +1,4 @@
-import { _decorator, Component, Label, Node, Vec3 } from 'cc';
+import { _decorator, Component, find, Label, Node, Vec3 } from 'cc';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
@@ -73,21 +73,21 @@ export class InventoryPanel extends Component {
     private ensureView() {
         createPageBackground(this.node, TXT_BAG, BAG_PAGE_BG);
 
-        const listPanel = createPanel(this.node, 'PetListPanel', -230, 280, 180, 360);
+        const listPanel = createPanel(this.node, 'PetListPanel', -230, 250, 180, 360);
         createLabel(listPanel, 'PetListTitleLabel', TXT_SELECT_PET, 0, 150, 150, 28, 14);
         this.petListContent = this.ensureContent(listPanel, 'PetListContent', 0, -18, 170, 290);
 
-        const shapePanel = createPanel(this.node, 'PetShapePanel', 0, 280, 240, 360);
+        const shapePanel = createPanel(this.node, 'PetShapePanel', 0, 250, 220, 360);
         createLabel(shapePanel, 'PetShapeTitleLabel', TXT_PET_SHAPE, 0, 150, 180, 28, 14);
-        this.petShapeContent = this.ensureContent(shapePanel, 'PetShapeContent', 0, -18, 220, 290);
-        this.petShapeLabel = createLabel(this.petShapeContent, 'PetShapeLabel', '', 0, 0, 200, 250, 21);
+        this.petShapeContent = this.ensureContent(shapePanel, 'PetShapeContent', 0, -18, 205, 290);
+        this.petShapeLabel = createLabel(this.petShapeContent, 'PetShapeLabel', '', 0, 0, 190, 250, 21);
 
-        const statsPanel = createPanel(this.node, 'PetStatsPanel', 230, 280, 180, 360);
+        const statsPanel = createPanel(this.node, 'PetStatsPanel', 230, 250, 180, 360);
         createLabel(statsPanel, 'PetStatsTitleLabel', TXT_PET_STATS, 0, 150, 150, 28, 14);
         this.petStatsContent = this.ensureContent(statsPanel, 'PetStatsContent', 0, -18, 165, 290);
-        this.petStatsLabel = createInfoText(this.petStatsContent, 'PetStatsLabel', '', -78, 132, 156, 265, 12);
+        this.petStatsLabel = createInfoText(this.petStatsContent, 'PetStatsLabel', '', -78, 132, 156, 265, 18);
 
-        const gridPanel = createPanel(this.node, 'ItemGridPanel', 0, -210, 660, 520);
+        const gridPanel = createPanel(this.node, 'ItemGridPanel', 0, -250, 660, 520);
         createLabel(gridPanel, 'ItemGridTitleLabel', TXT_ITEMS, 0, 232, 200, 32, 16);
         this.itemGridContent = this.ensureContent(gridPanel, 'ItemGridContent', 0, -10, 640, 460);
     }
@@ -111,7 +111,7 @@ export class InventoryPanel extends Component {
 
         for (let i = 0; i < Math.min(6, this.pets.length); i++) {
             const pet = this.pets[i];
-            createButton(this.petListContent, `PetButton${i}`, `${i + 1}.${pet.nickname || '\u5ba0\u7269'}`, 0, 118 - i * 42, 148, 32, () => {
+            createButton(this.petListContent, `PetButton${i}`, `${i + 1}.${pet.nickname || '\u5ba0\u7269'}`, 0, 118 - i * 48, 140, 44, () => {
                 this.selectedPetIndex = i;
                 this.selectedPetId = pet.id;
                 this.renderPetList();
@@ -163,12 +163,12 @@ export class InventoryPanel extends Component {
 
         const cols = 5;
         const rows = 3;
-        const slotW = 116;
-        const slotH = 118;
-        const gapX = 12;
-        const gapY = 22;
+        const slotW = 115;
+        const slotH = 105;
+        const gapX = 13;
+        const gapY = 28;
         const startX = -256;
-        const startY = 150;
+        const startY = 145;
 
         if (!this.items.length) {
             createLabel(this.itemGridContent, 'ItemGridEmpty', TXT_EMPTY_ITEM, 0, 0, 250, 50, 16);
@@ -194,7 +194,7 @@ export class InventoryPanel extends Component {
 
             createButton(this.itemGridContent, `ItemSlot${i}`, text, x, y, slotW, slotH, () => {
                 void this.useItem(itemCode, name);
-            }, this, false, 12);
+            }, this, false, 14);
         }
     }
 
@@ -217,9 +217,16 @@ export class InventoryPanel extends Component {
             ToastManager.show(`\u4f7f\u7528\u5931\u8d25\uff1a${result?.message || itemCode}`);
         }
 
-        UIEventCenter.emit('USER_UPDATED');
+        UIEventCenter.emit('USER_DATA_REFRESH_ONLY');
         await this.loadInventory();
+        this.keepInventoryPageOpen();
+    }
 
+    private keepInventoryPageOpen() {
+        const homeLayer = find('Canvas/HomeLayer');
+        const pageLayer = find('Canvas/PageLayer');
+        if (homeLayer) homeLayer.active = false;
+        if (pageLayer) pageLayer.active = true;
         if (this.node.parent) this.node.parent.active = true;
         this.node.active = true;
     }

@@ -18,6 +18,7 @@ const PAGE_NAMES: MainPageName[] = ['PetPage', 'InventoryPage', 'ShopPage', 'Bre
 export class PanelManager extends Component {
     private pageLayer: Node | null = null;
     private pageMap: Map<MainPageName, Node> = new Map();
+    private currentPageName: MainPageName | null = null;
 
     start() {
         this.ensurePages();
@@ -28,9 +29,11 @@ export class PanelManager extends Component {
 
         this.pageLayer = this.getOrCreateChild(canvas, 'PageLayer', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
+        const keepCurrentState = !!this.currentPageName;
+
         for (const name of PAGE_NAMES) {
             const page = this.getOrCreateChild(this.pageLayer, name, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-            page.active = false;
+            if (!keepCurrentState) page.active = false;
             this.pageMap.set(name, page);
         }
 
@@ -41,7 +44,7 @@ export class PanelManager extends Component {
         this.ensureComponent(this.pageMap.get('AdventurePage')!, AdventurePanel);
 
         this.ensureBackButton();
-        this.pageLayer.active = false;
+        if (!keepCurrentState) this.pageLayer.active = false;
     }
 
     showPage(name: MainPageName) {
@@ -64,6 +67,7 @@ export class PanelManager extends Component {
 
         page.active = true;
         page.setSiblingIndex(1);
+        this.currentPageName = name;
         this.ensureBackButton();
         UIEffects.playPageIn(page);
         console.log('[PanelManager] Switch page:', name);
@@ -88,9 +92,17 @@ export class PanelManager extends Component {
     showRanking() { this.showAdventure(); }
 
     showHome() {
+        this.currentPageName = null;
         if (this.pageLayer) this.pageLayer.active = false;
         const homeLayer = find('Canvas/HomeLayer');
         if (homeLayer) homeLayer.active = true;
+    }
+
+    refreshCurrentPage() {
+        if (!this.currentPageName) return;
+        const page = this.pageMap.get(this.currentPageName);
+        if (!page || !page.active) return;
+        this.refreshPage(this.currentPageName, page);
     }
 
     hideAllPages() {

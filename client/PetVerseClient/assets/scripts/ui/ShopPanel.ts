@@ -67,10 +67,10 @@ export class ShopPanel extends Component {
     }
 
     private ensureGridContent() {
-        const gridPanel = createPanel(this.node, 'ShopGridPanel', 0, 50, 660, 760);
+        const gridPanel = createPanel(this.node, 'ShopGridPanel', 0, 0, 660, 800);
         const content = getOrCreateNode(gridPanel, 'ShopGridContent');
         content.setPosition(new Vec3(0, 0, 0));
-        ensureTransform(content, 640, 720);
+        ensureTransform(content, 640, 760);
         return content;
     }
 
@@ -121,7 +121,7 @@ export class ShopPanel extends Component {
         const gapX = 20;
         const gapY = 22;
         const startX = -214;
-        const startY = 280;
+        const startY = 300;
 
         displayList.slice(0, 15).forEach((item: any, index: number) => {
             const col = index % cols;
@@ -148,7 +148,7 @@ export class ShopPanel extends Component {
 
         if (result?.user) {
             PlayerData.user = { ...(PlayerData.user || {}), ...result.user };
-            UIEventCenter.emit('USER_UPDATED');
+            UIEventCenter.emit('USER_DATA_REFRESH_ONLY');
         }
 
         ToastManager.show(result?.success
