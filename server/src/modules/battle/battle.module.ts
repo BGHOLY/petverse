@@ -4,8 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DailyTaskModule } from '../daily-task/daily-task.module';
 import { FriendModule } from '../friend/friend.module';
-import { PetModule } from '../pet/pet.module';
+import { SeasonModule } from '../season/season.module';
 import { TeamModule } from '../team/team.module';
+import { PetModule } from '../pet/pet.module';
 import { BattleController } from './battle.controller';
 import { Battle } from './battle.entity';
 import { BattleService } from './battle.service';
@@ -24,6 +25,7 @@ import { BattleService } from './battle.service';
     PetModule,
     FriendModule,
     DailyTaskModule,
+    SeasonModule,
     TeamModule,
   ],
   controllers: [BattleController],

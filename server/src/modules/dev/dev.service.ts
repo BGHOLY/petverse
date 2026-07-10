@@ -6,8 +6,11 @@ import { DEFAULT_USER_ID } from '../game-data';
 import { FriendService } from '../friend/friend.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ItemService } from '../item/item.service';
+import { MailService } from '../mail/mail.service';
+import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
 import { PetService } from '../pet/pet.service';
 import { ShopService } from '../shop/shop.service';
+import { SeasonService } from '../season/season.service';
 import { SkillService } from '../skill/skill.service';
 import { TeamService } from '../team/team.service';
 import { TowerService } from '../tower/tower.service';
@@ -27,6 +30,9 @@ export class DevService {
     private readonly economyService: EconomyService,
     private readonly teamService: TeamService,
     private readonly achievementService: AchievementService,
+    private readonly mailService: MailService,
+    private readonly seasonService: SeasonService,
+    private readonly petCapacityService: PetCapacityService,
   ) {}
 
   async seedAll() {
@@ -64,6 +70,8 @@ export class DevService {
       fusion_core: 20,
       skill_lock: 100,
       mutation_essence: 5,
+      pet_capacity_ticket: 3,
+      season_token: 5,
       BOOK_LOW_PHYSICAL_COMBO: 3,
       BOOK_LOW_PHYSICAL_CRIT: 3,
       BOOK_LOW_MAGIC_COMBO: 3,
@@ -102,11 +110,17 @@ export class DevService {
       await this.teamService.getTeam(userId);
     const achievements =
       await this.achievementService.seedAchievements(userId);
+    const welcomeMail =
+      await this.mailService.seedWelcomeMail(userId);
+    const season =
+      await this.seasonService.getMySeason(userId);
+    const petCapacity =
+      await this.petCapacityService.getStatus(userId);
 
     return {
       success: true,
-      message: 'PetVerse backend V2.1 data seeded',
-      version: '2.1.0',
+      message: 'PetVerse backend V2.2 data seeded',
+      version: '2.2.0',
       user: {
         ...user,
         gold: wallet.gold,
@@ -123,6 +137,9 @@ export class DevService {
       wallet,
       team: finalTeam,
       achievements,
+      welcomeMail,
+      season,
+      petCapacity,
     };
   }
 }

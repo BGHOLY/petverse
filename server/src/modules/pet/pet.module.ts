@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DailyTaskModule } from '../daily-task/daily-task.module';
+import { PetCapacityModule } from '../pet-capacity/pet-capacity.module';
 import { BreedingModule } from '../breeding/breeding.module';
 import { SkillModule } from '../skill/skill.module';
 import { PetTeam } from '../team/pet-team.entity';
@@ -23,6 +24,7 @@ import { PetService } from './pet.service';
     SkillModule,
     BreedingModule,
     DailyTaskModule,
+    PetCapacityModule,
   ],
   controllers: [PetController],
   providers: [PetService],

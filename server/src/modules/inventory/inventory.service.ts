@@ -327,6 +327,14 @@ export class InventoryService {
           if (!pet) {
             throw new Error('No pet available');
           }
+          if (
+            pet.tradeStatus === 'listed' ||
+            pet.tradeListingId
+          ) {
+            throw new Error(
+              'Listed pet cannot use items',
+            );
+          }
 
           for (
             let index = 0;

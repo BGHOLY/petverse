@@ -1,8 +1,9 @@
+
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
 
 @Entity('users')
@@ -36,6 +37,9 @@ export class User {
 
   @Column({ default: 100 })
   diamond: number;
+
+  @Column({ default: 50 })
+  petCapacity: number;
 
   @CreateDateColumn()
   createTime: Date;

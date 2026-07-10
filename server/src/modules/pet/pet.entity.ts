@@ -32,6 +32,12 @@ export class Pet {
   @Column({ default: false })
   isFavorite: boolean;
 
+  @Column({ default: 'none' })
+  tradeStatus: string;
+
+  @Column({ default: 0 })
+  tradeListingId: number;
+
   @Column({ default: 'unknown' })
   gender: string;
 
@@ -105,7 +111,7 @@ export class Pet {
   @Column({ default: 'created' })
   sourceType: string;
 
-  @Column({ default: '2.0.0' })
+  @Column({ default: '2.2.0' })
   configVersion: string;
 
   @Column({ default: 100 })

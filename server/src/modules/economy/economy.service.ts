@@ -157,7 +157,7 @@ export class EconomyService {
       reward: data.reward || {},
       payload: data.payload || {},
       result: data.result || {},
-      configVersion: '2.1.0',
+      configVersion: '2.2.0',
     });
     return repository.save(operation);
   }

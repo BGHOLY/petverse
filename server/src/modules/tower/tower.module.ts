@@ -5,8 +5,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BattleModule } from '../battle/battle.module';
 import { DailyTaskModule } from '../daily-task/daily-task.module';
 import { PetModule } from '../pet/pet.module';
-import { User } from '../user/user.entity';
+import { SeasonModule } from '../season/season.module';
 import { TeamModule } from '../team/team.module';
+import { User } from '../user/user.entity';
 import { TowerController } from './tower.controller';
 import { TowerRecord } from './tower-record.entity';
 import { TowerService } from './tower.service';
@@ -28,6 +29,7 @@ import { TowerService } from './tower.service';
     PetModule,
     BattleModule,
     DailyTaskModule,
+    SeasonModule,
     TeamModule,
   ],
   controllers: [TowerController],

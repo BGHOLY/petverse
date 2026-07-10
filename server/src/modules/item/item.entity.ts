@@ -44,7 +44,7 @@ export class Item {
   @Column({ default: true })
   enabled: boolean;
 
-  @Column({ default: '2.1.0' })
+  @Column({ default: '2.2.0' })
   version: string;
 
   @CreateDateColumn()

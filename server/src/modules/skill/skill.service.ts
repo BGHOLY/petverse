@@ -227,6 +227,14 @@ export class SkillService {
               'Locked pet cannot learn skills',
             );
           }
+          if (
+            pet.tradeStatus === 'listed' ||
+            pet.tradeListingId
+          ) {
+            throw new Error(
+              'Listed pet cannot learn skills',
+            );
+          }
 
           const beforeSkills =
             await this.normalizeSkillList(pet.skills);
@@ -270,10 +278,6 @@ export class SkillService {
             throw new Error('Pet already has this skill');
           }
 
-          const seed = String(
-            requestedSeed ||
-              createRandomSeed('skill-book'),
-          );
           const afterSkills = beforeSkills.map((skill) => ({
             ...skill,
           }));
@@ -353,6 +357,10 @@ export class SkillService {
                   );
                 }
 
+                const seed = String(
+                  requestedSeed ||
+                    createRandomSeed('skill-book'),
+                );
                 const rng = new SeededRandom(seed);
                 const selected = rng.pick(candidates);
                 if (!selected) {
@@ -367,6 +375,10 @@ export class SkillService {
             }
           }
 
+          const seed = String(
+            requestedSeed ||
+              createRandomSeed('skill-book'),
+          );
           const lockCostMap: Record<number, number> = {
             0: 0,
             1: 1,

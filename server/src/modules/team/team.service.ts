@@ -34,7 +34,7 @@ export class TeamService {
         userId,
         name: 'default',
         petIds: firstPets.map((pet) => pet.id),
-        version: '2.1.0',
+        version: '2.2.0',
       });
       team = await this.teamRepository.save(team);
     }
@@ -97,6 +97,18 @@ export class TeamService {
         message: 'One or more team pets are invalid',
       };
     }
+    if (
+      pets.some(
+        (pet) =>
+          pet.tradeStatus === 'listed' ||
+          Number(pet.tradeListingId || 0) > 0,
+      )
+    ) {
+      return {
+        success: false,
+        message: 'Listed pets cannot join the active team',
+      };
+    }
 
     let team = await this.teamRepository.findOne({
       where: { userId },
@@ -106,11 +118,11 @@ export class TeamService {
         userId,
         name: 'default',
         petIds,
-        version: '2.1.0',
+        version: '2.2.0',
       });
     } else {
       team.petIds = petIds;
-      team.version = '2.1.0';
+      team.version = '2.2.0';
     }
     team = await this.teamRepository.save(team);
 

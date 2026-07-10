@@ -22,6 +22,11 @@ import { Egg } from '../modules/egg/egg.entity';
 import { FusionRecord } from '../modules/fusion/fusion-record.entity';
 import { GameOperationRecord } from '../modules/economy/game-operation-record.entity';
 import { PetTeam } from '../modules/team/pet-team.entity';
+import { Season } from '../modules/season/season.entity';
+import { SeasonPlayer } from '../modules/season/season-player.entity';
+import { RankingSnapshot } from '../modules/ranking/ranking-snapshot.entity';
+import { TradeListing } from '../modules/trade/trade-listing.entity';
+import { TradeRecord } from '../modules/trade/trade-record.entity';
 
 dotenv.config();
 
@@ -55,6 +60,11 @@ export const databaseConfig: TypeOrmModuleOptions = {
     FusionRecord,
     GameOperationRecord,
     PetTeam,
+    Season,
+    SeasonPlayer,
+    RankingSnapshot,
+    TradeListing,
+    TradeRecord,
   ],
   synchronize: true,
 };

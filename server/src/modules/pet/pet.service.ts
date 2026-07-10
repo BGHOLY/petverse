@@ -11,6 +11,7 @@ import {
   BreedingService,
 } from '../breeding/breeding.service';
 import { DailyTaskService } from '../daily-task/daily-task.service';
+import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
 import {
   DEFAULT_USER_ID,
   RARITY_NAMES,
@@ -71,6 +72,7 @@ export class PetService {
     private readonly skillService: SkillService,
     private readonly breedingService: BreedingService,
     private readonly dailyTaskService: DailyTaskService,
+    private readonly petCapacityService: PetCapacityService,
   ) {}
 
   async getAllPets() {
@@ -255,6 +257,8 @@ export class PetService {
   }
 
   async createPet(userId: number, data: CreatePetData = {}) {
+    await this.petCapacityService.assertCanReceive(userId, 1);
+
     const speciesConfig = findPetSpeciesConfig(
       data.speciesCode || data.species,
     );
@@ -320,6 +324,8 @@ export class PetService {
       isMutant,
       isLocked: Boolean(data.isLocked),
       isFavorite: Boolean(data.isFavorite),
+      tradeStatus: 'none',
+      tradeListingId: 0,
       gender: data.gender || (Math.random() < 0.5 ? 'male' : 'female'),
       breedCount: 0,
       fusionCount: 0,
@@ -448,6 +454,8 @@ export class PetService {
     parentB?: Pet | null,
     sourceType?: string,
   ) {
+    await this.petCapacityService.assertCanReceive(userId, 1);
+
     const data = this.buildPetCreateDataFromBlueprint(
       userId,
       blueprint,
@@ -486,6 +494,8 @@ export class PetService {
       isMutant: Boolean(blueprint.isMutant),
       isLocked: false,
       isFavorite: false,
+      tradeStatus: 'none',
+      tradeListingId: 0,
       gender: Math.random() < 0.5 ? 'male' : 'female',
       breedCount: 0,
       fusionCount: 0,
@@ -558,6 +568,12 @@ export class PetService {
         message: 'Pet not found',
       };
     }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot be renamed',
+      };
+    }
 
     pet.nickname = normalized;
     return {
@@ -579,6 +595,12 @@ export class PetService {
       return {
         success: false,
         message: 'Pet not found',
+      };
+    }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot change lock state',
       };
     }
 
@@ -606,6 +628,12 @@ export class PetService {
       return {
         success: false,
         message: 'Pet not found',
+      };
+    }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot change favorite state',
       };
     }
 
@@ -637,6 +665,12 @@ export class PetService {
       return {
         success: false,
         message: 'Locked pet cannot be released',
+      };
+    }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot be released',
       };
     }
     if (
@@ -694,6 +728,12 @@ export class PetService {
         message: 'Pet not found',
       };
     }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot be modified',
+      };
+    }
 
     pet.hunger = Math.min(100, Number(pet.hunger || 0) + 20);
     pet.happiness = Math.min(100, Number(pet.happiness || 0) + 10);
@@ -728,6 +768,12 @@ export class PetService {
       return {
         success: false,
         message: 'Pet not found',
+      };
+    }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot be modified',
       };
     }
 
@@ -1001,6 +1047,16 @@ export class PetService {
 
     if (pet.isFavorite === undefined || pet.isFavorite === null) {
       pet.isFavorite = false;
+      changed = true;
+    }
+
+    if (!pet.tradeStatus) {
+      pet.tradeStatus = 'none';
+      changed = true;
+    }
+
+    if (pet.tradeListingId === undefined || pet.tradeListingId === null) {
+      pet.tradeListingId = 0;
       changed = true;
     }
 

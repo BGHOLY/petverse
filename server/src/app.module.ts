@@ -28,6 +28,9 @@ import { HatcheryModule } from './modules/hatchery/hatchery.module';
 import { FusionModule } from './modules/fusion/fusion.module';
 import { EconomyModule } from './modules/economy/economy.module';
 import { TeamModule } from './modules/team/team.module';
+import { PetCapacityModule } from './modules/pet-capacity/pet-capacity.module';
+import { SeasonModule } from './modules/season/season.module';
+import { TradeModule } from './modules/trade/trade.module';
 import { BackendModule } from './modules/backend/backend.module';
 import { DevModule } from './modules/dev/dev.module';
 
@@ -61,6 +64,9 @@ import { DevModule } from './modules/dev/dev.module';
     FusionModule,
     EconomyModule,
     TeamModule,
+    PetCapacityModule,
+    SeasonModule,
+    TradeModule,
     BackendModule,
     DevModule,
   ],

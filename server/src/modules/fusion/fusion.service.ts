@@ -454,6 +454,14 @@ export class FusionService {
       return 'Locked pets cannot be fused';
     }
     if (
+      parentA.tradeStatus === 'listed' ||
+      parentB.tradeStatus === 'listed' ||
+      parentA.tradeListingId ||
+      parentB.tradeListingId
+    ) {
+      return 'Listed pets cannot be fused';
+    }
+    if (
       parentA.married ||
       parentB.married ||
       parentA.marriedPetId ||

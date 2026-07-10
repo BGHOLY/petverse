@@ -37,7 +37,7 @@ export class GameOperationRecord {
   @Column({ type: 'simple-json', nullable: true })
   result: Record<string, any>;
 
-  @Column({ default: '2.1.0' })
+  @Column({ default: '2.2.0' })
   configVersion: string;
 
   @CreateDateColumn()

@@ -168,9 +168,15 @@ export class HatcheryService {
           eggs,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       await this.eggService.markUnhatched(egg);
-      throw error;
+      return {
+        success: false,
+        message: String(
+          error?.message || 'Hatch failed',
+        ),
+        egg: this.eggService.toEggView(egg),
+      };
     }
   }
 }

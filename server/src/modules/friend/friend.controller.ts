@@ -1,3 +1,4 @@
+
 import { Body, Controller, Get, Post } from '@nestjs/common';
 
 import { DEFAULT_USER_ID } from '../game-data';
@@ -8,40 +9,61 @@ export class FriendController {
   constructor(private readonly friendService: FriendService) {}
 
   @Get()
-  async getFriends() {
-    return this.friendService.getMockFriends(DEFAULT_USER_ID);
+  getFriends() {
+    return this.friendService.getFriends(DEFAULT_USER_ID);
   }
 
   @Get('list')
-  async getMyFriends() {
-    return this.friendService.getMockFriends(DEFAULT_USER_ID);
+  getMyFriends() {
+    return this.friendService.getFriends(DEFAULT_USER_ID);
   }
 
   @Post('seed')
-  async seedFriends() {
+  seedFriends() {
     return this.friendService.seedMockFriends(DEFAULT_USER_ID);
   }
 
   @Post('request')
-  async sendRequest(@Body() body: any) {
-    return this.friendService.sendRequest(DEFAULT_USER_ID, Number(body?.targetUserId || 0));
+  sendRequest(@Body() body: any) {
+    return this.friendService.sendRequest(
+      DEFAULT_USER_ID,
+      Number(body?.targetUserId || body?.userId || 0),
+      String(body?.message || ''),
+    );
   }
 
   @Get('requests')
-  async getRequests() {
-    return {
-      success: true,
-      requests: await this.friendService.getRequests(DEFAULT_USER_ID),
-      data: await this.friendService.getRequests(DEFAULT_USER_ID),
-    };
+  getIncomingRequests() {
+    return this.friendService.getRequests(DEFAULT_USER_ID, 'incoming');
+  }
+
+  @Get('requests/outgoing')
+  getOutgoingRequests() {
+    return this.friendService.getRequests(DEFAULT_USER_ID, 'outgoing');
   }
 
   @Post('handle')
-  async handleRequest(@Body() body: any) {
+  handleRequest(@Body() body: any) {
     return this.friendService.handleRequest(
       DEFAULT_USER_ID,
       Number(body?.requestId || 0),
       Boolean(body?.accept),
+    );
+  }
+
+  @Post('remove')
+  removeFriend(@Body() body: any) {
+    return this.friendService.removeFriend(
+      DEFAULT_USER_ID,
+      Number(body?.friendUserId || body?.userId || 0),
+    );
+  }
+
+  @Post('search')
+  searchPlayers(@Body() body: any) {
+    return this.friendService.searchPlayers(
+      DEFAULT_USER_ID,
+      String(body?.keyword || ''),
     );
   }
 }

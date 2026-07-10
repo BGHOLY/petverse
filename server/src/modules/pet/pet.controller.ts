@@ -49,41 +49,50 @@ export class PetController {
 
   @Post('create')
   async createPet(@Body() body: any) {
-    const pet = await this.petService.createPet(
-      DEFAULT_USER_ID,
-      {
-        nickname: body?.nickname,
-        species: body?.species,
-        speciesCode: body?.speciesCode,
-        isMutant: Boolean(body?.isMutant),
-        isLocked: Boolean(body?.isLocked),
-        isFavorite: Boolean(body?.isFavorite),
-        gender: body?.gender,
-        rarity: Number(body?.rarity || 1),
-        quality:
-          body?.quality === undefined
-            ? undefined
-            : Number(body.quality),
-        skillSlotCount:
-          body?.skillSlotCount === undefined
-            ? undefined
-            : Number(body.skillSlotCount),
-        aptitudes: body?.aptitudes,
-        growth:
-          body?.growth === undefined
-            ? undefined
-            : Number(body.growth),
-        bodyType: body?.bodyType,
-        color: body?.color,
-        pattern: body?.pattern,
-        sourceType: body?.sourceType || 'created',
-      },
-    );
+    try {
+      const pet = await this.petService.createPet(
+        DEFAULT_USER_ID,
+        {
+          nickname: body?.nickname,
+          species: body?.species,
+          speciesCode: body?.speciesCode,
+          isMutant: Boolean(body?.isMutant),
+          isLocked: Boolean(body?.isLocked),
+          isFavorite: Boolean(body?.isFavorite),
+          gender: body?.gender,
+          rarity: Number(body?.rarity || 1),
+          quality:
+            body?.quality === undefined
+              ? undefined
+              : Number(body.quality),
+          skillSlotCount:
+            body?.skillSlotCount === undefined
+              ? undefined
+              : Number(body.skillSlotCount),
+          aptitudes: body?.aptitudes,
+          growth:
+            body?.growth === undefined
+              ? undefined
+              : Number(body.growth),
+          bodyType: body?.bodyType,
+          color: body?.color,
+          pattern: body?.pattern,
+          sourceType: body?.sourceType || 'created',
+        },
+      );
 
-    return {
-      success: true,
-      pet,
-    };
+      return {
+        success: true,
+        pet,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: String(
+          error?.message || 'Create pet failed',
+        ),
+      };
+    }
   }
 
   @Post('rename')

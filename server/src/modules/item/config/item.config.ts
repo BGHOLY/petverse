@@ -25,7 +25,7 @@ export interface ShopSeedConfig {
   quantity: number;
 }
 
-export const ITEM_CONFIG_VERSION = '2.1.0';
+export const ITEM_CONFIG_VERSION = '2.2.0';
 
 export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
   {
@@ -196,6 +196,34 @@ export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
     enabled: true,
     version: ITEM_CONFIG_VERSION,
   },
+  {
+    itemCode: 'pet_capacity_ticket',
+    name: '宝宝仓库扩容券',
+    description: '使用后宝宝容量永久增加10格，最高200格。',
+    type: 'capacity',
+    rarity: 4,
+    maxStack: 99,
+    usable: false,
+    effect: 'pet_capacity_expand',
+    effectValue: 10,
+    effectData: { maxCapacity: 200 },
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
+  {
+    itemCode: 'season_token',
+    name: '赛季徽章',
+    description: '赛季结算与赛季商店使用的纪念货币。',
+    type: 'season',
+    rarity: 4,
+    maxStack: 9999,
+    usable: false,
+    effect: 'season_currency',
+    effectValue: 1,
+    effectData: {},
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
 ];
 
 export const SKILL_BOOK_ITEM_CONFIGS: ItemSeedConfig[] =
@@ -245,6 +273,7 @@ export const SHOP_ITEM_CONFIGS: ShopSeedConfig[] = [
   { itemCode: 'fusion_core', currencyType: 'gold', price: 1800, quantity: 1 },
   { itemCode: 'skill_lock', currencyType: 'gold', price: 120, quantity: 1 },
   { itemCode: 'mutation_essence', currencyType: 'diamond', price: 25, quantity: 1 },
+  { itemCode: 'pet_capacity_ticket', currencyType: 'diamond', price: 50, quantity: 1 },
   ...lowBooks.map((item) => ({
     itemCode: item.itemCode,
     currencyType: 'gold' as const,

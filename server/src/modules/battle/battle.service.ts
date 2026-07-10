@@ -7,6 +7,7 @@ import { FriendService } from '../friend/friend.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
+import { SeasonService } from '../season/season.service';
 import { TeamService } from '../team/team.service';
 import { Battle } from './battle.entity';
 
@@ -62,6 +63,7 @@ export class BattleService {
 
     private readonly friendService: FriendService,
     private readonly dailyTaskService: DailyTaskService,
+    private readonly seasonService: SeasonService,
     private readonly teamService: TeamService,
   ) {}
 
@@ -74,6 +76,12 @@ export class BattleService {
       return {
         success: false,
         message: 'Player pet not found',
+      };
+    }
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return {
+        success: false,
+        message: 'Listed pet cannot battle',
       };
     }
 
@@ -122,6 +130,17 @@ export class BattleService {
         message: 'Battle pet not found',
       };
     }
+    if (
+      myPet.tradeStatus === 'listed' ||
+      myPet.tradeListingId ||
+      friendPet.tradeStatus === 'listed' ||
+      friendPet.tradeListingId
+    ) {
+      return {
+        success: false,
+        message: 'Listed pets cannot battle',
+      };
+    }
 
     const result = this.simulateBattle(
       this.fromPet(myPet),
@@ -138,11 +157,20 @@ export class BattleService {
       userId,
       'battleCompleted',
     );
+    const seasonResult =
+      await this.seasonService.recordBattle(
+        userId,
+        result.winnerSide === 'left'
+          ? 'win'
+          : 'lose',
+        1000,
+      );
 
     return {
       success: true,
       mode: 'friend',
       result: result.winnerSide === 'left' ? 'win' : 'lose',
+      seasonResult,
       winner: result.winnerName,
       battleLog: result.battleLog,
       playerPet: myPet,
@@ -159,10 +187,18 @@ export class BattleService {
     return this.friendBattle(userId, myPetId, targetPetId);
   }
 
+
   async teamPve(userId = DEFAULT_USER_ID) {
     const teamResult = await this.teamService.getTeam(userId);
     const pets = Array.isArray(teamResult?.pets)
-      ? teamResult.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      ? teamResult.pets
+          .filter(
+            (pet: Pet) =>
+              !pet.isEgg &&
+              pet.tradeStatus !== 'listed' &&
+              !pet.tradeListingId,
+          )
+          .slice(0, 3)
       : [];
 
     if (!pets.length) {
@@ -175,8 +211,11 @@ export class BattleService {
     const averageLevel = Math.max(
       1,
       Math.round(
-        pets.reduce((sum: number, pet: Pet) => sum + Number(pet.level || 1), 0) /
-          pets.length,
+        pets.reduce(
+          (sum: number, pet: Pet) =>
+            sum + Number(pet.level || 1),
+          0,
+        ) / pets.length,
       ),
     );
     const enemies = pets.map((_, index) =>
@@ -188,7 +227,10 @@ export class BattleService {
     );
 
     await this.saveBattle(userId, pets[0].id, 0, 0, result);
-    await this.dailyTaskService.completeTask(userId, 'battleCompleted');
+    await this.dailyTaskService.completeTask(
+      userId,
+      'battleCompleted',
+    );
 
     return {
       success: true,
@@ -208,17 +250,32 @@ export class BattleService {
   ) {
     const teamResult = await this.teamService.getTeam(userId);
     const myPets = Array.isArray(teamResult?.pets)
-      ? teamResult.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      ? teamResult.pets
+          .filter(
+            (pet: Pet) =>
+              !pet.isEgg &&
+              pet.tradeStatus !== 'listed' &&
+              !pet.tradeListingId,
+          )
+          .slice(0, 3)
       : [];
 
-    const friendResult = await this.friendService.getMockFriends(userId);
+    const friendResult = await this.friendService.getFriends(userId);
     const friend = friendUserId
       ? friendResult.friends.find(
-          (item: any) => Number(item.userId || item.id) === Number(friendUserId),
+          (item: any) =>
+            Number(item.userId || item.id) === Number(friendUserId),
         )
       : friendResult.friends[0];
     const friendPets = Array.isArray(friend?.pets)
-      ? friend.pets.filter((pet: Pet) => !pet.isEgg).slice(0, 3)
+      ? friend.pets
+          .filter(
+            (pet: Pet) =>
+              !pet.isEgg &&
+              pet.tradeStatus !== 'listed' &&
+              !pet.tradeListingId,
+          )
+          .slice(0, 3)
       : [];
 
     if (!myPets.length || !friendPets.length) {
@@ -239,12 +296,21 @@ export class BattleService {
       friendPets[0].id,
       result,
     );
-    await this.dailyTaskService.completeTask(userId, 'battleCompleted');
+    await this.dailyTaskService.completeTask(
+      userId,
+      'battleCompleted',
+    );
+    const seasonResult = await this.seasonService.recordBattle(
+      userId,
+      result.winnerSide === 'left' ? 'win' : 'lose',
+      1000,
+    );
 
     return {
       success: true,
       mode: 'team-friend',
       result: result.winnerSide === 'left' ? 'win' : 'lose',
+      seasonResult,
       winner: result.winnerName,
       playerTeam: myPets,
       friend: friend
@@ -263,14 +329,21 @@ export class BattleService {
     leftTeamInput: Combatant[],
     rightTeamInput: Combatant[],
   ) {
-    const leftTeam = leftTeamInput.slice(0, 3).map((pet) => this.cloneCombatant(pet));
-    const rightTeam = rightTeamInput.slice(0, 3).map((pet) => this.cloneCombatant(pet));
+    const leftTeam = leftTeamInput
+      .slice(0, 3)
+      .map((pet) => this.cloneCombatant(pet));
+    const rightTeam = rightTeamInput
+      .slice(0, 3)
+      .map((pet) => this.cloneCombatant(pet));
     const battleLog: string[] = [];
     const duelResults: any[] = [];
     let leftIndex = 0;
     let rightIndex = 0;
 
-    while (leftIndex < leftTeam.length && rightIndex < rightTeam.length) {
+    while (
+      leftIndex < leftTeam.length &&
+      rightIndex < rightTeam.length
+    ) {
       const left = leftTeam[leftIndex];
       const right = rightTeam[rightIndex];
       battleLog.push(
@@ -282,32 +355,49 @@ export class BattleService {
         rightPetId: right.id,
         ...duel,
       });
-      battleLog.push(...duel.battleLog.map((line: string) => `  ${line}`));
+      battleLog.push(
+        ...duel.battleLog.map((line: string) => `  ${line}`),
+      );
 
       if (duel.winnerSide === 'left') {
         left.hp = Math.max(1, Number(duel.leftHp || 1));
-        left.shield = Math.max(0, Number(duel.leftShield || 0));
+        left.shield = Math.max(
+          0,
+          Number(duel.leftShield || 0),
+        );
         rightIndex += 1;
       } else {
         right.hp = Math.max(1, Number(duel.rightHp || 1));
-        right.shield = Math.max(0, Number(duel.rightShield || 0));
+        right.shield = Math.max(
+          0,
+          Number(duel.rightShield || 0),
+        );
         leftIndex += 1;
       }
     }
 
-    const winnerSide = leftIndex < leftTeam.length ? 'left' : 'right';
-    const winner = winnerSide === 'left'
-      ? leftTeam[Math.min(leftIndex, leftTeam.length - 1)]
-      : rightTeam[Math.min(rightIndex, rightTeam.length - 1)];
+    const winnerSide =
+      leftIndex < leftTeam.length ? 'left' : 'right';
+    const winner =
+      winnerSide === 'left'
+        ? leftTeam[Math.min(leftIndex, leftTeam.length - 1)]
+        : rightTeam[
+            Math.min(rightIndex, rightTeam.length - 1)
+          ];
     battleLog.push(
-      winnerSide === 'left' ? '我方队伍获胜' : '对方队伍获胜',
+      winnerSide === 'left'
+        ? '我方队伍获胜'
+        : '对方队伍获胜',
     );
 
     return {
       winnerSide,
       winnerName: winner?.name || '',
       leftRemaining: Math.max(0, leftTeam.length - leftIndex),
-      rightRemaining: Math.max(0, rightTeam.length - rightIndex),
+      rightRemaining: Math.max(
+        0,
+        rightTeam.length - rightIndex,
+      ),
       leftIndex,
       rightIndex,
       duelResults,

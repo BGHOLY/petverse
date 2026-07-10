@@ -130,6 +130,16 @@ export class MarriageService {
             );
           }
           if (
+            petA.tradeStatus === 'listed' ||
+            petB.tradeStatus === 'listed' ||
+            petA.tradeListingId ||
+            petB.tradeListingId
+          ) {
+            throw new Error(
+              'Listed pets cannot marry',
+            );
+          }
+          if (
             Number(petA.level || 1) < 1 ||
             Number(petB.level || 1) < 1
           ) {
@@ -348,7 +358,11 @@ export class MarriageService {
               petA.isEgg ||
               petB.isEgg ||
               !petA.married ||
-              !petB.married
+              !petB.married ||
+              petA.tradeStatus === 'listed' ||
+              petB.tradeStatus === 'listed' ||
+              petA.tradeListingId ||
+              petB.tradeListingId
             ) {
               throw new Error(
                 'Parent marriage state is invalid',
