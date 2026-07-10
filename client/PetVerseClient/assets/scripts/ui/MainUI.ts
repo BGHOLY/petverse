@@ -98,6 +98,37 @@ export class MainUI extends Component {
     private battleTitle = '';
     private eggSyncRunning = false;
     private hatchAcceleratorOpen = false;
+
+    private friendMode: 'friends' | 'requests' | 'discover' = 'friends';
+    private incomingFriendRequests: any[] = [];
+    private outgoingFriendRequests: any[] = [];
+    private friendSearchResults: any[] = [];
+    private friendSearchKeyword = '101';
+
+    private marriageMode: 'marriages' | 'proposals' | 'match' = 'marriages';
+    private marriageProposals: any[] = [];
+    private marriageOwnPetId = 0;
+    private marriageTargetPetId = 0;
+
+    private mails: any[] = [];
+    private selectedMailId = 0;
+    private mailUnreadCount = 0;
+    private mailClaimableCount = 0;
+
+    private rankingMode: 'tower' | 'level' | 'power' | 'season' = 'tower';
+    private rankingEntries: any[] = [];
+    private seasonSummary: any = null;
+
+    private tradeMode: 'market' | 'mine' | 'history' | 'list' = 'market';
+    private tradeListings: any[] = [];
+    private myTradeListings: any[] = [];
+    private tradeHistory: any[] = [];
+    private tradePetId = 0;
+    private tradeCurrency: 'gold' | 'diamond' = 'gold';
+    private tradePrice = 5000;
+
+    private capacitySummary: any = null;
+
     private busy = new Set<string>();
     private countdownAccumulator = 0;
     private toastToken = 0;
@@ -212,6 +243,9 @@ export class MainUI extends Component {
                 ApiClient.get('/tower/status'),
                 ApiClient.get('/ranking/tower'),
                 ApiClient.get('/team'),
+                ApiClient.get('/mail/list'),
+                ApiClient.get('/season/me'),
+                ApiClient.get('/pet-capacity'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -221,8 +255,14 @@ export class MainUI extends Component {
             GameStore.setList('friends', results[4]);
             GameStore.setTower(results[5]);
             GameStore.setList('ranking', results[6]);
+            this.rankingEntries = this.resultList(results[6], ['ranking', 'rankings', 'data', 'list']);
             this.applyTeamResult(results[7]);
+            this.applyMailResult(results[8]);
+            this.seasonSummary = results[9]?.data || results[9] || null;
+            this.capacitySummary = results[10]?.data || results[10] || null;
             this.ensureSelectedFriend();
+            this.ensureMarriageSelection();
+            this.ensureTradePet();
             await this.syncEggItemsToHatchery();
         } catch (error) {
             console.error('[CuteMainUI] bootstrap failed:', error);
@@ -240,14 +280,28 @@ export class MainUI extends Component {
         this.busy.add(key);
         try {
             switch (page) {
-                case 'home':
-                case 'profile': {
-                    const [profile, tower] = await Promise.all([
+                case 'home': {
+                    const [profile, tower, mail] = await Promise.all([
                         ApiClient.get('/user/profile'),
                         ApiClient.get('/tower/status'),
+                        ApiClient.get('/mail/list'),
                     ]);
                     if (profile?.success !== false) GameStore.setProfile(profile);
                     if (tower?.success !== false) GameStore.setTower(tower);
+                    this.applyMailResult(mail);
+                    break;
+                }
+                case 'profile': {
+                    const [profile, capacity, season, mail] = await Promise.all([
+                        ApiClient.get('/user/profile'),
+                        ApiClient.get('/pet-capacity'),
+                        ApiClient.get('/season/me'),
+                        ApiClient.get('/mail/list'),
+                    ]);
+                    if (profile?.success !== false) GameStore.setProfile(profile);
+                    this.capacitySummary = capacity?.data || capacity || null;
+                    this.seasonSummary = season?.data || season || null;
+                    this.applyMailResult(mail);
                     break;
                 }
                 case 'pet': {
@@ -293,13 +347,47 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'marriage': {
-                    const result = await ApiClient.get('/marriage');
-                    if (result?.success !== false) GameStore.setList('marriages', result);
+                    const [marriages, proposals, pets, friends] = await Promise.all([
+                        ApiClient.get('/marriage'),
+                        ApiClient.get('/marriage/proposals'),
+                        ApiClient.get('/pet/my'),
+                        ApiClient.get('/friend/list'),
+                    ]);
+                    if (marriages?.success !== false) GameStore.setList('marriages', marriages);
+                    if (pets?.success !== false) GameStore.setPets(pets);
+                    if (friends?.success !== false) GameStore.setList('friends', friends);
+                    this.marriageProposals = this.resultList(proposals, ['proposals', 'data', 'items', 'list']);
+                    this.ensureMarriageSelection();
                     break;
                 }
                 case 'friends': {
-                    const result = await ApiClient.get('/friend/list');
-                    if (result?.success !== false) GameStore.setList('friends', result);
+                    const [friends, incoming, outgoing] = await Promise.all([
+                        ApiClient.get('/friend/list'),
+                        ApiClient.get('/friend/requests'),
+                        ApiClient.get('/friend/requests/outgoing'),
+                    ]);
+                    if (friends?.success !== false) GameStore.setList('friends', friends);
+                    this.incomingFriendRequests = this.resultList(incoming, ['requests', 'data', 'items', 'list']);
+                    this.outgoingFriendRequests = this.resultList(outgoing, ['requests', 'data', 'items', 'list']);
+                    this.ensureSelectedFriend();
+                    break;
+                }
+                case 'mail': {
+                    this.applyMailResult(await ApiClient.get('/mail/list'));
+                    break;
+                }
+                case 'trade': {
+                    const [market, mine, history, pets] = await Promise.all([
+                        ApiClient.get('/trade/listings'),
+                        ApiClient.get('/trade/my'),
+                        ApiClient.get('/trade/history'),
+                        ApiClient.get('/pet/my'),
+                    ]);
+                    this.tradeListings = this.resultList(market, ['listings', 'data', 'items', 'list']);
+                    this.myTradeListings = this.resultList(mine, ['listings', 'data', 'items', 'list']);
+                    this.tradeHistory = this.resultList(history, ['records', 'data', 'items', 'list']);
+                    if (pets?.success !== false) GameStore.setPets(pets);
+                    this.ensureTradePet();
                     break;
                 }
                 case 'adventure': {
@@ -317,8 +405,13 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'ranking': {
-                    const result = await ApiClient.get('/ranking/tower');
-                    if (result?.success !== false) GameStore.setList('ranking', result);
+                    const [ranking, season] = await Promise.all([
+                        ApiClient.get(`/ranking/${this.rankingMode}`),
+                        ApiClient.get('/season/me'),
+                    ]);
+                    this.rankingEntries = this.resultList(ranking, ['leaderboard', 'ranking', 'rankings', 'data', 'list']);
+                    GameStore.ranking = [...this.rankingEntries];
+                    this.seasonSummary = season?.data || season || null;
                     break;
                 }
             }
@@ -516,6 +609,24 @@ export class MainUI extends Component {
                 break;
             case 'fusion':
                 this.renderFusion();
+                break;
+            case 'friends':
+                this.renderFriends();
+                break;
+            case 'marriage':
+                this.renderMarriage();
+                break;
+            case 'mail':
+                this.renderMail();
+                break;
+            case 'ranking':
+                this.renderRanking();
+                break;
+            case 'trade':
+                this.renderTrade();
+                break;
+            case 'profile':
+                this.renderProfile();
                 break;
             case 'more':
                 this.renderMoreLanding();
@@ -1207,6 +1318,403 @@ export class MainUI extends Component {
             disabled: this.busy.has('battle:friend'),
         });
         text(parent, 'FriendTip', '好友切磋会记录胜负和赛季积分，不消耗宝宝。', 0, -150, 540, 40, 14, CuteTheme.muted, 'center', true);
+    }
+
+
+    private renderFriends() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'FriendSign', '好友相册', 0, 456, 220, 66);
+
+        const tabs = panel(root, 'FriendTabs', 0, 382, 650, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
+        const items: Array<['friends' | 'requests' | 'discover', string, string]> = [
+            ['friends', '好友', '📷'], ['requests', '申请', '💌'], ['discover', '发现', '🔎'],
+        ];
+        items.forEach(([key, title, icon], index) => button(
+            tabs, `FriendTab_${key}`, title, -210 + index * 210, 0, 188, 48,
+            () => { this.friendMode = key; this.renderCurrentPage(false); },
+            { icon, selected: this.friendMode === key, fill: this.friendMode === key ? CuteTheme.mint : CuteTheme.paperWarm, fontSize: 15, radius: 21 },
+        ));
+
+        const card = panel(root, 'FriendBook', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
+        if (this.friendMode === 'friends') this.renderFriendAlbum(card);
+        else if (this.friendMode === 'requests') this.renderFriendRequests(card);
+        else this.renderFriendDiscover(card);
+    }
+
+    private renderFriendAlbum(parent: Node) {
+        headingTag(parent, 'AlbumTitle', `我的好友 ${GameStore.friends.length}`, 0, 306, 190, CuteTheme.mint);
+        if (!GameStore.friends.length) {
+            text(parent, 'EmptyIcon', '📷', 0, 145, 150, 120, 72, CuteTheme.peachDark, 'center', true);
+            text(parent, 'EmptyText', '相册还是空的\n可以先创建Beta测试好友，或去“发现”发送申请。', 0, 30, 520, 100, 19, CuteTheme.muted, 'center', true);
+            button(parent, 'SeedFriends', '创建测试好友', 0, -110, 220, 62, () => void this.seedFriends(), { icon: '🐾', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: this.busy.has('friends:seed') });
+            return;
+        }
+
+        GameStore.friends.slice(0, 4).forEach((friend, index) => {
+            const col = index % 2;
+            const row = Math.floor(index / 2);
+            const x = -164 + col * 328;
+            const y = 155 - row * 265;
+            const photo = panel(parent, `FriendPhoto_${friend?.id ?? index}`, x, y, 292, 232, new Color(255, 250, 231, 255), 28, true, CuteTheme.white, 3);
+            text(photo, 'Avatar', '🐾', -96, 55, 72, 72, 42, CuteTheme.peachDark, 'center', true);
+            text(photo, 'Name', safeName(friend?.nickname, `玩家${friend?.id || ''}`), -48, 78, 172, 34, 20, CuteTheme.caramel, 'left', true);
+            text(photo, 'Meta', `Lv.${Number(friend?.level || 1)} · 宝宝${Array.isArray(friend?.pets) ? friend.pets.length : 0}只`, -48, 41, 174, 28, 13, CuteTheme.muted, 'left', true);
+            const petNames = (Array.isArray(friend?.pets) ? friend.pets : []).slice(0, 2).map((pet: any) => safeName(pet?.nickname, '宝宝')).join('、');
+            text(photo, 'Pets', petNames || '暂未展示宝宝', 0, -8, 250, 34, 14, CuteTheme.caramel, 'center', true);
+            button(photo, 'Challenge', '切磋', -68, -72, 120, 48, () => {
+                this.selectedFriendUserId = Number(friend?.userId || friend?.id || 0);
+                this.adventureMode = 'friend';
+                this.showPage('adventure');
+            }, { icon: '⚔', fill: CuteTheme.sky, fontSize: 14, radius: 20 });
+            button(photo, 'Marriage', '结缘', 68, -72, 120, 48, () => {
+                const firstPet = Array.isArray(friend?.pets) ? friend.pets[0] : null;
+                this.marriageTargetPetId = Number(firstPet?.id || 0);
+                this.marriageMode = 'match';
+                this.showPage('marriage');
+            }, { icon: '💞', fill: CuteTheme.pink, fontSize: 14, radius: 20, disabled: !(Array.isArray(friend?.pets) && friend.pets.length) });
+        });
+        if (GameStore.friends.length > 4) text(parent, 'MoreFriends', `还有 ${GameStore.friends.length - 4} 位好友，后续分页展示`, 0, -313, 420, 28, 13, CuteTheme.muted, 'center', true);
+    }
+
+    private renderFriendRequests(parent: Node) {
+        headingTag(parent, 'RequestTitle', `好友申请 ${this.incomingFriendRequests.filter((r) => r?.status === 'pending').length}`, 0, 306, 200, CuteTheme.peach);
+        const rows = [
+            ...this.incomingFriendRequests.map((item) => ({ ...item, direction: 'incoming' })),
+            ...this.outgoingFriendRequests.map((item) => ({ ...item, direction: 'outgoing' })),
+        ].slice(0, 5);
+        if (!rows.length) {
+            text(parent, 'NoRequests', '没有新的好友申请\n收到的申请和已发送记录都会显示在这里。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true);
+            return;
+        }
+        rows.forEach((request, index) => {
+            const y = 220 - index * 108;
+            const row = panel(parent, `FriendRequest_${request?.id ?? index}`, 0, y, 602, 92, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 22, false, CuteTheme.white, 2);
+            const other = request?.otherUser || {};
+            text(row, 'Icon', request.direction === 'incoming' ? '📥' : '📤', -260, 0, 44, 44, 25, CuteTheme.honeyDark, 'center', true);
+            text(row, 'Name', safeName(other?.nickname, `玩家${other?.id || ''}`), -224, 17, 230, 30, 17, CuteTheme.caramel, 'left', true);
+            text(row, 'State', request.direction === 'incoming' ? `收到申请 · ${this.statusLabel(request?.status)}` : `已发送 · ${this.statusLabel(request?.status)}`, -224, -17, 260, 26, 13, CuteTheme.muted, 'left', true);
+            if (request.direction === 'incoming' && String(request?.status) === 'pending') {
+                button(row, 'Accept', '接受', 177, 0, 90, 44, () => void this.handleFriendRequest(request, true), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
+                button(row, 'Reject', '拒绝', 272, 0, 80, 44, () => void this.handleFriendRequest(request, false), { fill: CuteTheme.peach, fontSize: 13, radius: 19 });
+            } else {
+                tag(row, 'StatusTag', this.statusLabel(request?.status), 235, 0, 116, CuteTheme.paper, CuteTheme.muted);
+            }
+        });
+    }
+
+    private renderFriendDiscover(parent: Node) {
+        headingTag(parent, 'DiscoverTitle', '发现新伙伴', 0, 306, 190, CuteTheme.sky);
+        text(parent, 'Tip', 'Beta阶段先用玩家ID快速搜索。正式微信版本会支持昵称、好友推荐与微信好友。', 0, 250, 560, 46, 14, CuteTheme.muted, 'center', true);
+        const keys = ['101', '102', '103', '104'];
+        keys.forEach((key, index) => button(parent, `Search_${key}`, `ID ${key}`, -225 + index * 150, 187, 132, 46, () => void this.searchFriend(key), { fill: this.friendSearchKeyword === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 14, radius: 19 }));
+        button(parent, 'SeedRecommend', '补充测试玩家', 0, 125, 190, 48, () => void this.seedFriends(), { icon: '🐾', fill: CuteTheme.mint, fontSize: 14, radius: 21, disabled: this.busy.has('friends:seed') });
+
+        const rows = this.friendSearchResults.slice(0, 4);
+        if (!rows.length) {
+            text(parent, 'SearchEmpty', '点击上方玩家ID进行搜索\n已经是好友的玩家会标记为“已添加”。', 0, -15, 500, 100, 18, CuteTheme.muted, 'center', true);
+            return;
+        }
+        rows.forEach((user, index) => {
+            const y = 55 - index * 112;
+            const row = panel(parent, `SearchUser_${user?.id ?? index}`, 0, y, 590, 94, CuteTheme.paperWarm, 22, false, CuteTheme.white, 2);
+            text(row, 'Avatar', '🐾', -250, 0, 48, 48, 28, CuteTheme.peachDark, 'center', true);
+            text(row, 'Name', safeName(user?.nickname, `玩家${user?.id || ''}`), -210, 17, 260, 30, 18, CuteTheme.caramel, 'left', true);
+            text(row, 'Meta', `ID ${user?.id || '-'} · Lv.${Number(user?.level || 1)}`, -210, -17, 260, 24, 13, CuteTheme.muted, 'left', true);
+            button(row, 'Add', user?.isFriend ? '已添加' : '加好友', 230, 0, 118, 46, () => void this.sendFriendRequest(user), { fill: user?.isFriend ? new Color(220, 218, 208, 255) : CuteTheme.mint, fontSize: 14, radius: 20, disabled: Boolean(user?.isFriend) || this.busy.has(`friend:add:${user?.id}`) });
+        });
+    }
+
+    private renderMarriage() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'MarriageSign', '心愿婚礼', 0, 456, 220, 66);
+        const tabs = panel(root, 'MarriageTabs', 0, 382, 650, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
+        const items: Array<['marriages' | 'proposals' | 'match', string, string]> = [
+            ['marriages', '已结缘', '💞'], ['proposals', '申请', '💌'], ['match', '配对', '🎀'],
+        ];
+        items.forEach(([key, title, icon], index) => button(tabs, `MarriageTab_${key}`, title, -210 + index * 210, 0, 188, 48, () => { this.marriageMode = key; this.renderCurrentPage(false); }, { icon, selected: this.marriageMode === key, fill: this.marriageMode === key ? CuteTheme.pink : CuteTheme.paperWarm, fontSize: 15, radius: 21 }));
+        const card = panel(root, 'MarriageBook', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
+        if (this.marriageMode === 'marriages') this.renderMarriageList(card);
+        else if (this.marriageMode === 'proposals') this.renderMarriageProposals(card);
+        else this.renderMarriageMatch(card);
+    }
+
+    private renderMarriageList(parent: Node) {
+        headingTag(parent, 'MarriedTitle', `结缘宝宝 ${GameStore.marriages.length}`, 0, 306, 200, CuteTheme.pink);
+        if (!GameStore.marriages.length) {
+            text(parent, 'NoMarriage', '还没有结缘中的宝宝\n前往“配对”选择自己的宝宝和好友宝宝。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true);
+            button(parent, 'GoMatch', '开始配对', 0, -70, 210, 60, () => { this.marriageMode = 'match'; this.renderCurrentPage(false); }, { icon: '🎀', fill: CuteTheme.pink, fontSize: 17, radius: 26 });
+            return;
+        }
+        GameStore.marriages.slice(0, 4).forEach((marriage, index) => {
+            const pets = Array.isArray(marriage?.pets) ? marriage.pets : [];
+            const petA = pets[0] || { id: marriage?.petAId, nickname: `宝宝${marriage?.petAId || ''}` };
+            const petB = pets[1] || { id: marriage?.petBId, nickname: `宝宝${marriage?.petBId || ''}` };
+            const y = 210 - index * 140;
+            const row = panel(parent, `Marriage_${marriage?.id ?? index}`, 0, y, 602, 122, index % 2 ? CuteTheme.paperWarm : new Color(255, 249, 238, 255), 25, false, CuteTheme.white, 2);
+            text(row, 'PetA', safeName(petA?.nickname, '宝宝A'), -210, 28, 180, 30, 17, CuteTheme.caramel, 'center', true);
+            text(row, 'Heart', '💞', 0, 27, 60, 44, 28, CuteTheme.peachDark, 'center', true);
+            text(row, 'PetB', safeName(petB?.nickname, '宝宝B'), 210, 28, 180, 30, 17, CuteTheme.caramel, 'center', true);
+            const remaining = Number(marriage?.cooldownRemainingSeconds || 0);
+            const state = marriage?.isMyTurn ? (remaining > 0 ? `我的回合 · ${this.formatSeconds(remaining)}` : '轮到我获得宠物蛋') : '等待对方回合';
+            text(row, 'State', state, -190, -27, 360, 28, 13, marriage?.isMyTurn ? CuteTheme.peachDark : CuteTheme.muted, 'left', true);
+            button(row, 'LayEgg', '产蛋', 225, -30, 112, 46, () => void this.layMarriageEgg(marriage), { icon: '🥚', fill: CuteTheme.honey, fontSize: 14, radius: 20, disabled: !marriage?.canLayEgg || this.busy.has(`marriage:egg:${marriage?.id}`) });
+        });
+    }
+
+    private renderMarriageProposals(parent: Node) {
+        const pending = this.marriageProposals.filter((item) => String(item?.status) === 'pending');
+        headingTag(parent, 'ProposalTitle', `结婚申请 ${pending.length}`, 0, 306, 200, CuteTheme.peach);
+        if (!this.marriageProposals.length) {
+            text(parent, 'NoProposal', '没有结婚申请记录\n配对后发出的申请会在这里保留72小时。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true);
+            return;
+        }
+        this.marriageProposals.slice(0, 5).forEach((proposal, index) => {
+            const incoming = Number(proposal?.targetUserId || 0) === Number(GameStore.user?.id || 1);
+            const y = 220 - index * 108;
+            const row = panel(parent, `Proposal_${proposal?.id ?? index}`, 0, y, 602, 92, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 22, false, CuteTheme.white, 2);
+            text(row, 'Icon', incoming ? '📥' : '📤', -260, 0, 44, 44, 25, CuteTheme.peachDark, 'center', true);
+            text(row, 'Name', `${incoming ? '收到' : '发出'}：宝宝${proposal?.proposerPetId || '-'} × 宝宝${proposal?.targetPetId || '-'}`, -224, 17, 340, 30, 16, CuteTheme.caramel, 'left', true);
+            text(row, 'State', this.statusLabel(proposal?.status), -224, -17, 220, 24, 13, CuteTheme.muted, 'left', true);
+            if (String(proposal?.status) === 'pending' && incoming) {
+                button(row, 'Accept', '同意', 174, 0, 88, 44, () => void this.respondMarriageProposal(proposal, true), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
+                button(row, 'Reject', '拒绝', 269, 0, 82, 44, () => void this.respondMarriageProposal(proposal, false), { fill: CuteTheme.peach, fontSize: 13, radius: 19 });
+            } else if (String(proposal?.status) === 'pending') {
+                button(row, 'Cancel', '撤回', 232, 0, 108, 44, () => void this.cancelMarriageProposal(proposal), { fill: CuteTheme.paper, fontSize: 13, radius: 19 });
+            } else tag(row, 'Status', this.statusLabel(proposal?.status), 230, 0, 116, CuteTheme.paper, CuteTheme.muted);
+        });
+    }
+
+    private renderMarriageMatch(parent: Node) {
+        this.ensureMarriageSelection();
+        const ownPets = GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        const targetPets = this.friendPets().filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        const own = ownPets.find((pet) => Number(pet?.id) === this.marriageOwnPetId) || ownPets[0];
+        const target = targetPets.find((pet) => Number(pet?.id) === this.marriageTargetPetId) || targetPets[0];
+        headingTag(parent, 'MatchTitle', '选择结缘对象', 0, 306, 210, CuteTheme.pink);
+
+        const left = panel(parent, 'OwnPet', -164, 110, 282, 280, new Color(255, 249, 235, 255), 28, true, CuteTheme.white, 3);
+        text(left, 'Owner', '我的宝宝', 0, 104, 220, 32, 17, CuteTheme.caramel, 'center', true);
+        text(left, 'PetIcon', '🐶', 0, 35, 100, 90, 58, CuteTheme.honeyDark, 'center', true);
+        text(left, 'Name', safeName(own?.nickname, '暂无可用宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
+        text(left, 'Meta', own ? `Lv.${Number(own?.level || 1)} · ${this.genderText(own)} · 生育力${Number(own?.fertility || 100)}` : '请先获得宝宝', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
+        button(left, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('own', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: ownPets.length < 2 });
+        button(left, 'Next', '下一个', 65, -112, 112, 42, () => this.cycleMarriagePet('own', 1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: ownPets.length < 2 });
+
+        const right = panel(parent, 'TargetPet', 164, 110, 282, 280, new Color(255, 244, 242, 255), 28, true, CuteTheme.white, 3);
+        text(right, 'Owner', '好友宝宝', 0, 104, 220, 32, 17, CuteTheme.caramel, 'center', true);
+        text(right, 'PetIcon', '🐱', 0, 35, 100, 90, 58, CuteTheme.peachDark, 'center', true);
+        text(right, 'Name', safeName(target?.nickname, '暂无好友宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
+        text(right, 'Meta', target ? `Lv.${Number(target?.level || 1)} · ${this.genderText(target)} · 生育力${Number(target?.fertility || 100)}` : '先添加有宝宝的好友', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
+        button(right, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('target', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: targetPets.length < 2 });
+        button(right, 'Next', '下一个', 65, -112, 112, 42, () => this.cycleMarriagePet('target', 1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: targetPets.length < 2 });
+
+        text(parent, 'Ribbon', '────── 🎀 三代血缘自动校验 🎀 ──────', 0, -80, 560, 42, 16, CuteTheme.peachDark, 'center', true);
+        text(parent, 'Rules', '申请有效期72小时；通过后双方轮流获得宠物蛋。\n每次产蛋消耗500金币、繁育凭证和双方20点生育力。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
+        button(parent, 'Propose', '发送结缘申请', 0, -245, 250, 64, () => void this.proposeMarriage(), { icon: '💌', fill: CuteTheme.pink, fontSize: 18, radius: 28, disabled: !own || !target || this.busy.has('marriage:propose') });
+    }
+
+    private renderMail() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'MailSign', '邮差信箱', 0, 456, 220, 66);
+        const toolbar = panel(root, 'MailToolbar', 0, 382, 650, 72, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
+        text(toolbar, 'Count', `未读 ${this.mailUnreadCount} · 可领取 ${this.mailClaimableCount}`, -285, 0, 260, 34, 16, CuteTheme.caramel, 'left', true);
+        button(toolbar, 'ReadAll', '全部已读', 120, 0, 136, 46, () => void this.readAllMail(), { fill: CuteTheme.sky, fontSize: 13, radius: 20, disabled: this.mailUnreadCount <= 0 });
+        button(toolbar, 'ClaimAll', '一键领取', 258, 0, 136, 46, () => void this.claimAllMail(), { fill: CuteTheme.honey, fontSize: 13, radius: 20, disabled: this.mailClaimableCount <= 0 });
+
+        const card = panel(root, 'MailBook', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
+        if (!this.mails.length) {
+            text(card, 'EmptyIcon', '💌', 0, 130, 160, 140, 82, CuteTheme.peachDark, 'center', true);
+            text(card, 'EmptyText', '信箱里暂时没有邮件\nBeta阶段可以创建一封欢迎奖励邮件进行测试。', 0, 15, 520, 100, 19, CuteTheme.muted, 'center', true);
+            button(card, 'SeedMail', '创建欢迎邮件', 0, -120, 220, 62, () => void this.seedWelcomeMail(), { icon: '🎁', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: this.busy.has('mail:seed') });
+            return;
+        }
+
+        this.mails.slice(0, 5).forEach((mail, index) => {
+            const y = 245 - index * 114;
+            const selected = Number(mail?.id || 0) === this.selectedMailId;
+            const row = panel(card, `Mail_${mail?.id ?? index}`, 0, y, 602, 98, selected ? new Color(255, 243, 214, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 22, false, CuteTheme.white, 2);
+            text(row, 'Icon', mail?.claimed ? '📭' : mail?.readed ? '✉️' : '💌', -260, 0, 46, 46, 27, mail?.readed ? CuteTheme.muted : CuteTheme.peachDark, 'center', true);
+            text(row, 'Title', safeName(mail?.title, '系统邮件'), -224, 19, 280, 30, 17, CuteTheme.caramel, 'left', !mail?.readed);
+            text(row, 'Attach', this.attachmentSummary(mail), -224, -17, 300, 24, 13, CuteTheme.muted, 'left', true);
+            button(row, 'Read', '查看', 150, 0, 86, 44, () => void this.selectMail(mail), { fill: CuteTheme.sky, fontSize: 13, radius: 19 });
+            button(row, 'Claim', mail?.claimed ? '已领取' : mail?.canClaim ? '领取' : '无附件', 252, 0, 108, 44, () => void this.claimMail(mail), { fill: mail?.canClaim ? CuteTheme.honey : new Color(220, 218, 208, 255), fontSize: 13, radius: 19, disabled: !mail?.canClaim || this.busy.has(`mail:claim:${mail?.id}`) });
+        });
+
+        const selected = this.mails.find((mail) => Number(mail?.id || 0) === this.selectedMailId);
+        if (selected) {
+            const detail = panel(card, 'MailDetail', 0, -286, 602, 84, new Color(244, 238, 221, 255), 20, false, CuteTheme.white, 2);
+            text(detail, 'Content', String(selected?.content || '暂无正文').slice(0, 90), 0, 0, 560, 62, 13, CuteTheme.caramel, 'center', false);
+        }
+    }
+
+    private renderRanking() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'RankingSign', '森林排行榜', 0, 456, 230, 66);
+        const tabs = panel(root, 'RankingTabs', 0, 382, 666, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
+        const modes: Array<['tower' | 'level' | 'power' | 'season', string, string]> = [
+            ['tower', '爬塔', '🗼'], ['level', '等级', '⭐'], ['power', '战力', '⚔'], ['season', '赛季', '🏅'],
+        ];
+        modes.forEach(([key, title, icon], index) => button(tabs, `RankTab_${key}`, title, -246 + index * 164, 0, 148, 48, () => void this.changeRankingMode(key), { icon, selected: this.rankingMode === key, fill: this.rankingMode === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 20 }));
+
+        const card = panel(root, 'RankingCard', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
+        const season = this.seasonSummary?.season || this.seasonSummary?.data?.season || {};
+        const player = this.seasonSummary?.player || this.seasonSummary?.data?.player || {};
+        text(card, 'Season', `${safeName(season?.name, '当前赛季')} · 我的积分 ${Number(player?.points || 0)} · 评级 ${Number(player?.rating || 1000)}`, 0, 309, 590, 34, 14, CuteTheme.peachDark, 'center', true);
+
+        if (!this.rankingEntries.length) {
+            text(card, 'Empty', '当前榜单还没有记录\n完成爬塔、培养宝宝或好友切磋后即可上榜。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true);
+            return;
+        }
+        this.rankingEntries.slice(0, 6).forEach((item, index) => {
+            const rank = Number(item?.rank || index + 1);
+            const y = 245 - index * 93;
+            const row = panel(card, `Rank_${rank}`, 0, y, 604, 78, rank <= 3 ? new Color(255, 247, 220, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 21, false, CuteTheme.white, 2);
+            text(row, 'Medal', rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank), -262, 0, 58, 48, rank <= 3 ? 28 : 20, CuteTheme.honeyDark, 'center', true);
+            text(row, 'Name', safeName(item?.petName || item?.playerName || item?.nickname, `玩家${item?.userId || ''}`), -218, 14, 260, 30, 17, CuteTheme.caramel, 'left', true);
+            text(row, 'Owner', item?.petName ? safeName(item?.playerName, '玩家') : `ID ${item?.userId || '-'}`, -218, -15, 260, 24, 12, CuteTheme.muted, 'left', true);
+            text(row, 'Score', this.rankingScoreText(item), 265, 0, 170, 34, 16, CuteTheme.peachDark, 'right', true);
+        });
+    }
+
+    private renderTrade() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'TradeSign', '萌宠寄售市场', 0, 456, 250, 66);
+        const tabs = panel(root, 'TradeTabs', 0, 382, 666, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
+        const modes: Array<['market' | 'mine' | 'history' | 'list', string, string]> = [
+            ['market', '市场', '🏷'], ['mine', '我的', '📌'], ['history', '记录', '📒'], ['list', '上架', '➕'],
+        ];
+        modes.forEach(([key, title, icon], index) => button(tabs, `TradeTab_${key}`, title, -246 + index * 164, 0, 148, 48, () => { this.tradeMode = key; this.renderCurrentPage(false); }, { icon, selected: this.tradeMode === key, fill: this.tradeMode === key ? CuteTheme.lilac : CuteTheme.paperWarm, fontSize: 13, radius: 20 }));
+        const card = panel(root, 'TradeBook', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
+        if (this.tradeMode === 'market') this.renderTradeMarket(card);
+        else if (this.tradeMode === 'mine') this.renderMyTrade(card);
+        else if (this.tradeMode === 'history') this.renderTradeHistory(card);
+        else this.renderTradeListForm(card);
+    }
+
+    private renderTradeMarket(parent: Node) {
+        headingTag(parent, 'MarketTitle', `市场在售 ${this.tradeListings.length}`, 0, 306, 200, CuteTheme.lilac);
+        if (!this.tradeListings.length) {
+            text(parent, 'MarketEmpty', '市场暂时没有寄售宝宝\n可以先把自己的非出战宝宝上架。', 0, 80, 520, 100, 19, CuteTheme.muted, 'center', true);
+            button(parent, 'GoList', '我要上架', 0, -65, 200, 60, () => { this.tradeMode = 'list'; this.renderCurrentPage(false); }, { icon: '➕', fill: CuteTheme.lilac, fontSize: 17, radius: 26 });
+            return;
+        }
+        this.tradeListings.slice(0, 5).forEach((listing, index) => this.renderTradeRow(parent, listing, index, 'buy'));
+    }
+
+    private renderMyTrade(parent: Node) {
+        headingTag(parent, 'MyTradeTitle', `我的寄售 ${this.myTradeListings.length}`, 0, 306, 200, CuteTheme.sky);
+        if (!this.myTradeListings.length) {
+            text(parent, 'MyEmpty', '还没有寄售记录\n上架需要100金币，成交后收取5%手续费。', 0, 80, 520, 100, 19, CuteTheme.muted, 'center', true);
+            return;
+        }
+        this.myTradeListings.slice(0, 5).forEach((listing, index) => this.renderTradeRow(parent, listing, index, 'cancel'));
+    }
+
+    private renderTradeHistory(parent: Node) {
+        headingTag(parent, 'HistoryTitle', `交易记录 ${this.tradeHistory.length}`, 0, 306, 200, CuteTheme.paperWarm);
+        if (!this.tradeHistory.length) {
+            text(parent, 'HistoryEmpty', '暂无成交记录', 0, 80, 420, 80, 20, CuteTheme.muted, 'center', true);
+            return;
+        }
+        this.tradeHistory.slice(0, 6).forEach((record, index) => {
+            const y = 235 - index * 92;
+            const row = panel(parent, `TradeHistory_${record?.id ?? index}`, 0, y, 602, 76, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 20, false, CuteTheme.white, 2);
+            const soldByMe = Number(record?.sellerUserId || 0) === Number(GameStore.user?.id || 1);
+            text(row, 'Icon', soldByMe ? '📤' : '📥', -260, 0, 46, 46, 24, CuteTheme.honeyDark, 'center', true);
+            text(row, 'Title', soldByMe ? `售出宝宝 #${record?.petId || '-'}` : `购入宝宝 #${record?.petId || '-'}`, -222, 13, 300, 28, 16, CuteTheme.caramel, 'left', true);
+            text(row, 'Meta', `成交价 ${formatNumber(record?.price || 0)} ${record?.currencyType === 'diamond' ? '钻石' : '金币'}`, -222, -14, 330, 24, 13, CuteTheme.muted, 'left', true);
+        });
+    }
+
+    private renderTradeListForm(parent: Node) {
+        this.ensureTradePet();
+        const eligible = this.tradeEligiblePets();
+        const pet = eligible.find((item) => Number(item?.id) === this.tradePetId) || eligible[0];
+        headingTag(parent, 'ListTitle', '上架宝宝', 0, 306, 180, CuteTheme.lilac);
+        if (!pet) {
+            text(parent, 'NoEligible', '没有可上架的宝宝\n已锁定、收藏、结婚、出战或已经寄售的宝宝不能上架。', 0, 80, 540, 110, 18, CuteTheme.muted, 'center', true);
+            return;
+        }
+        const petCard = panel(parent, 'ListPet', 0, 135, 520, 210, new Color(255, 248, 235, 255), 28, true, CuteTheme.white, 3);
+        text(petCard, 'Icon', '🐶', -190, 20, 110, 100, 62, CuteTheme.honeyDark, 'center', true);
+        text(petCard, 'Name', safeName(pet?.nickname, '宝宝'), -115, 58, 300, 38, 22, CuteTheme.caramel, 'left', true);
+        const attrs = this.battleAttributesOf(pet);
+        text(petCard, 'Meta', `Lv.${Number(pet?.level || 1)} · ${this.rarityName(pet)} · 战力 ${formatNumber(attrs.power)}\n成长 ${this.growthValue(pet).toFixed(3)} · 特殊技能 ${this.specialSkills(pet).length}`, -115, -3, 330, 68, 15, CuteTheme.muted, 'left', true);
+        button(petCard, 'Prev', '上一个', -75, -76, 128, 42, () => this.cycleTradePet(-1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: eligible.length < 2 });
+        button(petCard, 'Next', '下一个', 75, -76, 128, 42, () => this.cycleTradePet(1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: eligible.length < 2 });
+
+        const priceCard = panel(parent, 'PriceCard', 0, -60, 560, 150, CuteTheme.paperWarm, 26, false, CuteTheme.white, 2);
+        button(priceCard, 'Currency', this.tradeCurrency === 'gold' ? '金币' : '钻石', -195, 26, 120, 48, () => { this.tradeCurrency = this.tradeCurrency === 'gold' ? 'diamond' : 'gold'; this.tradePrice = this.tradeCurrency === 'gold' ? 5000 : 50; this.renderCurrentPage(false); }, { icon: this.tradeCurrency === 'gold' ? '●' : '◆', fill: this.tradeCurrency === 'gold' ? CuteTheme.honey : CuteTheme.sky, fontSize: 14, radius: 20 });
+        button(priceCard, 'Minus', '−', -52, 26, 54, 48, () => this.changeTradePrice(-1), { fill: CuteTheme.paper, fontSize: 24, radius: 20 });
+        text(priceCard, 'Price', formatNumber(this.tradePrice), 45, 26, 132, 44, 22, CuteTheme.caramel, 'center', true);
+        button(priceCard, 'Plus', '+', 142, 26, 54, 48, () => this.changeTradePrice(1), { fill: CuteTheme.paper, fontSize: 22, radius: 20 });
+        text(priceCard, 'Fee', '上架费100金币 · 72小时有效 · 成交税5%', 0, -41, 500, 28, 13, CuteTheme.muted, 'center', true);
+        button(parent, 'SubmitList', '确认上架', 0, -238, 230, 64, () => void this.listTradePet(), { icon: '🏷', fill: CuteTheme.lilac, fontSize: 18, radius: 28, disabled: this.busy.has('trade:list') });
+    }
+
+    private renderTradeRow(parent: Node, listing: any, index: number, action: 'buy' | 'cancel') {
+        const y = 230 - index * 108;
+        const row = panel(parent, `Trade_${action}_${listing?.id ?? index}`, 0, y, 602, 92, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 22, false, CuteTheme.white, 2);
+        const pet = listing?.pet || listing?.petSnapshot || {};
+        text(row, 'Icon', pet?.isMutant ? '✨' : '🐶', -260, 0, 46, 46, 26, pet?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'center', true);
+        text(row, 'Name', safeName(pet?.nickname, `宝宝${listing?.petId || ''}`), -224, 18, 230, 30, 17, CuteTheme.caramel, 'left', true);
+        text(row, 'Meta', `Lv.${Number(pet?.level || 1)} · 战力${formatNumber(listing?.power || pet?.power || 0)} · ${Number(pet?.specialSkillCount || this.specialSkills(pet).length)}特殊`, -224, -17, 300, 24, 12, CuteTheme.muted, 'left', true);
+        text(row, 'Price', `${formatNumber(listing?.price || 0)} ${listing?.currencyType === 'diamond' ? '◆' : '●'}`, 100, 0, 160, 34, 17, CuteTheme.peachDark, 'right', true);
+        if (action === 'buy') {
+            const mine = Number(listing?.sellerUserId || listing?.seller?.id || 0) === Number(GameStore.user?.id || 1);
+            button(row, 'Buy', mine ? '我的' : '购买', 252, 0, 100, 46, () => void this.buyTrade(listing), { fill: mine ? new Color(220, 218, 208, 255) : CuteTheme.honey, fontSize: 14, radius: 20, disabled: mine || this.busy.has(`trade:buy:${listing?.id}`) });
+        } else {
+            const active = String(listing?.status || '') === 'active';
+            button(row, 'Cancel', active ? '取消' : this.statusLabel(listing?.status), 252, 0, 100, 46, () => void this.cancelTrade(listing), { fill: active ? CuteTheme.peach : new Color(220, 218, 208, 255), fontSize: 14, radius: 20, disabled: !active || this.busy.has(`trade:cancel:${listing?.id}`) });
+        }
+    }
+
+    private renderProfile() {
+        if (!this.pageRoot) return;
+        const root = this.pageRoot;
+        cloudSign(root, 'ProfileSign', '玩家手账', 0, 456, 220, 66);
+        const book = panel(root, 'ProfileBook', 0, -24, 660, 810, CuteTheme.paper, 40, true, CuteTheme.caramelSoft, 3);
+        const user = GameStore.user || {};
+        text(book, 'Avatar', '👧', -245, 265, 112, 112, 58, CuteTheme.peachDark, 'center', true);
+        text(book, 'Name', safeName(user?.nickname, 'PetVerse玩家'), -165, 294, 370, 44, 27, CuteTheme.caramel, 'left', true);
+        text(book, 'Meta', `玩家ID ${user?.id || 1} · Lv.${Number(user?.level || 1)} · VIP ${Number(user?.vipLevel || 0)}`, -165, 251, 400, 30, 14, CuteTheme.muted, 'left', true);
+        capsule(book, 'Gold', '●', formatNumber(user?.gold || 0), -128, 196, 190, CuteTheme.honey);
+        capsule(book, 'Diamond', '◆', formatNumber(user?.diamond || 0), 98, 196, 190, CuteTheme.sky);
+
+        const capacity = this.capacitySummary?.data || this.capacitySummary || {};
+        const currentPets = Number(capacity?.used ?? capacity?.petCount ?? GameStore.pets.length);
+        const maxPets = Number(capacity?.capacity ?? capacity?.petCapacity ?? user?.petCapacity ?? 50);
+        const capacityCard = panel(book, 'Capacity', -157, 55, 300, 190, CuteTheme.paperWarm, 28, false, CuteTheme.white, 2);
+        headingTag(capacityCard, 'Title', '宝宝仓库', 0, 68, 150, CuteTheme.mint);
+        text(capacityCard, 'Value', `${currentPets} / ${maxPets}`, 0, 15, 210, 48, 28, CuteTheme.caramel, 'center', true);
+        progress(capacityCard, 'Bar', 0, -27, 220, 16, currentPets / Math.max(1, maxPets), CuteTheme.green);
+        button(capacityCard, 'Expand', '扩容10格', 0, -68, 164, 42, () => void this.expandCapacity(), { icon: '🎫', fill: CuteTheme.mint, fontSize: 13, radius: 18, disabled: this.busy.has('capacity:expand') || maxPets >= 200 });
+
+        const seasonData = this.seasonSummary?.data || this.seasonSummary || {};
+        const season = seasonData?.season || {};
+        const player = seasonData?.player || {};
+        const seasonCard = panel(book, 'Season', 157, 55, 300, 190, new Color(255, 245, 231, 255), 28, false, CuteTheme.white, 2);
+        headingTag(seasonCard, 'Title', '赛季记录', 0, 68, 150, CuteTheme.honey);
+        text(seasonCard, 'Name', safeName(season?.name, '本月赛季'), 0, 28, 250, 30, 16, CuteTheme.caramel, 'center', true);
+        text(seasonCard, 'Points', `积分 ${Number(player?.points || 0)} · 评级 ${Number(player?.rating || 1000)}`, 0, -8, 250, 28, 14, CuteTheme.muted, 'center', true);
+        text(seasonCard, 'Battle', `${Number(player?.wins || 0)}胜 ${Number(player?.losses || 0)}负 ${Number(player?.draws || 0)}平`, 0, -41, 250, 28, 14, CuteTheme.peachDark, 'center', true);
+        button(seasonCard, 'Ranking', '查看赛季榜', 0, -72, 164, 42, () => { this.rankingMode = 'season'; this.showPage('ranking'); }, { icon: '🏅', fill: CuteTheme.honey, fontSize: 13, radius: 18 });
+
+        const shortcuts = panel(book, 'Shortcuts', 0, -167, 616, 190, new Color(249, 245, 231, 255), 30, false, CuteTheme.white, 2);
+        text(shortcuts, 'Title', '手账快捷入口', -270, 63, 250, 34, 18, CuteTheme.caramel, 'left', true);
+        const entries: Array<[PageName, string, string, number]> = [
+            ['mail', `邮件 ${this.mailUnreadCount}`, '💌', -220],
+            ['friends', `好友 ${GameStore.friends.length}`, '📷', -74],
+            ['trade', '寄售市场', '🏷', 74],
+            ['settings', '游戏设置', '⚙', 220],
+        ];
+        entries.forEach(([page, title, icon, x]) => button(shortcuts, `Shortcut_${page}`, title, x, -23, 130, 104, () => this.showPage(page), { icon, fill: CuteTheme.paper, fontSize: 13, radius: 24 }));
+        text(book, 'Hint', 'Beta阶段使用固定玩家ID进行联调；正式微信登录后会自动切换到当前微信用户。', 0, -313, 580, 38, 13, CuteTheme.muted, 'center', true);
     }
 
     private renderMoreLanding() {
@@ -2271,6 +2779,345 @@ export class MainUI extends Component {
         }).start();
         tween(toast).to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     };
+
+
+    private resultList(result: any, keys: string[] = []) {
+        if (Array.isArray(result)) return result;
+        for (const key of keys) if (Array.isArray(result?.[key])) return result[key];
+        for (const key of keys) if (Array.isArray(result?.data?.[key])) return result.data[key];
+        if (Array.isArray(result?.data)) return result.data;
+        return [];
+    }
+
+    private applyMailResult(result: any) {
+        if (result?.success === false) return;
+        this.mails = this.resultList(result, ['mails', 'data', 'items', 'list']);
+        this.mailUnreadCount = Number(result?.unreadCount ?? this.mails.filter((mail) => !mail?.readed).length);
+        this.mailClaimableCount = Number(result?.claimableCount ?? this.mails.filter((mail) => mail?.canClaim).length);
+        if (!this.selectedMailId || !this.mails.some((mail) => Number(mail?.id) === this.selectedMailId)) {
+            this.selectedMailId = Number(this.mails[0]?.id || 0);
+        }
+    }
+
+    private requestId(prefix: string) {
+        return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    }
+
+    private async seedFriends() {
+        const key = 'friends:seed';
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/friend/seed', {});
+            if (result?.success === false) return this.showToast(result?.message || '创建测试好友失败');
+            GameStore.setList('friends', result);
+            CuteFeedback.playSuccess();
+            this.showToast('测试好友已加入相册');
+            await this.refreshPageData('friends');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async searchFriend(keyword: string) {
+        this.friendSearchKeyword = keyword;
+        const key = `friend:search:${keyword}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/friend/search', { keyword });
+            if (result?.success === false) return this.showToast(result?.message || '搜索失败');
+            this.friendSearchResults = this.resultList(result, ['users', 'data', 'items', 'list']);
+            this.renderCurrentPage(false);
+        } finally { this.busy.delete(key); }
+    }
+
+    private async sendFriendRequest(user: any) {
+        const userId = Number(user?.id || user?.userId || 0);
+        const key = `friend:add:${userId}`;
+        if (!userId || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/friend/request', { targetUserId: userId, message: '一起在PetVerse养宝宝吧！' });
+            if (result?.success === false) return this.showToast(result?.message || '申请发送失败');
+            CuteFeedback.playSuccess();
+            this.showToast('好友申请已发送');
+            await this.refreshPageData('friends');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async handleFriendRequest(request: any, accept: boolean) {
+        const key = `friend:handle:${request?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/friend/handle', { requestId: request?.id, accept });
+            if (result?.success === false) return this.showToast(result?.message || '处理申请失败');
+            CuteFeedback.playSuccess();
+            this.showToast(accept ? '已成为好友' : '已拒绝申请');
+            await this.refreshPageData('friends');
+        } finally { this.busy.delete(key); }
+    }
+
+    private friendPets() {
+        const pets: any[] = [];
+        for (const friend of GameStore.friends) {
+            for (const pet of Array.isArray(friend?.pets) ? friend.pets : []) pets.push({ ...pet, friendUserId: friend?.userId || friend?.id, friendName: friend?.nickname });
+        }
+        return pets;
+    }
+
+    private ensureMarriageSelection() {
+        const own = GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        const targets = this.friendPets().filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        if (!own.some((pet) => Number(pet?.id) === this.marriageOwnPetId)) this.marriageOwnPetId = Number(own[0]?.id || 0);
+        if (!targets.some((pet) => Number(pet?.id) === this.marriageTargetPetId)) this.marriageTargetPetId = Number(targets[0]?.id || 0);
+    }
+
+    private cycleMarriagePet(kind: 'own' | 'target', delta: number) {
+        const list = kind === 'own'
+            ? GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed')
+            : this.friendPets().filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        if (!list.length) return;
+        const current = kind === 'own' ? this.marriageOwnPetId : this.marriageTargetPetId;
+        let index = list.findIndex((pet) => Number(pet?.id) === current);
+        index = (index + delta + list.length) % list.length;
+        if (kind === 'own') this.marriageOwnPetId = Number(list[index]?.id || 0);
+        else this.marriageTargetPetId = Number(list[index]?.id || 0);
+        this.renderCurrentPage(false);
+    }
+
+    private async proposeMarriage() {
+        if (!this.marriageOwnPetId || !this.marriageTargetPetId || this.busy.has('marriage:propose')) return;
+        this.busy.add('marriage:propose');
+        try {
+            const result = await ApiClient.post('/marriage/propose', { petAId: this.marriageOwnPetId, petBId: this.marriageTargetPetId, message: '愿两只宝宝一起开启新的血脉故事。' });
+            if (result?.success === false) return this.showToast(result?.message || '申请失败');
+            CuteFeedback.playSuccess();
+            this.showToast(result?.duplicate ? '已有相同申请' : '结缘申请已送达');
+            this.marriageMode = result?.marriage ? 'marriages' : 'proposals';
+            await this.refreshPageData('marriage');
+        } finally { this.busy.delete('marriage:propose'); }
+    }
+
+    private async respondMarriageProposal(proposal: any, accept: boolean) {
+        const key = `marriage:respond:${proposal?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/marriage/proposal/respond', { proposalId: proposal?.id, accept });
+            if (result?.success === false) return this.showToast(result?.message || '处理申请失败');
+            CuteFeedback.playSuccess();
+            this.showToast(accept ? '结缘成功' : '已拒绝申请');
+            await this.refreshPageData('marriage');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async cancelMarriageProposal(proposal: any) {
+        const key = `marriage:cancel:${proposal?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/marriage/proposal/cancel', { proposalId: proposal?.id });
+            if (result?.success === false) return this.showToast(result?.message || '撤回失败');
+            this.showToast('申请已撤回');
+            await this.refreshPageData('marriage');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async layMarriageEgg(marriage: any) {
+        const key = `marriage:egg:${marriage?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/marriage/lay-egg', { marriageId: marriage?.id, requestId: this.requestId('lay-egg') });
+            if (result?.success === false) return this.showToast(result?.message || '产蛋失败');
+            CuteFeedback.playHatch();
+            this.showToast('宠物蛋已送入孵化室仓库');
+            const [marriages, eggs, inventory, profile] = await Promise.all([
+                ApiClient.get('/marriage'), ApiClient.get('/hatchery/eggs'), ApiClient.get('/inventory'), ApiClient.get('/user/profile'),
+            ]);
+            if (marriages?.success !== false) GameStore.setList('marriages', marriages);
+            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+        } finally { this.busy.delete(key); }
+    }
+
+    private async seedWelcomeMail() {
+        if (this.busy.has('mail:seed')) return;
+        this.busy.add('mail:seed');
+        try {
+            const result = await ApiClient.post('/mail/seed-welcome', {});
+            if (result?.success === false) return this.showToast(result?.message || '创建邮件失败');
+            CuteFeedback.playSuccess();
+            this.showToast(result?.duplicate ? '欢迎邮件已经存在' : '欢迎邮件已送达');
+            await this.refreshPageData('mail');
+        } finally { this.busy.delete('mail:seed'); }
+    }
+
+    private async selectMail(mail: any) {
+        this.selectedMailId = Number(mail?.id || 0);
+        if (!mail?.readed) {
+            const result = await ApiClient.post('/mail/read', { mailId: mail?.id });
+            if (result?.success !== false) await this.refreshPageData('mail');
+            return;
+        }
+        this.renderCurrentPage(false);
+    }
+
+    private async readAllMail() {
+        const result = await ApiClient.post('/mail/read-all', {});
+        if (result?.success === false) return this.showToast(result?.message || '操作失败');
+        this.showToast('全部邮件已标为已读');
+        await this.refreshPageData('mail');
+    }
+
+    private async claimMail(mail: any) {
+        const key = `mail:claim:${mail?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/mail/claim', { mailId: mail?.id, requestId: this.requestId(`mail-${mail?.id}`) });
+            if (result?.success === false) return this.showToast(result?.message || '领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`领取成功：${this.rewardSummary(result?.reward)}`);
+            const [mailResult, inventory, profile] = await Promise.all([ApiClient.get('/mail/list'), ApiClient.get('/inventory'), ApiClient.get('/user/profile')]);
+            this.applyMailResult(mailResult);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+        } finally { this.busy.delete(key); this.refreshAllVisuals(); }
+    }
+
+    private async claimAllMail() {
+        if (this.busy.has('mail:claim-all')) return;
+        this.busy.add('mail:claim-all');
+        try {
+            const result = await ApiClient.post('/mail/claim-all', { requestId: this.requestId('mail-all') });
+            if (result?.success === false) return this.showToast(result?.message || '领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`已领取 ${Number(result?.claimedCount || 0)} 封邮件奖励`);
+            const [mailResult, inventory, profile] = await Promise.all([ApiClient.get('/mail/list'), ApiClient.get('/inventory'), ApiClient.get('/user/profile')]);
+            this.applyMailResult(mailResult);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+        } finally { this.busy.delete('mail:claim-all'); this.refreshAllVisuals(); }
+    }
+
+    private attachmentSummary(mail: any) {
+        const attachments = Array.isArray(mail?.attachments) ? mail.attachments : [];
+        if (!attachments.length) return mail?.claimed ? '已阅读' : '无附件';
+        return attachments.map((item: any) => item?.type === 'gold' ? `金币×${item?.quantity}` : item?.type === 'diamond' ? `钻石×${item?.quantity}` : `${safeName(item?.itemCode, '道具')}×${item?.quantity}`).join(' · ');
+    }
+
+    private rewardSummary(reward: any) {
+        const parts: string[] = [];
+        if (Number(reward?.gold || 0)) parts.push(`金币${reward.gold}`);
+        if (Number(reward?.diamond || 0)) parts.push(`钻石${reward.diamond}`);
+        const items = reward?.items || {};
+        for (const key of Object.keys(items)) if (Number(items[key] || 0)) parts.push(`${key}×${items[key]}`);
+        return parts.join('、') || '奖励已到账';
+    }
+
+    private async changeRankingMode(mode: 'tower' | 'level' | 'power' | 'season') {
+        this.rankingMode = mode;
+        this.renderCurrentPage(false);
+        await this.refreshPageData('ranking');
+    }
+
+    private rankingScoreText(item: any) {
+        if (this.rankingMode === 'tower') return `最高 ${Number(item?.maxFloor ?? item?.highestTower ?? 0)}层`;
+        if (this.rankingMode === 'level') return `Lv.${Number(item?.level || 0)}`;
+        if (this.rankingMode === 'season') return `${Number(item?.points || 0)}分`;
+        return `战力 ${formatNumber(item?.power || item?.score || 0)}`;
+    }
+
+    private ensureTradePet() {
+        const eligible = this.tradeEligiblePets();
+        if (!eligible.some((pet) => Number(pet?.id) === this.tradePetId)) this.tradePetId = Number(eligible[0]?.id || 0);
+    }
+
+    private tradeEligiblePets() {
+        const teamIds = new Set(this.teamPetIds.map(Number));
+        return GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.isLocked && !pet?.isFavorite && !pet?.married && !pet?.partnerId && !pet?.marriedPetId && String(pet?.tradeStatus || '') !== 'listed' && !Number(pet?.tradeListingId || 0) && !teamIds.has(Number(pet?.id || 0)));
+    }
+
+    private cycleTradePet(delta: number) {
+        const list = this.tradeEligiblePets();
+        if (!list.length) return;
+        let index = list.findIndex((pet) => Number(pet?.id) === this.tradePetId);
+        index = (index + delta + list.length) % list.length;
+        this.tradePetId = Number(list[index]?.id || 0);
+        this.renderCurrentPage(false);
+    }
+
+    private changeTradePrice(direction: number) {
+        const step = this.tradeCurrency === 'gold' ? 1000 : 10;
+        const min = this.tradeCurrency === 'gold' ? 100 : 1;
+        const max = this.tradeCurrency === 'gold' ? 10000000 : 100000;
+        this.tradePrice = Math.max(min, Math.min(max, this.tradePrice + direction * step));
+        this.renderCurrentPage(false);
+    }
+
+    private async listTradePet() {
+        if (!this.tradePetId || this.busy.has('trade:list')) return;
+        this.busy.add('trade:list');
+        try {
+            const result = await ApiClient.post('/trade/list', { petId: this.tradePetId, currencyType: this.tradeCurrency, price: this.tradePrice, requestId: this.requestId('trade-list') });
+            if (result?.success === false) return this.showToast(result?.message || '上架失败');
+            CuteFeedback.playSuccess();
+            this.showToast('宝宝已上架寄售市场');
+            this.tradeMode = 'mine';
+            await this.refreshPageData('trade');
+        } finally { this.busy.delete('trade:list'); }
+    }
+
+    private async buyTrade(listing: any) {
+        const key = `trade:buy:${listing?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/trade/buy', { listingId: listing?.id, requestId: this.requestId(`trade-buy-${listing?.id}`) });
+            if (result?.success === false) return this.showToast(result?.message || '购买失败');
+            CuteFeedback.playSuccess();
+            this.showToast('购买成功，宝宝已进入仓库');
+            const profile = await ApiClient.get('/user/profile');
+            if (profile?.success !== false) GameStore.setProfile(profile);
+            await this.refreshPageData('trade');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async cancelTrade(listing: any) {
+        const key = `trade:cancel:${listing?.id}`;
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/trade/cancel', { listingId: listing?.id });
+            if (result?.success === false) return this.showToast(result?.message || '取消失败');
+            this.showToast('寄售已取消，宝宝已解锁');
+            await this.refreshPageData('trade');
+        } finally { this.busy.delete(key); }
+    }
+
+    private async expandCapacity() {
+        if (this.busy.has('capacity:expand')) return;
+        this.busy.add('capacity:expand');
+        try {
+            const result = await ApiClient.post('/pet-capacity/expand', { requestId: this.requestId('capacity') });
+            if (result?.success === false) return this.showToast(result?.message || '扩容失败');
+            CuteFeedback.playSuccess();
+            this.showToast('宝宝仓库容量增加10格');
+            this.capacitySummary = result?.data || result?.status || result;
+            const [inventory, profile] = await Promise.all([ApiClient.get('/inventory'), ApiClient.get('/user/profile')]);
+            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+            if (profile?.success !== false) GameStore.setProfile(profile);
+        } finally { this.busy.delete('capacity:expand'); this.refreshAllVisuals(); }
+    }
+
+    private statusLabel(status: any) {
+        const labels: Record<string, string> = {
+            pending: '待处理', accepted: '已通过', rejected: '已拒绝', cancelled: '已撤回', expired: '已过期', active: '进行中', sold: '已售出', claimed: '已领取', completed: '已完成', none: '无',
+        };
+        return labels[String(status || '').toLowerCase()] || safeName(status, '未知');
+    }
 
     private titleForPage(page: PageName) {
         const titles: Record<PageName, string> = {
