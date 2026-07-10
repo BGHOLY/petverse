@@ -1,18 +1,44 @@
 import { _decorator, Component, find, Node, UITransform, Vec3 } from 'cc';
 import UIEventCenter from './UIEventCenter';
 import { AdventurePanel } from '../ui/AdventurePanel';
-import { BreedPanel } from '../ui/BreedPanel';
+import { FriendPanel } from '../ui/FriendPanel';
+import { HatcheryPanel } from '../ui/HatcheryPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
+import { MarriagePanel } from '../ui/MarriagePanel';
 import { PetPanel } from '../ui/PetPanel';
+import { ProfilePanel } from '../ui/ProfilePanel';
+import { RankingPanel } from '../ui/RankingPanel';
 import { ShopPanel } from '../ui/ShopPanel';
+import { TowerPanel } from '../ui/TowerPanel';
 import { UIEffects } from '../ui/UIEffects';
 import { createButton, DESIGN_HEIGHT, DESIGN_WIDTH } from '../ui/UiKit';
 
 const { ccclass } = _decorator;
 
-export type MainPageName = 'PetPage' | 'InventoryPage' | 'ShopPage' | 'BreedPage' | 'AdventurePage';
+export type MainPageName =
+    | 'PetPage'
+    | 'InventoryPage'
+    | 'ShopPage'
+    | 'HatcheryPage'
+    | 'MarriagePage'
+    | 'FriendPage'
+    | 'TowerPage'
+    | 'RankingPage'
+    | 'ProfilePage'
+    | 'AdventurePage';
 
-const PAGE_NAMES: MainPageName[] = ['PetPage', 'InventoryPage', 'ShopPage', 'BreedPage', 'AdventurePage'];
+const PAGE_NAMES: MainPageName[] = [
+    'PetPage',
+    'InventoryPage',
+    'ShopPage',
+    'HatcheryPage',
+    'MarriagePage',
+    'FriendPage',
+    'TowerPage',
+    'RankingPage',
+    'ProfilePage',
+    'AdventurePage',
+];
 
 @ccclass('PanelManager')
 export class PanelManager extends Component {
@@ -27,12 +53,14 @@ export class PanelManager extends Component {
     ensurePages() {
         const canvas = find('Canvas') || this.node.parent || this.node;
 
-        this.pageLayer = this.getOrCreateChild(canvas, 'PageLayer', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+        const appRoot = this.getOrCreateChild(canvas, 'AppRoot', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+        const pageViewport = this.getOrCreateChild(appRoot, 'PageViewport', 0, -24, DESIGN_WIDTH, 948);
+        this.pageLayer = this.getOrCreateChild(pageViewport, 'PageRoot', 0, 0, DESIGN_WIDTH, 948);
 
         const keepCurrentState = !!this.currentPageName;
 
         for (const name of PAGE_NAMES) {
-            const page = this.getOrCreateChild(this.pageLayer, name, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+            const page = this.getOrCreateChild(this.pageLayer, name, 0, 0, DESIGN_WIDTH, 948);
             if (!keepCurrentState) page.active = false;
             this.pageMap.set(name, page);
         }
@@ -40,7 +68,12 @@ export class PanelManager extends Component {
         this.ensureComponent(this.pageMap.get('PetPage')!, PetPanel);
         this.ensureComponent(this.pageMap.get('InventoryPage')!, InventoryPanel);
         this.ensureComponent(this.pageMap.get('ShopPage')!, ShopPanel);
-        this.ensureComponent(this.pageMap.get('BreedPage')!, BreedPanel);
+        this.ensureComponent(this.pageMap.get('HatcheryPage')!, HatcheryPanel);
+        this.ensureComponent(this.pageMap.get('MarriagePage')!, MarriagePanel);
+        this.ensureComponent(this.pageMap.get('FriendPage')!, FriendPanel);
+        this.ensureComponent(this.pageMap.get('TowerPage')!, TowerPanel);
+        this.ensureComponent(this.pageMap.get('RankingPage')!, RankingPanel);
+        this.ensureComponent(this.pageMap.get('ProfilePage')!, ProfilePanel);
         this.ensureComponent(this.pageMap.get('AdventurePage')!, AdventurePanel);
 
         this.ensureBackButton();
@@ -51,8 +84,8 @@ export class PanelManager extends Component {
         this.ensurePages();
         this.hideAllPages();
 
-        const homeLayer = find('Canvas/HomeLayer');
-        if (homeLayer) homeLayer.active = false;
+        const homePage = find('Canvas/AppRoot/PageViewport/HomePage');
+        if (homePage) homePage.active = false;
 
         if (this.pageLayer) {
             this.pageLayer.active = true;
@@ -81,21 +114,23 @@ export class PanelManager extends Component {
     showPet() { this.showPage('PetPage'); }
     showInventory() { this.showPage('InventoryPage'); }
     showShop() { this.showPage('ShopPage'); }
-    showBreed() { this.showPage('BreedPage'); }
+    showBreed() { this.showMarriage(); }
     showAdventure() { this.showPage('AdventurePage'); }
 
-    showHatchery() { this.showBreed(); }
-    showFriend() { this.showBreed(); }
+    showHatchery() { this.showPage('HatcheryPage'); }
+    showMarriage() { this.showPage('MarriagePage'); }
+    showFriend() { this.showPage('FriendPage'); }
     showSkill() { this.showPet(); }
     showBattle() { this.showAdventure(); }
-    showTower() { this.showAdventure(); }
-    showRanking() { this.showAdventure(); }
+    showTower() { this.showPage('TowerPage'); }
+    showRanking() { this.showPage('RankingPage'); }
+    showProfile() { this.showPage('ProfilePage'); }
 
     showHome() {
         this.currentPageName = null;
         if (this.pageLayer) this.pageLayer.active = false;
-        const homeLayer = find('Canvas/HomeLayer');
-        if (homeLayer) homeLayer.active = true;
+        const homePage = find('Canvas/AppRoot/PageViewport/HomePage');
+        if (homePage) homePage.active = true;
     }
 
     refreshCurrentPage() {
@@ -114,7 +149,7 @@ export class PanelManager extends Component {
     private ensureBackButton() {
         if (!this.pageLayer) return;
 
-        const button = createButton(this.pageLayer, 'BackHomeButton', '\u8fd4\u56de', -300, -590, 90, 44, () => {
+        const button = createButton(this.pageLayer, 'BackHomeButton', '\u8fd4\u56de', -292, -414, 90, 44, () => {
             this.showHome();
             UIEventCenter.emit('SHOW_HOME');
         }, this, false, 15);
@@ -133,8 +168,23 @@ export class PanelManager extends Component {
             case 'ShopPage':
                 void this.ensureComponent(page, ShopPanel).loadShop();
                 break;
-            case 'BreedPage':
-                void this.ensureComponent(page, BreedPanel).refreshBreedPage();
+            case 'HatcheryPage':
+                void this.ensureComponent(page, HatcheryPanel).refreshEggInfo();
+                break;
+            case 'MarriagePage':
+                void this.ensureComponent(page, MarriagePanel).refreshMarriagePage();
+                break;
+            case 'FriendPage':
+                void this.ensureComponent(page, FriendPanel).refreshFriendPage();
+                break;
+            case 'TowerPage':
+                void this.ensureComponent(page, TowerPanel).refreshTower();
+                break;
+            case 'RankingPage':
+                void this.ensureComponent(page, RankingPanel).refreshRanking();
+                break;
+            case 'ProfilePage':
+                void this.ensureComponent(page, ProfilePanel).refreshProfile();
                 break;
             case 'AdventurePage':
                 void this.ensureComponent(page, AdventurePanel).refreshAdventurePage();

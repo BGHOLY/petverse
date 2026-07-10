@@ -10,6 +10,9 @@ export const BOTTOM = -640;
 
 export const TEXT_DARK = new Color(76, 49, 26, 255);
 export const TEXT_LIGHT = new Color(255, 255, 255, 255);
+export const TEXT_NAVY = new Color(28, 42, 74, 255);
+export const TEXT_MUTED = new Color(96, 111, 130, 255);
+export const TEXT_GREEN = new Color(41, 151, 90, 255);
 
 export const PAGE_BG = new Color(255, 246, 218, 255);
 export const PET_PAGE_BG = new Color(245, 238, 255, 255);
@@ -17,6 +20,15 @@ export const BAG_PAGE_BG = new Color(255, 247, 224, 255);
 export const SHOP_PAGE_BG = new Color(236, 251, 232, 255);
 export const BREED_PAGE_BG = new Color(255, 238, 235, 255);
 export const ADVENTURE_PAGE_BG = new Color(232, 245, 255, 255);
+export const SOFT_BG = new Color(239, 255, 240, 255);
+export const CREAM = new Color(255, 252, 241, 255);
+export const MINT = new Color(176, 232, 152, 255);
+export const MINT_DARK = new Color(105, 193, 118, 255);
+export const GOLD = new Color(255, 196, 55, 255);
+export const GOLD_LIGHT = new Color(255, 229, 116, 255);
+export const NAVY = new Color(28, 42, 74, 255);
+export const WHITE = new Color(255, 255, 255, 255);
+export const SOFT_LINE = new Color(221, 230, 218, 255);
 
 const PANEL_FILL = new Color(255, 252, 235, 255);
 const PANEL_BORDER = new Color(111, 78, 43, 255);
@@ -24,6 +36,7 @@ const BUTTON_FILL = new Color(255, 226, 154, 255);
 const BUTTON_SELECTED = new Color(255, 192, 92, 255);
 const BUTTON_BORDER = new Color(123, 82, 43, 255);
 const SLOT_FILL = new Color(255, 253, 240, 255);
+const CLICK_LOCK_MS = 450;
 
 export type PageLayout = {
     w: number;
@@ -56,12 +69,12 @@ export function getPageLayout(node?: Node): PageLayout {
         w: DESIGN_WIDTH,
         h: DESIGN_HEIGHT,
         pageW: DESIGN_WIDTH,
-        pageH: DESIGN_HEIGHT,
+        pageH: 948,
         left: LEFT,
         right: RIGHT,
-        top: TOP,
-        bottom: BOTTOM,
-        titleY: 590,
+        top: 474,
+        bottom: -474,
+        titleY: 420,
     };
 }
 
@@ -111,6 +124,27 @@ export function drawRoundRect(
     }
 }
 
+export function drawCircle(
+    node: Node,
+    radius: number,
+    fill: Color,
+    border: Color = WHITE,
+    lineWidth = 0,
+) {
+    const graphics = node.getComponent(Graphics) || node.addComponent(Graphics);
+    graphics.clear();
+    graphics.fillColor = fill;
+    graphics.circle(0, 0, radius);
+    graphics.fill();
+
+    if (lineWidth > 0) {
+        graphics.lineWidth = lineWidth;
+        graphics.strokeColor = border;
+        graphics.circle(0, 0, radius);
+        graphics.stroke();
+    }
+}
+
 export function createPanel(
     parent: Node,
     name: string,
@@ -126,6 +160,78 @@ export function createPanel(
     const node = getOrCreateNode(parent, name);
     setNodeRect(node, x, y, width, height);
     drawRoundRect(node, width, height, fill, border, radius, lineWidth);
+    return node;
+}
+
+export function createSoftCard(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fill: Color = CREAM,
+    radius = 28,
+): Node {
+    return createPanel(parent, name, x, y, width, height, fill, new Color(255, 255, 255, 230), radius, 3);
+}
+
+export function createCircleCard(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    radius: number,
+    fill: Color,
+    border: Color = WHITE,
+): Node {
+    const node = getOrCreateNode(parent, name);
+    setNodeRect(node, x, y, radius * 2, radius * 2);
+    drawCircle(node, radius, fill, border, 3);
+    return node;
+}
+
+export function createProgressBar(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    ratio: number,
+    fill: Color = GOLD,
+    bg: Color = new Color(224, 226, 221, 255),
+): Node {
+    const root = getOrCreateNode(parent, name);
+    setNodeRect(root, x, y, width, height);
+
+    createPanel(root, 'Track', 0, 0, width, height, bg, bg, height / 2, 0);
+
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const fillWidth = Math.max(height, width * clamped);
+    const fillNode = createPanel(root, 'Fill', -width / 2 + fillWidth / 2, 0, fillWidth, height, fill, fill, height / 2, 0);
+    fillNode.active = clamped > 0;
+    return root;
+}
+
+export function createPill(
+    parent: Node,
+    name: string,
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    iconText = '',
+    fill: Color = CREAM,
+) {
+    const node = createSoftCard(parent, name, x, y, width, height, fill, height / 2);
+    if (iconText) {
+        createCircleCard(node, 'Icon', -width / 2 + height / 2, 0, Math.max(14, height / 2 - 8), GOLD_LIGHT, WHITE);
+        createLabel(node, 'IconText', iconText, -width / 2 + height / 2, 0, height - 10, height - 10, Math.max(16, height / 3), TEXT_NAVY);
+    }
+    const label = createLabel(node, 'Text', text, iconText ? 16 : 0, 0, iconText ? width - height - 18 : width - 16, height - 6, Math.max(18, height / 2.4), TEXT_NAVY);
+    label.horizontalAlign = Label.HorizontalAlign.CENTER;
     return node;
 }
 
@@ -173,10 +279,10 @@ export function createInfoText(
     parent: Node,
     name: string,
     text: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
+    x = -300,
+    y = 300,
+    width = 600,
+    height = 560,
     fontSize = 14,
 ): Label {
     const label = createLabel(parent, name, text, x, y, width, height, fontSize, TEXT_DARK);
@@ -228,8 +334,25 @@ export function createButton(
 
     node.off(Button.EventType.CLICK);
     node.on(Button.EventType.CLICK, () => {
+        const lockedNode = node as any;
+        if (lockedNode.__petverseClickLocked) return;
+        lockedNode.__petverseClickLocked = true;
         UIEffects.playClick();
-        callback.call(target);
+        const release = () => {
+            lockedNode.__petverseClickLocked = false;
+        };
+
+        try {
+            const result = callback.call(target);
+            if (result && typeof result.then === 'function') {
+                result.then(release).catch(release);
+            } else {
+                setTimeout(release, CLICK_LOCK_MS);
+            }
+        } catch (error) {
+            release();
+            throw error;
+        }
     });
 
     return button;

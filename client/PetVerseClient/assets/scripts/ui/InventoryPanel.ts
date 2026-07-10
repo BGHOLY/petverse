@@ -56,9 +56,9 @@ export class InventoryPanel extends Component {
     }
 
     private async loadPets() {
-        const result = await ApiClient.get('/pet');
+        const result = await ApiClient.get('/pet/my');
         this.pets = normalizeList(result, ['pets']).filter((pet: any) => !pet.isEgg);
-        PlayerData.user = { ...(PlayerData.user || {}), pets: this.pets };
+        PlayerData.setPets(this.pets);
     }
 
     private async loadItems() {
@@ -87,9 +87,9 @@ export class InventoryPanel extends Component {
         this.petStatsContent = this.ensureContent(statsPanel, 'PetStatsContent', 0, -18, 165, 290);
         this.petStatsLabel = createInfoText(this.petStatsContent, 'PetStatsLabel', '', -78, 132, 156, 265, 18);
 
-        const gridPanel = createPanel(this.node, 'ItemGridPanel', 0, -250, 660, 520);
-        createLabel(gridPanel, 'ItemGridTitleLabel', TXT_ITEMS, 0, 232, 200, 32, 16);
-        this.itemGridContent = this.ensureContent(gridPanel, 'ItemGridContent', 0, -10, 640, 460);
+        const gridPanel = createPanel(this.node, 'ItemGridPanel', 0, -220, 660, 460);
+        createLabel(gridPanel, 'ItemGridTitleLabel', TXT_ITEMS, 0, 202, 200, 32, 16);
+        this.itemGridContent = this.ensureContent(gridPanel, 'ItemGridContent', 0, -10, 640, 400);
     }
 
     private ensureContent(parent: Node, name: string, x: number, y: number, width: number, height: number) {
@@ -168,7 +168,7 @@ export class InventoryPanel extends Component {
         const gapX = 13;
         const gapY = 28;
         const startX = -256;
-        const startY = 145;
+        const startY = 125;
 
         if (!this.items.length) {
             createLabel(this.itemGridContent, 'ItemGridEmpty', TXT_EMPTY_ITEM, 0, 0, 250, 50, 16);

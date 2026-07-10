@@ -1,4 +1,5 @@
 import { _decorator, Component, Node, Vec3 } from 'cc';
+import GameStore from '../data/GameStore';
 import PlayerData from '../data/PlayerData';
 import UIEventCenter from '../manager/UIEventCenter';
 import ApiClient from '../network/ApiClient';
@@ -46,13 +47,20 @@ export class ShopPanel extends Component {
     async loadShop() {
         this.ensureView();
 
-        let result = await ApiClient.get('/item');
+        let result = await ApiClient.get('/shop/items');
         this.list = normalizeList(result, ['shopItems', 'items', 'data']);
 
         if (!this.list.length) {
-            result = await ApiClient.get('/shop/items');
+            result = await ApiClient.get('/shop');
             this.list = normalizeList(result, ['shopItems', 'items', 'data']);
         }
+
+        if (!this.list.length) {
+            result = await ApiClient.get('/item');
+            this.list = normalizeList(result, ['shopItems', 'items', 'data']);
+        }
+
+        PlayerData.shopItems = this.list;
 
         this.renderTabs();
         this.renderShopGrid();
@@ -61,16 +69,16 @@ export class ShopPanel extends Component {
     private ensureView() {
         createPageBackground(this.node, TXT_SHOP, SHOP_PAGE_BG);
 
-        this.tabPanel = createPanel(this.node, 'ShopTabPanel', 0, 500, 660, 80);
+        this.tabPanel = createPanel(this.node, 'ShopTabPanel', 0, 350, 660, 80);
         this.gridContent = this.ensureGridContent();
         this.renderTabs();
     }
 
     private ensureGridContent() {
-        const gridPanel = createPanel(this.node, 'ShopGridPanel', 0, 0, 660, 800);
+        const gridPanel = createPanel(this.node, 'ShopGridPanel', 0, -70, 660, 700);
         const content = getOrCreateNode(gridPanel, 'ShopGridContent');
         content.setPosition(new Vec3(0, 0, 0));
-        ensureTransform(content, 640, 760);
+        ensureTransform(content, 640, 660);
         return content;
     }
 
@@ -121,7 +129,7 @@ export class ShopPanel extends Component {
         const gapX = 20;
         const gapY = 22;
         const startX = -214;
-        const startY = 300;
+        const startY = 245;
 
         displayList.slice(0, 15).forEach((item: any, index: number) => {
             const col = index % cols;
@@ -155,7 +163,11 @@ export class ShopPanel extends Component {
             ? `\u8d2d\u4e70\u6210\u529f:${itemName || itemCode}`
             : `\u8d2d\u4e70\u5931\u8d25:${result?.message || itemCode}`);
 
-        await this.loadShop();
+        await Promise.all([
+            this.loadShop(),
+            GameStore.loadInventory(),
+            GameStore.loadUser(),
+        ]);
     }
 
     private getFilteredItems() {

@@ -19,7 +19,7 @@ export class SkillPanel extends Component {
         this.setStatus('加载技能中...');
         this.setText('加载中...');
 
-        const result = await ApiClient.get('/pet');
+        const result = await ApiClient.get('/pet/my');
         const pets = this.normalizePets(result);
         console.log('[SkillPanel] response:', result);
 

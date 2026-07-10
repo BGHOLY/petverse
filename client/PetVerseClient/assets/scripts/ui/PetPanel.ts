@@ -42,10 +42,10 @@ export class PetPanel extends Component {
     async loadPetsFromServer() {
         this.ensureView();
 
-        const result = await ApiClient.get('/pet');
+        const result = await ApiClient.get('/pet/my');
         this.pets = this.normalizePets(result).filter((pet: any) => !pet.isEgg);
 
-        PlayerData.user = { ...(PlayerData.user || {}), pets: this.pets };
+        PlayerData.setPets(this.pets);
 
         this.keepSelectedSafe();
         this.renderPetList();
@@ -140,6 +140,7 @@ export class PetPanel extends Component {
         }
 
         const skills = Array.isArray(pet.skills) ? pet.skills : [];
+        PlayerData.currentPetId = pet.id;
         const skillText = skills.length
             ? skills.slice(0, 5).map((skill: any, index: number) => `${index + 1}.${skill.name || skill.skillCode || TXT_SKILL}`).join('\n')
             : '\u6682\u65e0';

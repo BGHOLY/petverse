@@ -37,7 +37,7 @@ export class BreedPanel extends Component {
     async refreshBreedPage() {
         this.ensureView();
 
-        const result = await ApiClient.get('/pet');
+        const result = await ApiClient.get('/pet/my');
         this.pets = normalizeList(result, ['pets']).filter((pet: any) => !pet.isEgg);
 
         if (this.pets.length < 2) {

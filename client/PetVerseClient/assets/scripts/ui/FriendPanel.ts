@@ -1,6 +1,22 @@
 import { _decorator, Component, Label } from 'cc';
+import GameStore from '../data/GameStore';
+import PlayerData from '../data/PlayerData';
 import ApiClient from '../network/ApiClient';
-import { clearGenerated, createButton, createInfoText, createListButton, createPageTitle, createStatusLabel, normalizeList } from './UiKit';
+import { ToastManager } from './ToastManager';
+import {
+    CREAM,
+    SOFT_BG,
+    TEXT_GREEN,
+    clearGenerated,
+    createButton,
+    createInfoText,
+    createLabel,
+    createListButton,
+    createPageBackground,
+    createPanel,
+    createStatusLabel,
+    normalizeList,
+} from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -20,92 +36,67 @@ export class FriendPanel extends Component {
         this.setStatus('加载好友中...');
         this.setEmpty('加载中...');
 
-        const result = await ApiClient.get('/friend');
-        const friends = normalizeList(result, ['friends']);
-        console.log('[FriendPanel] response:', result);
-
-        if (result?.success === false) {
-            this.setStatus(`\u52a0\u8f7d\u5931\u8d25: ${result.message || '\u672a\u77e5\u9519\u8bef'}`);
-            this.setEmpty('\u6682\u65e0\u6570\u636e');
-            return;
-        }
-
-        this.setStatus(this.lastMessage || `\u597d\u53cb\u6570\u91cf: ${friends.length}`);
+        await Promise.all([
+            GameStore.loadFriends(),
+            GameStore.loadPets(),
+        ]);
+        const friends = PlayerData.friends || [];
+        this.setStatus(this.lastMessage || `好友数量: ${friends.length}`);
 
         const petRows: any[] = [];
         for (const friend of friends) {
             const pets = normalizeList(friend, ['pets']);
-            for (const pet of pets) {
-                petRows.push({ friend, pet });
+            if (!pets.length) {
+                petRows.push({ friend, pet: null });
+            } else {
+                pets.forEach((pet: any) => petRows.push({ friend, pet }));
             }
         }
 
         if (!petRows.length) {
-            this.setEmpty('\u6682\u65e0\u6570\u636e');
-            console.log('[FriendPanel] render result: empty');
+            this.setEmpty('暂无好友数据');
             return;
         }
 
         this.setEmpty('');
         petRows.slice(0, 8).forEach((row, index) => {
-            const friendName = row.friend.nickname || row.friend.name || '\u597d\u53cb';
-            const text =
-                `${friendName} / ${row.pet.nickname || '\u5ba0\u7269'}\n` +
-                `Lv.${row.pet.level ?? 1}  ${row.pet.rarityName || row.pet.rarity || '-'}   \u7ed3\u5a5a`;
+            const friendName = row.friend.nickname || row.friend.name || `好友${index + 1}`;
+            const petName = row.pet?.nickname || '暂无宠物';
+            const text = `${friendName} / ${petName}\nLv.${row.pet?.level ?? '-'}  ${row.pet?.rarityName || row.pet?.rarity || '-'}   结婚`;
             createListButton(this.node, `GeneratedFriendPet${index}`, text, index, () => {
-                void this.marryPet(row.pet.id);
+                if (row.pet?.id) void this.marryPet(row.pet.id);
+                else ToastManager.show('该好友暂无可婚姻宠物');
             }, this);
         });
-
-        console.log('[FriendPanel] render result:', petRows.length);
     }
 
     async marryPet(friendPetId: number) {
-        const petResult = await ApiClient.get('/pet');
-        const pets = normalizeList(petResult, ['pets']);
-        let ownPet = pets.find((pet: any) => !pet.isEgg && !pet.marriedPetId && !pet.married);
-
-        if (!ownPet) {
-            const created = await ApiClient.post('/pet/create', {
-                nickname: 'Wedding Pet',
-                species: 'Dog',
-                rarity: 2,
-            });
-            ownPet = created?.pet;
-        }
-
-        if (!ownPet) {
-            this.lastMessage = '\u7ed3\u5a5a\u5931\u8d25: \u6ca1\u6709\u53ef\u7528\u5ba0\u7269';
-            this.setStatus(this.lastMessage);
-            return;
-        }
+        const ownPet = PlayerData.pets.find((pet: any) => !pet.isEgg && !pet.marriedPetId && !pet.married);
+        if (!ownPet) return ToastManager.show('没有可用于婚姻的本方宠物');
 
         const result = await ApiClient.post('/marriage/create', {
             petAId: ownPet.id,
             petBId: friendPetId,
         });
-        console.log('[FriendPanel] marriage result:', result);
-        this.lastMessage = result?.success
-            ? '\u7ed3\u5a5a\u6210\u529f\uff0c\u53ef\u4ee5\u53bb\u5b75\u5316\u9875\u751f\u86cb'
-            : `\u7ed3\u5a5a\u5931\u8d25: ${result?.message || ''}`;
-        this.setStatus(this.lastMessage);
+        this.lastMessage = result?.success ? '结婚成功，可以去孵化页产蛋' : `结婚失败: ${result?.message || ''}`;
+        ToastManager.show(this.lastMessage);
         await this.refreshFriendPage();
     }
 
     private ensureView() {
-        createPageTitle(this.node, '\u597d\u53cb');
+        createPageBackground(this.node, '好友', SOFT_BG);
+        createPanel(this.node, 'FriendCard', 0, 0, 640, 780, CREAM, CREAM, 28, 0);
+        createLabel(this.node, 'FriendTitle', '好友宠物', -225, 360, 180, 40, 24, TEXT_GREEN);
         this.statusLabel = createStatusLabel(this.node, 'FriendStatusLabel');
-        this.emptyLabel = createInfoText(this.node, 'FriendEmptyLabel', '');
-        createButton(this.node, 'RefreshFriendButton', '\u5237\u65b0\u597d\u53cb', 0, -330, 180, 52, () => {
+        this.emptyLabel = createInfoText(this.node, 'FriendEmptyLabel', '', -280, 260, 560, 430, 18);
+        createButton(this.node, 'RefreshFriendButton', '刷新好友', 0, -410, 180, 52, () => {
             this.lastMessage = '';
-            void this.refreshFriendPage();
+            return this.refreshFriendPage();
         }, this);
     }
 
     private setStatus(text: string) {
-        if (this.statusLabel) {
-            this.statusLabel.string = text;
-        }
+        if (this.statusLabel) this.statusLabel.string = text;
     }
 
     private setEmpty(text: string) {
