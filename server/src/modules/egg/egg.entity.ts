@@ -23,11 +23,47 @@ export class Egg {
   @Column({ default: 1 })
   rarityPotential: number;
 
+  @Column({ default: 100 })
+  quality: number;
+
+  @Column({ default: '' })
+  species: string;
+
+  @Column({ default: 'AAAA' })
+  geneCode: string;
+
+  @Column({ default: 12 })
+  geneScore: number;
+
+  @Column({ default: 'normal' })
+  bodyType: string;
+
+  @Column({ default: 'white' })
+  color: string;
+
+  @Column({ default: 'none' })
+  pattern: string;
+
+  @Column({ type: 'simple-json', nullable: true })
+  inheritedSkills: any[];
+
+  @Column({ type: 'simple-json', nullable: true })
+  mutationData: any;
+
+  @Column({ type: 'simple-json', nullable: true })
+  parentSnapshot: any;
+
   @Column({ default: 'unhatched' })
   status: string;
 
   @Column({ default: '' })
   source: string;
+
+  @Column({ default: 0 })
+  hatchDurationSeconds: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  hatchReadyAt: Date;
 
   @Column({ default: 0 })
   hatchedPetId: number;

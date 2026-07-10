@@ -1,31 +1,71 @@
-export function generateGeneCode(fatherGene = 'AAAA', motherGene = 'AAAA') {
-  const mutationGenes = ['C', 'B', 'A', 'S'];
+const VALID_GENES = ['C', 'B', 'A', 'S'] as const;
+const DEFAULT_GENE = 'A';
+const GENE_LENGTH = 4;
+
+export interface GeneInheritanceResult {
+  geneCode: string;
+  mutationCount: number;
+  mutationLoci: number[];
+}
+
+export function normalizeGeneCode(geneCode = 'AAAA') {
+  const normalized = String(geneCode || '')
+    .toUpperCase()
+    .replace(/[^CBAS]/g, '');
+
+  return Array.from({ length: GENE_LENGTH }, (_, index) => {
+    const gene = normalized[index];
+    return VALID_GENES.includes(gene as (typeof VALID_GENES)[number])
+      ? gene
+      : DEFAULT_GENE;
+  }).join('');
+}
+
+export function inheritGeneCode(
+  fatherGene = 'AAAA',
+  motherGene = 'AAAA',
+  mutationRate = 0.06,
+): GeneInheritanceResult {
+  const father = normalizeGeneCode(fatherGene);
+  const mother = normalizeGeneCode(motherGene);
+  const mutationLoci: number[] = [];
   let result = '';
 
-  for (let i = 0; i < 4; i++) {
-    const r = Math.random();
+  for (let index = 0; index < GENE_LENGTH; index += 1) {
+    const inherited = Math.random() < 0.5 ? father[index] : mother[index];
+    let gene = inherited;
 
-    if (r < 0.45) {
-      result += fatherGene[i] || 'A';
-    } else if (r < 0.9) {
-      result += motherGene[i] || 'A';
-    } else {
-      result += mutationGenes[Math.floor(Math.random() * mutationGenes.length)];
+    if (Math.random() < Math.max(0, Math.min(1, mutationRate))) {
+      const mutationPool = VALID_GENES.filter((candidate) => candidate !== inherited);
+      gene = mutationPool[Math.floor(Math.random() * mutationPool.length)];
+      mutationLoci.push(index);
     }
+
+    result += gene;
   }
 
-  return result;
+  return {
+    geneCode: result,
+    mutationCount: mutationLoci.length,
+    mutationLoci,
+  };
+}
+
+// 保留旧函数名，避免已有模块调用失效。
+export function generateGeneCode(fatherGene = 'AAAA', motherGene = 'AAAA') {
+  return inheritGeneCode(fatherGene, motherGene).geneCode;
 }
 
 export function calculateGeneScore(geneCode: string) {
-  let score = 0;
+  const scoreMap: Record<string, number> = {
+    C: 1,
+    B: 2,
+    A: 3,
+    S: 5,
+  };
 
-  for (const gene of geneCode) {
-    if (gene === 'C') score += 1;
-    if (gene === 'B') score += 2;
-    if (gene === 'A') score += 3;
-    if (gene === 'S') score += 5;
-  }
-
-  return score;
+  return [...normalizeGeneCode(geneCode)].reduce(
+    (score, gene) => score + (scoreMap[gene] || 0),
+    0,
+  );
 }

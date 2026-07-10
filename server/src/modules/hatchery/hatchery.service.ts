@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
-import { PetService } from '../pet/pet.service';
+import { OffspringBlueprint, PetService } from '../pet/pet.service';
 
 @Injectable()
 export class HatcheryService {
@@ -12,7 +12,7 @@ export class HatcheryService {
   ) {}
 
   async getEggs(userId = DEFAULT_USER_ID) {
-    const eggs = await this.eggService.getUserEggs(userId, true);
+    const eggs = await this.eggService.getUserEggViews(userId, true);
     return {
       success: true,
       eggs,
@@ -20,10 +20,35 @@ export class HatcheryService {
     };
   }
 
-  async hatch(userId: number, eggId?: number) {
-    const egg = eggId
-      ? await this.eggService.getEggById(eggId)
-      : (await this.eggService.getUserEggs(userId, false))[0];
+  async getEggDetail(userId: number, eggId: number) {
+    const egg = await this.eggService.getEggById(eggId);
+
+    if (!egg || egg.ownerId !== userId) {
+      return {
+        success: false,
+        message: 'Egg not found',
+        data: null,
+      };
+    }
+
+    const data = this.eggService.toEggView(egg);
+    return {
+      success: true,
+      data,
+      egg: data,
+    };
+  }
+
+  async hatch(userId: number, eggId?: number, force = false) {
+    let egg = eggId ? await this.eggService.getEggById(eggId) : null;
+
+    if (!egg) {
+      const availableEggs = await this.eggService.getUserEggs(userId, false);
+      egg =
+        availableEggs.find((candidate) => this.eggService.getRemainingSeconds(candidate) <= 0) ||
+        availableEggs[0] ||
+        null;
+    }
 
     if (!egg || egg.ownerId !== userId) {
       return {
@@ -32,39 +57,79 @@ export class HatcheryService {
       };
     }
 
-    if (egg.status === 'hatched') {
+    if (egg.status !== 'unhatched') {
       return {
         success: false,
-        message: 'Egg already hatched',
-        egg,
+        message: egg.status === 'hatched' ? 'Egg already hatched' : 'Egg is being hatched',
+        egg: this.eggService.toEggView(egg),
+      };
+    }
+
+    const remainingSeconds = this.eggService.getRemainingSeconds(egg);
+    const allowBetaForce = force && process.env.NODE_ENV !== 'production';
+
+    if (remainingSeconds > 0 && !allowBetaForce) {
+      return {
+        success: false,
+        message: 'Egg is not ready to hatch',
+        remainingSeconds,
+        hatchReadyAt: egg.hatchReadyAt,
+        egg: this.eggService.toEggView(egg),
       };
     }
 
     const parentA = egg.parentAId ? await this.petService.getPetById(egg.parentAId) : null;
     const parentB = egg.parentBId ? await this.petService.getPetById(egg.parentBId) : null;
+    const hasStoredBlueprint = Boolean(egg.parentSnapshot || egg.mutationData || egg.species);
+    const storedBlueprint: Partial<OffspringBlueprint> | undefined = hasStoredBlueprint
+      ? {
+          rarity: egg.rarityPotential,
+          quality: egg.quality,
+          species: egg.species,
+          geneCode: egg.geneCode,
+          geneScore: egg.geneScore,
+          bodyType: egg.bodyType,
+          color: egg.color,
+          pattern: egg.pattern,
+          inheritedSkills: egg.inheritedSkills,
+          mutationData: egg.mutationData,
+        }
+      : undefined;
 
-    const pet = await this.petService.createPetFromEgg(
-      userId,
-      egg.rarityPotential,
-      parentA,
-      parentB,
-    );
+    await this.eggService.markHatching(egg);
 
-    const hatchedEgg = await this.eggService.markHatched(egg, pet.id);
-    const pets = await this.petService.getUserPets(userId);
-    const eggs = await this.eggService.getUserEggs(userId, true);
+    try {
+      const pet = await this.petService.createPetFromEgg(
+        userId,
+        egg.rarityPotential,
+        parentA,
+        parentB,
+        storedBlueprint,
+      );
+      pet.fatherId = Number(egg.parentAId || 0);
+      pet.motherId = Number(egg.parentBId || 0);
+      pet.hatchTime = new Date();
+      await this.petService.savePet(pet);
 
-    return {
-      success: true,
-      message: 'Hatch successful',
-      egg: hatchedEgg,
-      pet,
-      pets: pets.pets,
-      eggs,
-      data: {
+      const hatchedEgg = await this.eggService.markHatched(egg, pet.id);
+      const pets = await this.petService.getUserPets(userId);
+      const eggs = await this.eggService.getUserEggViews(userId, true);
+
+      return {
+        success: true,
+        message: 'Hatch successful',
+        egg: this.eggService.toEggView(hatchedEgg),
         pet,
+        pets: pets.pets,
         eggs,
-      },
-    };
+        data: {
+          pet,
+          eggs,
+        },
+      };
+    } catch (error) {
+      await this.eggService.markUnhatched(egg);
+      throw error;
+    }
   }
 }

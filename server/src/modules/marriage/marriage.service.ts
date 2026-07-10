@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
+import { PetService } from '../pet/pet.service';
 import { Marriage } from './marriage.entity';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class MarriageService {
     private readonly petRepository: Repository<Pet>,
 
     private readonly eggService: EggService,
+    private readonly petService: PetService,
   ) {}
 
   async getUserMarriages(userId = DEFAULT_USER_ID) {
@@ -30,10 +32,16 @@ export class MarriageService {
       },
     });
 
+    const data = marriages.map((marriage) => ({
+      ...marriage,
+      canLayEgg: this.getCooldownRemainingSeconds(marriage) <= 0,
+      cooldownRemainingSeconds: this.getCooldownRemainingSeconds(marriage),
+    }));
+
     return {
       success: true,
-      marriages,
-      data: marriages,
+      marriages: data,
+      data,
     };
   }
 
@@ -138,6 +146,16 @@ export class MarriageService {
       };
     }
 
+    const cooldownRemainingSeconds = this.getCooldownRemainingSeconds(marriage);
+    if (cooldownRemainingSeconds > 0) {
+      return {
+        success: false,
+        message: 'Marriage is on cooldown',
+        cooldownRemainingSeconds,
+        cooldownEndAt: marriage.cooldownEndAt,
+      };
+    }
+
     const petA = await this.petRepository.findOne({ where: { id: marriage.petAId } });
     const petB = await this.petRepository.findOne({ where: { id: marriage.petBId } });
 
@@ -148,24 +166,50 @@ export class MarriageService {
       };
     }
 
-    const rarityPotential = this.rollChildRarity(petA.rarity, petB.rarity);
+    if (petA.isEgg || petB.isEgg || !petA.married || !petB.married) {
+      return {
+        success: false,
+        message: 'Parent marriage state is invalid',
+      };
+    }
+
+    const blueprint = this.petService.buildOffspringBlueprint(petA, petB);
     const egg = await this.eggService.createEgg({
       ownerId: userId,
       parentAId: petA.id,
       parentBId: petB.id,
-      rarityPotential,
+      rarityPotential: blueprint.rarity,
+      quality: blueprint.quality,
+      species: blueprint.species,
+      geneCode: blueprint.geneCode,
+      geneScore: blueprint.geneScore,
+      bodyType: blueprint.bodyType,
+      color: blueprint.color,
+      pattern: blueprint.pattern,
+      inheritedSkills: blueprint.inheritedSkills,
+      mutationData: blueprint.mutationData,
+      parentSnapshot: {
+        parentA: this.toParentSnapshot(petA),
+        parentB: this.toParentSnapshot(petB),
+      },
       source: 'marriage',
     });
 
-    marriage.eggCount += 1;
+    marriage.eggCount = Number(marriage.eggCount || 0) + 1;
+    marriage.cooldownEndAt = new Date(Date.now() + this.getMarriageCooldownSeconds() * 1000);
     await this.marriageRepository.save(marriage);
 
     return {
       success: true,
       message: 'Egg laid',
-      egg,
-      marriage,
+      egg: this.eggService.toEggView(egg),
+      marriage: {
+        ...marriage,
+        canLayEgg: false,
+        cooldownRemainingSeconds: this.getCooldownRemainingSeconds(marriage),
+      },
       parents: [petA, petB],
+      inheritance: blueprint,
     };
   }
 
@@ -204,21 +248,35 @@ export class MarriageService {
     });
   }
 
-  private rollChildRarity(rarityA: number, rarityB: number) {
-    const avgRarity = Math.floor((Number(rarityA || 1) + Number(rarityB || 1)) / 2);
-    const roll = Math.random();
-    let rarity = avgRarity;
+  private toParentSnapshot(pet: Pet) {
+    return {
+      id: pet.id,
+      ownerId: pet.ownerId,
+      nickname: pet.nickname,
+      species: pet.species,
+      rarity: pet.rarity,
+      quality: pet.quality,
+      geneCode: pet.geneCode,
+      geneScore: pet.geneScore,
+      bodyType: pet.bodyType,
+      color: pet.color,
+      pattern: pet.pattern,
+    };
+  }
 
-    if (roll < 0.2) {
-      rarity = avgRarity - 1;
-    } else if (roll < 0.75) {
-      rarity = avgRarity;
-    } else if (roll < 0.95) {
-      rarity = avgRarity + 1;
-    } else {
-      rarity = avgRarity + 2;
+  private getCooldownRemainingSeconds(marriage: Marriage) {
+    if (!marriage.cooldownEndAt) {
+      return 0;
     }
 
-    return Math.max(1, Math.min(6, rarity));
+    return Math.max(
+      0,
+      Math.ceil((new Date(marriage.cooldownEndAt).getTime() - Date.now()) / 1000),
+    );
+  }
+
+  private getMarriageCooldownSeconds() {
+    // Beta 阶段为 60 秒，正式运营时再替换为策划配置。
+    return 60;
   }
 }

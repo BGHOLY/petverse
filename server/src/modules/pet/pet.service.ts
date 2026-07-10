@@ -10,7 +10,43 @@ import {
 } from '../game-data';
 import { SkillService } from '../skill/skill.service';
 import { Pet } from './pet.entity';
-import { calculateGeneScore, generateGeneCode } from './utils/gene.util';
+import {
+  calculateGeneScore,
+  generateGeneCode,
+  inheritGeneCode,
+  normalizeGeneCode,
+} from './utils/gene.util';
+
+export interface OffspringBlueprint {
+  rarity: number;
+  quality: number;
+  species: string;
+  geneCode: string;
+  geneScore: number;
+  bodyType: string;
+  color: string;
+  pattern: string;
+  inheritedSkills: any[];
+  mutationData: {
+    geneMutationCount: number;
+    geneMutationLoci: number[];
+    mutatedTraits: string[];
+  };
+}
+
+interface CreatePetData {
+  nickname?: string;
+  species?: string;
+  rarity?: number;
+  quality?: number;
+  geneCode?: string;
+  bodyType?: string;
+  color?: string;
+  pattern?: string;
+  fatherId?: number;
+  motherId?: number;
+  skills?: any[];
+}
 
 @Injectable()
 export class PetService {
@@ -94,13 +130,16 @@ export class PetService {
 
     return {
       ...pet,
+      lineage: {
+        fatherId: Number(pet.fatherId || 0),
+        motherId: Number(pet.motherId || 0),
+      },
       finalAttributes: this.calculateFinalAttributes(pet),
     };
   }
 
   calculateFinalAttributes(pet: Pet) {
-    // 当前 hp/attack/defense/speed 已经包含稀有度初始值和升级成长，
-    // 这里只应用资质，避免再次乘稀有度和等级造成重复放大。
+    // 当前基础属性已经包含稀有度初始值和升级成长，这里只应用资质。
     const qualityRate = this.clampQuality(Number(pet.quality || 100)) / 100;
 
     return {
@@ -134,27 +173,13 @@ export class PetService {
     return this.petRepository.save(pet);
   }
 
-  async createPet(
-    userId: number,
-    data: {
-      nickname?: string;
-      species?: string;
-      rarity?: number;
-      quality?: number;
-      geneCode?: string;
-      bodyType?: string;
-      color?: string;
-      pattern?: string;
-      fatherId?: number;
-      motherId?: number;
-    } = {},
-  ) {
+  async createPet(userId: number, data: CreatePetData = {}) {
     const rarity = this.clampRarity(Number(data.rarity || this.randomRarity()));
     const species = data.species || this.randomSpecies();
-    const geneCode = data.geneCode || generateGeneCode('AAAA', 'AAAA');
+    const geneCode = normalizeGeneCode(data.geneCode || generateGeneCode('AAAA', 'AAAA'));
     const stats = this.generateStats(rarity);
     const skillSlotCount = rarity + 1;
-    const skills = await this.skillService.generateRandomSkills(rarity, skillSlotCount);
+    const skills = await this.resolvePetSkills(rarity, skillSlotCount, data.skills);
 
     const pet = this.petRepository.create({
       ownerId: userId,
@@ -196,44 +221,108 @@ export class PetService {
     return this.petRepository.save(pet);
   }
 
+  buildOffspringBlueprint(
+    parentA?: Pet | null,
+    parentB?: Pet | null,
+    forcedRarity?: number,
+  ): OffspringBlueprint {
+    const geneResult = inheritGeneCode(
+      parentA?.geneCode || 'AAAA',
+      parentB?.geneCode || 'AAAA',
+    );
+    const mutatedTraits: string[] = [];
+
+    const speciesResult = this.inheritTrait(
+      parentA?.species,
+      parentB?.species,
+      SPECIES_POOL,
+      this.randomSpecies(),
+      0.06,
+    );
+    if (speciesResult.mutated) mutatedTraits.push('species');
+
+    const bodyTypeResult = this.inheritTrait(
+      parentA?.bodyType,
+      parentB?.bodyType,
+      ['normal', 'small', 'large'],
+      'normal',
+      0.05,
+    );
+    if (bodyTypeResult.mutated) mutatedTraits.push('bodyType');
+
+    const colorResult = this.inheritTrait(
+      parentA?.color,
+      parentB?.color,
+      ['white', 'black', 'brown', 'gold', 'gray', 'cream'],
+      'white',
+      0.06,
+    );
+    if (colorResult.mutated) mutatedTraits.push('color');
+
+    const patternResult = this.inheritTrait(
+      parentA?.pattern,
+      parentB?.pattern,
+      ['none', 'stripe', 'spot', 'gradient', 'mask'],
+      'none',
+      0.06,
+    );
+    if (patternResult.mutated) mutatedTraits.push('pattern');
+
+    const rarity = forcedRarity
+      ? this.clampRarity(forcedRarity)
+      : this.rollOffspringRarity(parentA, parentB);
+
+    return {
+      rarity,
+      quality: this.inheritQuality(parentA, parentB, geneResult.mutationCount),
+      species: speciesResult.value,
+      geneCode: geneResult.geneCode,
+      geneScore: calculateGeneScore(geneResult.geneCode),
+      bodyType: bodyTypeResult.value,
+      color: colorResult.value,
+      pattern: patternResult.value,
+      inheritedSkills: this.inheritParentSkills(parentA, parentB, rarity),
+      mutationData: {
+        geneMutationCount: geneResult.mutationCount,
+        geneMutationLoci: geneResult.mutationLoci,
+        mutatedTraits,
+      },
+    };
+  }
+
   async createPetFromEgg(
     userId: number,
     rarity: number,
     parentA?: Pet | null,
     parentB?: Pet | null,
+    storedBlueprint?: Partial<OffspringBlueprint>,
   ) {
-    const species = this.pickChildSpecies(parentA, parentB);
-    const geneCode = generateGeneCode(
-      parentA?.geneCode || 'AAAA',
-      parentB?.geneCode || 'AAAA',
-    );
+    const generated = this.buildOffspringBlueprint(parentA, parentB, rarity);
+    const blueprint: OffspringBlueprint = {
+      ...generated,
+      ...this.cleanStoredBlueprint(storedBlueprint),
+      rarity: this.clampRarity(Number(storedBlueprint?.rarity || rarity || generated.rarity)),
+      quality: this.clampQuality(Number(storedBlueprint?.quality || generated.quality)),
+      geneCode: normalizeGeneCode(storedBlueprint?.geneCode || generated.geneCode),
+      geneScore: calculateGeneScore(storedBlueprint?.geneCode || generated.geneCode),
+      inheritedSkills: Array.isArray(storedBlueprint?.inheritedSkills)
+        ? storedBlueprint.inheritedSkills
+        : generated.inheritedSkills,
+      mutationData: storedBlueprint?.mutationData || generated.mutationData,
+    };
 
     return this.createPet(userId, {
-      nickname: `${RARITY_NAMES[this.clampRarity(rarity)]} ${species}`,
-      species,
-      rarity,
-      quality: this.inheritQuality(parentA, parentB),
-      geneCode,
-      bodyType: this.inheritAppearance(
-        parentA?.bodyType,
-        parentB?.bodyType,
-        ['normal', 'small', 'large'],
-        'normal',
-      ),
-      color: this.inheritAppearance(
-        parentA?.color,
-        parentB?.color,
-        ['white', 'black', 'brown', 'gold', 'gray'],
-        'white',
-      ),
-      pattern: this.inheritAppearance(
-        parentA?.pattern,
-        parentB?.pattern,
-        ['none', 'stripe', 'spot', 'gradient'],
-        'none',
-      ),
+      nickname: `${RARITY_NAMES[blueprint.rarity]} ${blueprint.species}`,
+      species: blueprint.species,
+      rarity: blueprint.rarity,
+      quality: blueprint.quality,
+      geneCode: blueprint.geneCode,
+      bodyType: blueprint.bodyType,
+      color: blueprint.color,
+      pattern: blueprint.pattern,
       fatherId: parentA?.id || 0,
       motherId: parentB?.id || 0,
+      skills: blueprint.inheritedSkills,
     });
   }
 
@@ -348,6 +437,22 @@ export class PetService {
     };
   }
 
+  private cleanStoredBlueprint(stored?: Partial<OffspringBlueprint>) {
+    if (!stored) {
+      return {};
+    }
+
+    const cleaned: Partial<OffspringBlueprint> = {};
+    if (stored.species) cleaned.species = stored.species;
+    if (stored.bodyType) cleaned.bodyType = stored.bodyType;
+    if (stored.color) cleaned.color = stored.color;
+    if (stored.pattern) cleaned.pattern = stored.pattern;
+    if (stored.geneCode) cleaned.geneCode = stored.geneCode;
+    if (stored.geneScore) cleaned.geneScore = stored.geneScore;
+    if (stored.mutationData) cleaned.mutationData = stored.mutationData;
+    return cleaned;
+  }
+
   private async ensureBetaFields(pet: Pet) {
     let changed = false;
     const rarity = this.clampRarity(Number(pet.rarity || 1));
@@ -384,7 +489,7 @@ export class PetService {
     }
 
     if (!Array.isArray(pet.skills) || pet.skills.length !== slotCount) {
-      pet.skills = await this.skillService.generateRandomSkills(rarity, slotCount);
+      pet.skills = await this.resolvePetSkills(rarity, slotCount, pet.skills);
       changed = true;
     }
 
@@ -396,6 +501,18 @@ export class PetService {
     const quality = this.clampQuality(Number(pet.quality || 100));
     if (pet.quality !== quality) {
       pet.quality = quality;
+      changed = true;
+    }
+
+    const geneCode = normalizeGeneCode(pet.geneCode || 'AAAA');
+    if (pet.geneCode !== geneCode) {
+      pet.geneCode = geneCode;
+      changed = true;
+    }
+
+    const geneScore = calculateGeneScore(geneCode);
+    if (pet.geneScore !== geneScore) {
+      pet.geneScore = geneScore;
       changed = true;
     }
 
@@ -431,20 +548,121 @@ export class PetService {
     };
   }
 
-  private pickChildSpecies(parentA?: Pet | null, parentB?: Pet | null) {
-    if (Math.random() < 0.08) {
-      return Math.random() < 0.5 ? 'Dragon' : 'Phoenix';
+  private async resolvePetSkills(rarity: number, slotCount: number, inherited?: any[]) {
+    const selected: any[] = [];
+    const usedCodes = new Set<string>();
+
+    for (const skill of Array.isArray(inherited) ? inherited : []) {
+      const code = String(skill?.skillCode || '');
+      if (!code || usedCodes.has(code) || selected.length >= slotCount) {
+        continue;
+      }
+      usedCodes.add(code);
+      selected.push(skill);
     }
 
-    const parentSpecies = [parentA?.species, parentB?.species].filter(
-      (species) => species && species !== 'Egg',
-    ) as string[];
-
-    if (parentSpecies.length) {
-      return parentSpecies[Math.floor(Math.random() * parentSpecies.length)];
+    if (selected.length < slotCount) {
+      const generated = await this.skillService.generateRandomSkills(rarity, slotCount);
+      for (const skill of generated) {
+        const code = String(skill?.skillCode || '');
+        if (!code || usedCodes.has(code) || selected.length >= slotCount) {
+          continue;
+        }
+        usedCodes.add(code);
+        selected.push(skill);
+      }
     }
 
-    return this.randomSpecies();
+    return selected.slice(0, slotCount);
+  }
+
+  private inheritParentSkills(parentA: Pet | null | undefined, parentB: Pet | null | undefined, rarity: number) {
+    const pool = [...(parentA?.skills || []), ...(parentB?.skills || [])];
+    const unique = new Map<string, any>();
+
+    for (const skill of pool) {
+      const code = String(skill?.skillCode || '');
+      if (code && !unique.has(code)) {
+        unique.set(code, skill);
+      }
+    }
+
+    const candidates = [...unique.values()].sort(() => Math.random() - 0.5);
+    const maxInherited = Math.max(1, Math.ceil((rarity + 1) / 2));
+    const inherited = candidates.filter(() => Math.random() < 0.55).slice(0, maxInherited);
+
+    if (!inherited.length && candidates.length && Math.random() < 0.65) {
+      inherited.push(candidates[0]);
+    }
+
+    return inherited;
+  }
+
+  private rollOffspringRarity(parentA?: Pet | null, parentB?: Pet | null) {
+    const rarityA = this.clampRarity(Number(parentA?.rarity || 1));
+    const rarityB = this.clampRarity(Number(parentB?.rarity || rarityA));
+    const base = this.clampRarity(Math.round((rarityA + rarityB) / 2));
+    const averageQuality = (Number(parentA?.quality || 100) + Number(parentB?.quality || 100)) / 2;
+    const averageGeneScore =
+      (Number(parentA?.geneScore || calculateGeneScore(parentA?.geneCode || 'AAAA')) +
+        Number(parentB?.geneScore || calculateGeneScore(parentB?.geneCode || 'AAAA'))) /
+      2;
+
+    const bonus = Math.max(
+      -0.06,
+      Math.min(0.1, (averageQuality - 100) / 200 + (averageGeneScore - 12) / 100),
+    );
+    const downgradeChance = Math.max(0.08, Math.min(0.2, 0.15 - bonus * 0.5));
+    const upgradeTwoChance = Math.max(0.03, Math.min(0.12, 0.08 + bonus * 0.3));
+    const upgradeOneChance = Math.max(0.18, Math.min(0.36, 0.27 + bonus * 0.7));
+    const sameChance = Math.max(0, 1 - downgradeChance - upgradeOneChance - upgradeTwoChance);
+    const roll = Math.random();
+
+    if (roll < downgradeChance) return this.clampRarity(base - 1);
+    if (roll < downgradeChance + sameChance) return base;
+    if (roll < downgradeChance + sameChance + upgradeOneChance) {
+      return this.clampRarity(base + 1);
+    }
+    return this.clampRarity(base + 2);
+  }
+
+  private inheritQuality(
+    parentA?: Pet | null,
+    parentB?: Pet | null,
+    geneMutationCount = 0,
+  ) {
+    const qualities = [parentA?.quality, parentB?.quality]
+      .map((value) => Number(value || 0))
+      .filter((value) => value > 0);
+
+    if (!qualities.length) {
+      return 100;
+    }
+
+    const average = qualities.reduce((sum, value) => sum + value, 0) / qualities.length;
+    const mutationBonus = geneMutationCount > 0 ? this.randomInt(0, Math.min(3, geneMutationCount + 1)) : 0;
+    return this.clampQuality(Math.round(average) + this.randomInt(-4, 4) + mutationBonus);
+  }
+
+  private inheritTrait(
+    parentAValue: string | undefined,
+    parentBValue: string | undefined,
+    mutationPool: string[],
+    fallback: string,
+    mutationRate: number,
+  ) {
+    const parentValues = [parentAValue, parentBValue].filter(Boolean) as string[];
+    const inherited = parentValues.length
+      ? parentValues[Math.floor(Math.random() * parentValues.length)]
+      : fallback;
+
+    if (Math.random() >= mutationRate || mutationPool.length < 2) {
+      return { value: inherited, mutated: false };
+    }
+
+    const candidates = mutationPool.filter((value) => value !== inherited);
+    const value = candidates[Math.floor(Math.random() * candidates.length)] || inherited;
+    return { value, mutated: value !== inherited };
   }
 
   private randomSpecies() {
@@ -459,37 +677,6 @@ export class PetService {
     if (roll < 0.97) return 4;
     if (roll < 0.995) return 5;
     return 6;
-  }
-
-  private inheritQuality(parentA?: Pet | null, parentB?: Pet | null) {
-    const qualities = [parentA?.quality, parentB?.quality]
-      .map((value) => Number(value || 0))
-      .filter((value) => value > 0);
-
-    if (!qualities.length) {
-      return 100;
-    }
-
-    const average = qualities.reduce((sum, value) => sum + value, 0) / qualities.length;
-    return this.clampQuality(Math.round(average) + this.randomInt(-5, 5));
-  }
-
-  private inheritAppearance(
-    parentAValue: string | undefined,
-    parentBValue: string | undefined,
-    mutationPool: string[],
-    fallback: string,
-  ) {
-    if (Math.random() < 0.08) {
-      return mutationPool[Math.floor(Math.random() * mutationPool.length)];
-    }
-
-    const parentValues = [parentAValue, parentBValue].filter(Boolean) as string[];
-    if (parentValues.length) {
-      return parentValues[Math.floor(Math.random() * parentValues.length)];
-    }
-
-    return fallback;
   }
 
   private clampQuality(quality: number) {
