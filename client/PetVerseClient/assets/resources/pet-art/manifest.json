@@ -1,0 +1,68 @@
+{
+  "version": "8.1.0",
+  "defaultSpeciesCode": "PET001",
+  "species": [
+    {
+      "speciesCode": "PET001",
+      "name": "炎尾狐",
+      "element": "火",
+      "role": "法术爆发"
+    },
+    {
+      "speciesCode": "PET002",
+      "name": "岩甲龟",
+      "element": "土",
+      "role": "主坦援护"
+    },
+    {
+      "speciesCode": "PET003",
+      "name": "疾风兔",
+      "element": "风",
+      "role": "先手物理"
+    },
+    {
+      "speciesCode": "PET004",
+      "name": "月光猫",
+      "element": "光",
+      "role": "治疗净化"
+    },
+    {
+      "speciesCode": "PET005",
+      "name": "雷角兽",
+      "element": "雷",
+      "role": "物理爆发"
+    },
+    {
+      "speciesCode": "PET006",
+      "name": "潮汐獭",
+      "element": "水",
+      "role": "反速辅助"
+    },
+    {
+      "speciesCode": "PET007",
+      "name": "影刃狼",
+      "element": "暗",
+      "role": "收割刺客"
+    },
+    {
+      "speciesCode": "PET008",
+      "name": "森灵鹿",
+      "element": "木",
+      "role": "持续治疗"
+    },
+    {
+      "speciesCode": "PET009",
+      "name": "星辉龙",
+      "element": "星",
+      "role": "均衡核心"
+    },
+    {
+      "speciesCode": "PET010",
+      "name": "霜羽鸮",
+      "element": "冰",
+      "role": "先手控制"
+    }
+  ],
+  "resourcePattern": "pet-art/{speciesCode}/{home|portrait|thumb}",
+  "homeBackground": "pet-art/home_empty_room"
+}

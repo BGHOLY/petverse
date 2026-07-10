@@ -3,6 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 
 import { OffspringBlueprint } from '../breeding/breeding.service';
+import {
+  findPetSpeciesConfig,
+  getAptitudeRange,
+  getGrowthRange,
+  getRandomPetSpeciesConfig,
+  hasPetSpeciesConfig,
+  PET_CONFIG_VERSION,
+} from '../pet/config/pet-species.config';
 import { calculateGeneScore, normalizeGeneCode } from '../pet/utils/gene.util';
 import { Egg } from './egg.entity';
 
@@ -52,17 +60,43 @@ export class EggService {
     const eggRepository = manager ? manager.getRepository(Egg) : this.eggRepository;
     const rarity = this.clampRarity(data.rarityPotential);
     const geneCode = normalizeGeneCode(data.geneCode || 'AAAA');
+    const randomSeed = data.randomSeed || data.offspringData?.seed ||
+      `egg-${data.ownerId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const requestedSpecies = data.speciesCode || data.species;
+    const speciesConfig = requestedSpecies && hasPetSpeciesConfig(requestedSpecies)
+      ? findPetSpeciesConfig(requestedSpecies)
+      : getRandomPetSpeciesConfig(randomSeed);
     const hatchDurationSeconds =
       data.hatchDurationSeconds === undefined
         ? this.getDefaultHatchDurationSeconds(rarity)
         : Math.max(0, Math.floor(Number(data.hatchDurationSeconds || 0)));
-    const aptitudes = data.aptitudes || {
-      hp: 1200,
-      attack: 1200,
-      defense: 1200,
-      magic: 1200,
-      speed: 1200,
-    };
+    const aptitudes = data.aptitudes || this.generateSpeciesAptitudes(speciesConfig, Boolean(data.isMutant));
+    const growthRange = getGrowthRange(speciesConfig, Boolean(data.isMutant));
+    const growth = Number(data.growth || this.randomFloat(growthRange[0], growthRange[1], 3));
+    const generatedOffspringData = data.offspringData ||
+      (!data.parentAId && !data.parentBId
+        ? {
+            mode: 'breed' as const,
+            seed: randomSeed,
+            configVersion: PET_CONFIG_VERSION,
+            species: speciesConfig.name,
+            speciesCode: speciesConfig.speciesCode,
+            isMutant: Boolean(data.isMutant),
+            rarity,
+            quality: this.clampQuality(data.quality ?? 100),
+            skillSlotCount: this.clampSkillSlotCount(data.skillSlotCount || 3),
+            aptitudes,
+            growth,
+            generation: Math.max(1, Number(data.generation || 1)),
+            specialSkillCount: Math.max(0, Number(data.specialSkillCount || 0)),
+            inheritedSkills: Array.isArray(data.inheritedSkills) ? data.inheritedSkills : [],
+            geneCode,
+            geneScore: Number(data.geneScore || calculateGeneScore(geneCode)),
+            bodyType: data.bodyType || 'normal',
+            color: data.color || 'white',
+            pattern: data.pattern || 'none',
+          }
+        : null);
 
     const egg = eggRepository.create({
       ownerId: data.ownerId,
@@ -70,8 +104,8 @@ export class EggService {
       parentBId: data.parentBId || 0,
       rarityPotential: rarity,
       quality: this.clampQuality(data.quality ?? 100),
-      species: data.species || '',
-      speciesCode: data.speciesCode || 'PET004',
+      species: speciesConfig.name,
+      speciesCode: speciesConfig.speciesCode,
       isMutant: Boolean(data.isMutant),
       skillSlotCount: this.clampSkillSlotCount(data.skillSlotCount || 3),
       hpAptitude: Number(aptitudes.hp || 1200),
@@ -79,7 +113,7 @@ export class EggService {
       defenseAptitude: Number(aptitudes.defense || 1200),
       magicAptitude: Number(aptitudes.magic || 1200),
       speedAptitude: Number(aptitudes.speed || 1200),
-      growth: Number(data.growth || 1.1),
+      growth,
       generation: Math.max(1, Number(data.generation || 1)),
       specialSkillCount: Math.max(0, Number(data.specialSkillCount || 0)),
       geneCode,
@@ -100,9 +134,9 @@ export class EggService {
         rejectedSpecialSkillCodes: [],
       },
       parentSnapshot: data.parentSnapshot || null,
-      offspringData: data.offspringData || null,
-      randomSeed: data.randomSeed || data.offspringData?.seed || '',
-      configVersion: data.configVersion || data.offspringData?.configVersion || '2.0.0',
+      offspringData: generatedOffspringData,
+      randomSeed,
+      configVersion: data.configVersion || data.offspringData?.configVersion || PET_CONFIG_VERSION,
       source: data.source,
       status: 'stored',
       hatchDurationSeconds,
@@ -115,6 +149,7 @@ export class EggService {
 
   async getUserEggs(userId: number, includeHatched = true) {
     await this.migrateLegacyEggs(userId);
+    await this.repairLegacyItemEggSpecies(userId);
     const eggs = await this.eggRepository.find({
       where: { ownerId: userId },
       order: {
@@ -281,6 +316,75 @@ export class EggService {
       { ownerId: userId, status: 'unhatched' },
       { status: 'stored', hatchReadyAt: null },
     );
+  }
+
+  private async repairLegacyItemEggSpecies(userId: number) {
+    const eggs = await this.eggRepository.find({ where: { ownerId: userId } });
+    for (const egg of eggs) {
+      const itemEgg = !Number(egg.parentAId || 0) && !Number(egg.parentBId || 0) &&
+        /pet_egg|egg/i.test(String(egg.source || ''));
+      const needsRepair = itemEgg && !egg.offspringData &&
+        (!hasPetSpeciesConfig(egg.speciesCode || egg.species) || String(egg.speciesCode || '').toUpperCase() === 'PET004');
+      if (!needsRepair) continue;
+
+      const seed = `v81-legacy-egg-${userId}-${egg.id}-${egg.source}`;
+      const species = getRandomPetSpeciesConfig(seed);
+      const aptitudes = this.generateSpeciesAptitudes(species, Boolean(egg.isMutant));
+      const growthRange = getGrowthRange(species, Boolean(egg.isMutant));
+      const growth = this.randomFloat(growthRange[0], growthRange[1], 3);
+      egg.speciesCode = species.speciesCode;
+      egg.species = species.name;
+      egg.hpAptitude = aptitudes.hp;
+      egg.attackAptitude = aptitudes.attack;
+      egg.defenseAptitude = aptitudes.defense;
+      egg.magicAptitude = aptitudes.magic;
+      egg.speedAptitude = aptitudes.speed;
+      egg.growth = growth;
+      egg.randomSeed = seed;
+      egg.configVersion = PET_CONFIG_VERSION;
+      egg.offspringData = {
+        mode: 'breed',
+        seed,
+        configVersion: PET_CONFIG_VERSION,
+        speciesCode: species.speciesCode,
+        species: species.name,
+        isMutant: Boolean(egg.isMutant),
+        rarity: this.clampRarity(egg.rarityPotential),
+        quality: this.clampQuality(egg.quality),
+        skillSlotCount: this.clampSkillSlotCount(egg.skillSlotCount || 3),
+        aptitudes,
+        growth,
+        generation: Math.max(1, Number(egg.generation || 1)),
+        specialSkillCount: Math.max(0, Number(egg.specialSkillCount || 0)),
+        inheritedSkills: Array.isArray(egg.inheritedSkills) ? egg.inheritedSkills : [],
+        geneCode: normalizeGeneCode(egg.geneCode || 'AAAA'),
+        geneScore: Number(egg.geneScore || calculateGeneScore(egg.geneCode || 'AAAA')),
+        bodyType: egg.bodyType || 'normal',
+        color: egg.color || 'white',
+        pattern: egg.pattern || 'none',
+      };
+      await this.eggRepository.save(egg);
+    }
+  }
+
+  private generateSpeciesAptitudes(species: any, isMutant: boolean) {
+    return {
+      hp: this.randomInt(...getAptitudeRange(species, 'hp', isMutant)),
+      attack: this.randomInt(...getAptitudeRange(species, 'attack', isMutant)),
+      defense: this.randomInt(...getAptitudeRange(species, 'defense', isMutant)),
+      magic: this.randomInt(...getAptitudeRange(species, 'magic', isMutant)),
+      speed: this.randomInt(...getAptitudeRange(species, 'speed', isMutant)),
+    };
+  }
+
+  private randomInt(min: number, max: number) {
+    return Math.floor(min + Math.random() * (max - min + 1));
+  }
+
+  private randomFloat(min: number, max: number, digits = 3) {
+    const value = min + Math.random() * (max - min);
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
   }
 
   private getDefaultHatchDurationSeconds(rarity: number) {

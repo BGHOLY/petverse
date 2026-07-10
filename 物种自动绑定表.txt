@@ -1,0 +1,22 @@
+PetVerse V8.0 物种自动绑定表
+
+PET001  炎尾狐  pet-art/PET001/{home|portrait|thumb}
+PET002  岩甲龟  pet-art/PET002/{home|portrait|thumb}
+PET003  疾风兔  pet-art/PET003/{home|portrait|thumb}
+PET004  月光猫  pet-art/PET004/{home|portrait|thumb}
+PET005  雷角兽  pet-art/PET005/{home|portrait|thumb}
+PET006  潮汐獭  pet-art/PET006/{home|portrait|thumb}
+PET007  影刃狼  pet-art/PET007/{home|portrait|thumb}
+PET008  森灵鹿  pet-art/PET008/{home|portrait|thumb}
+PET009  星辉龙  pet-art/PET009/{home|portrait|thumb}
+PET010  霜羽鸮  pet-art/PET010/{home|portrait|thumb}
+
+绑定优先级：
+1. speciesCode / species_code / petSpeciesCode
+2. species、speciesName、name、nickname中的中英文物种别名
+3. 无法识别时使用PET004月光猫兜底图
+
+新增宝宝方法：
+1. 在 assets/resources/pet-art/PETxxx/ 放入 home.png、portrait.png、thumb.png
+2. 在 PetArtRegistry.ts 增加物种配置、别名和角色说明
+3. 后续所有已接入页面会自动显示，无需逐页修改

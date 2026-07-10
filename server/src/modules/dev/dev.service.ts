@@ -48,6 +48,8 @@ export class DevService {
       await this.shopService.seedShopItems();
     const pet =
       await this.petService.seedDefaultPet(userId);
+    const speciesRepair =
+      await this.petService.repairLegacySpeciesForUser(userId);
     const friends =
       await this.friendService.seedMockFriends(userId);
 
@@ -130,6 +132,7 @@ export class DevService {
       items: items.items,
       shopItems: shop.shopItems,
       defaultPet: pet,
+      speciesRepair,
       pets: pets.pets,
       inventory,
       friends: friends.friends,

@@ -67,7 +67,7 @@ export const PET_SPECIES_CONFIGS: PetSpeciesConfig[] = [
   {
     speciesCode: 'PET002',
     name: '岩甲龟',
-    aliases: ['Turtle', 'turtle', 'Dog', 'dog'],
+    aliases: ['Turtle', 'turtle', 'Rock Turtle', 'Stone Turtle'],
     element: 'earth',
     roleTags: ['tank', 'guard'],
     mainAptitudes: ['hp', 'defense'],
@@ -399,7 +399,32 @@ export const PET_SPECIES_CONFIGS: PetSpeciesConfig[] = [
   },
 ];
 
-export const DEFAULT_SPECIES_CONFIG = PET_SPECIES_CONFIGS[3];
+export const DEFAULT_SPECIES_CONFIG = PET_SPECIES_CONFIGS[0];
+
+
+export function hasPetSpeciesConfig(value?: string | null) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return PET_SPECIES_CONFIGS.some(
+    (item) =>
+      item.speciesCode.toLowerCase() === normalized ||
+      item.name.toLowerCase() === normalized ||
+      item.aliases.some((alias) => alias.toLowerCase() === normalized),
+  );
+}
+
+export function getRandomPetSpeciesConfig(seed?: string | number | null) {
+  if (seed === undefined || seed === null || String(seed) === '') {
+    return PET_SPECIES_CONFIGS[Math.floor(Math.random() * PET_SPECIES_CONFIGS.length)];
+  }
+  const value = String(seed);
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return PET_SPECIES_CONFIGS[(hash >>> 0) % PET_SPECIES_CONFIGS.length];
+}
 
 export function findPetSpeciesConfig(value?: string | null): PetSpeciesConfig {
   const normalized = String(value || '').trim().toLowerCase();

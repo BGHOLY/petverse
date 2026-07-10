@@ -37,6 +37,8 @@ import {
 } from './cute/CuteUiKit';
 import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
+import { getPetArtPath, getPetSpeciesMeta } from './pet/PetArtRegistry';
+import { createPetArtSprite } from './pet/PetArtView';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -737,7 +739,23 @@ export class MainUI extends Component {
         const pet = GameStore.currentPet || {};
 
         const scene = panel(root, 'HomeScene', 0, 8, 692, 920, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
-        image(scene, 'RoomArt', 'cute-ui/home_room', 72, 28, 526, 824, CuteTheme.mint);
+        image(scene, 'RoomArt', 'pet-art/home_empty_room', 72, 28, 526, 824, CuteTheme.mint);
+
+        // The home pet is a transparent sprite, not a square image card. Its soft
+        // outline is baked into the PNG and the node runs a subtle idle breath.
+        const speciesMeta = getPetSpeciesMeta(pet);
+        const homePet = createPetArtSprite(scene, 'HomePetArt', getPetArtPath(pet, 'home'), 72, -8, 390, 390);
+        homePet.setScale(new Vec3(0.985, 0.985, 1));
+        homePet.on(Node.EventType.TOUCH_END, () => this.showPage('pet'));
+        tween(homePet)
+            .repeatForever(
+                tween(homePet)
+                    .to(1.8, { position: new Vec3(72, 3, 0), scale: new Vec3(1.015, 1.025, 1) }, { easing: 'sineInOut' })
+                    .to(1.8, { position: new Vec3(72, -8, 0), scale: new Vec3(0.985, 0.985, 1) }, { easing: 'sineInOut' }),
+            )
+            .start();
+        tag(scene, 'SpeciesTag', `${speciesMeta.element} · ${speciesMeta.name}`, 72, 264, 176, pet?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        if (pet?.isMutant) tag(scene, 'MutationTag', '✨ 变异', 214, 220, 94, CuteTheme.peach);
 
         headingTag(scene, 'PromoTitle', '限时福利', -274, 365, 118, CuteTheme.paperWarm);
         button(scene, 'ValueMall', '超值商城', -274, 276, 122, 112, () => this.showPage('shop'), {
@@ -772,7 +790,7 @@ export class MainUI extends Component {
 
         const namePlate = panel(scene, 'NamePlate', 72, -356, 480, 96, new Color(255, 252, 239, 242), 28, true, CuteTheme.white, 3);
         text(namePlate, 'Name', safeName(pet?.nickname, '暂无宝宝'), -214, 18, 220, 36, 25, CuteTheme.caramel, 'left', true);
-        text(namePlate, 'Meta', `Lv.${Number(pet?.level || 1)}　${safeName(pet?.species, '萌宠')}　${this.rarityName(pet)}`, -214, -20, 280, 30, 15, CuteTheme.muted, 'left', true);
+        text(namePlate, 'Meta', `Lv.${Number(pet?.level || 1)}　${safeName(pet?.species, getPetSpeciesMeta(pet).name)}　${this.rarityName(pet)}`, -214, -20, 280, 30, 15, CuteTheme.muted, 'left', true);
         button(namePlate, 'PetDetail', '查看宝宝', 170, 0, 128, 52, () => this.showPage('pet'), {
             icon: '🐾',
             fill: CuteTheme.honey,
@@ -839,48 +857,50 @@ export class MainUI extends Component {
         const pet = GameStore.currentPet || {};
         const pets = GameStore.pets.filter((item) => !item?.isEgg);
 
-        const selectorWidth = Math.max(680, pets.length * 126 + 20);
-        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 430, 680, 94, selectorWidth, 94, 'horizontal');
+        const selectorStep = 174;
+        const selectorWidth = Math.max(680, pets.length * selectorStep + 24);
+        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 402, 680, 132, selectorWidth, 132, 'horizontal');
         pets.forEach((item, index) => {
             button(
                 selector.content,
                 `PetTab_${item?.id || index}`,
                 safeName(item?.nickname, `宝宝${index + 1}`),
-                70 + index * 126,
+                86 + index * selectorStep,
                 0,
-                116,
-                76,
+                164,
+                112,
                 () => {
                     GameStore.selectPet(Number(item?.id || 0));
                     this.renderCurrentPage(false);
                 },
                 {
-                    icon: item?.isMutant ? '✨' : '🐾',
+                    iconPath: getPetArtPath(item, 'thumb'),
+                    iconSize: 66,
                     selected: Number(item?.id) === Number(GameStore.currentPetId),
                     fill: Number(item?.id) === Number(GameStore.currentPetId) ? CuteTheme.honey : (index % 2 === 0 ? CuteTheme.paperWarm : CuteTheme.paper),
-                    fontSize: 12,
-                    radius: 20,
+                    fontSize: 15,
+                    radius: 24,
                     subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)}`,
                 },
             );
         });
         const selectedIndex = Math.max(0, pets.findIndex((item) => Number(item?.id) === Number(GameStore.currentPetId)));
-        const targetOffset = Math.max(0, Math.min(selectorWidth - 680, selectedIndex * 126 - 245));
+        const targetOffset = Math.max(0, Math.min(selectorWidth - 680, selectedIndex * selectorStep - 210));
         if (targetOffset > 0) selector.scroll.scrollToOffset(new Vec2(targetOffset, 0), 0, false);
-        if (pets.length > 5) this.scrollHint(root, 'PetSelectorHint', '← 左右滑动查看更多宝宝 →', 0, 374, 300);
+        if (pets.length > 4) this.scrollHint(root, 'PetSelectorHint', '← 左右滑动查看更多宝宝 · 卡片显示稀有度与等级 →', 0, 326, 420);
 
-        const book = panel(root, 'PetBook', 0, -48, 692, 770, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
+        const book = panel(root, 'PetBook', 0, -72, 692, 770, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
         panel(book, 'Spine', -329, 0, 18, 730, new Color(190, 126, 70, 255), 8, false, CuteTheme.woodDark, 2);
         for (let index = 0; index < 9; index += 1) {
             text(book, `Ring${index}`, '○', -329, 320 - index * 72, 24, 24, 22, CuteTheme.honeyDark, 'center', true);
         }
 
         const left = panel(book, 'BattleProfile', -171, 0, 320, 720, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
-        image(left, 'PetPortrait', 'cute-ui/pet_portrait', 0, 210, 286, 270, CuteTheme.mint);
+        image(left, 'PetPortrait', getPetArtPath(pet, 'portrait'), 0, 210, 286, 270, CuteTheme.mint);
         text(left, 'Name', safeName(pet?.nickname, '未命名宝宝'), -140, 58, 190, 42, 28, CuteTheme.caramel, 'left', true);
         text(left, 'Gender', this.genderText(pet), 75, 58, 34, 34, 22, this.genderText(pet) === '♀' ? CuteTheme.peachDark : CuteTheme.mintDark, 'center', true);
         tag(left, 'Rarity', this.rarityName(pet), 125, 58, 92, CuteTheme.lilac);
-        text(left, 'Meta', `${safeName(pet?.species, '萌宠')}　Lv.${Number(pet?.level || 1)}　${pet?.isMutant ? '变异' : '普通'}`, -140, 18, 270, 30, 15, CuteTheme.muted, 'left', true);
+        text(left, 'Meta', `${safeName(pet?.species, getPetSpeciesMeta(pet).name)}　Lv.${Number(pet?.level || 1)}　${pet?.isMutant ? '变异' : '普通'}`, -140, 18, 270, 30, 15, CuteTheme.muted, 'left', true);
 
         headingTag(left, 'StatsTitle', '详细属性', 0, -42, 132, CuteTheme.paperWarm);
         const attr = this.battleAttributesOf(pet);
@@ -1192,7 +1212,7 @@ export class MainUI extends Component {
             const remaining = Math.max(0, Number(activeEgg?.remainingSeconds || 0));
             const total = Math.max(1, Number(activeEgg?.hatchDurationSeconds || remaining || 1));
             const ready = Boolean(activeEgg?.canHatch) || remaining <= 0;
-            text(device, 'EggIcon', '🥚', -70, 40, 150, 150, 78, CuteTheme.honeyDark, 'center', true);
+            image(device, 'EggPreview', getPetArtPath(activeEgg, 'thumb'), -70, 40, 138, 138, CuteTheme.paperWarm);
             text(device, 'EggName', `宠物蛋 #${Number(activeEgg?.id || 0)}`, 20, 73, 250, 38, 22, CuteTheme.caramel, 'left', true);
             text(device, 'EggMeta', `${safeName(activeEgg?.species, '随机物种')} · 潜力 ${Number(activeEgg?.rarityPotential || 1)}`, 20, 34, 260, 30, 14, CuteTheme.muted, 'left', true);
             progress(device, 'IncubationProgress', 130, -8, 230, 18, ready ? 1 : 1 - remaining / total, ready ? CuteTheme.green : CuteTheme.honey);
@@ -1215,7 +1235,7 @@ export class MainUI extends Component {
             const col = index % 3; const rowIndex = Math.floor(index / 3);
             const card = panel(area.content, `StoredEgg_${egg?.id || index}`, -208 + col * 208, -58 - rowIndex * 126, 192, 112,
                 index % 2 === 0 ? CuteTheme.paperWarm : CuteTheme.mint, 22, true, CuteTheme.white, 3);
-            text(card, 'EggIcon', '🥚', -76, 14, 48, 54, 34, CuteTheme.honeyDark, 'left', true);
+            image(card, 'EggSpeciesArt', getPetArtPath(egg, 'thumb'), -72, 14, 54, 54, CuteTheme.paperWarm);
             text(card, 'Name', `蛋 #${Number(egg?.id || 0)}`, -28, 28, 118, 26, 16, CuteTheme.caramel, 'left', true);
             text(card, 'Meta', `潜力 ${Number(egg?.rarityPotential || 1)}`, -28, -2, 118, 24, 12, CuteTheme.muted, 'left', true);
             button(card, 'PutIn', activeEgg ? '使用中' : '放入', 42, -36, 94, 36, () => void this.startEggIncubation(egg), {
@@ -1233,7 +1253,7 @@ export class MainUI extends Component {
         const selector = this.createScrollArea(root, 'SkillPetSelector', 0, 430, 680, 94, selectorWidth, 94, 'horizontal');
         pets.forEach((item, index) => button(selector.content, `SkillPet_${item?.id || index}`, safeName(item?.nickname, `宝宝${index + 1}`), 70 + index * 126, 0, 116, 76, () => {
             GameStore.selectPet(Number(item?.id || 0)); this.lockedSkillCodes.clear(); this.renderCurrentPage(false);
-        }, { icon: '🐾', selected: Number(item?.id) === Number(GameStore.currentPetId), fill: CuteTheme.paperWarm, fontSize: 12, radius: 20,
+        }, { iconPath: getPetArtPath(item, 'thumb'), iconSize: 48, selected: Number(item?.id) === Number(GameStore.currentPetId), fill: CuteTheme.paperWarm, fontSize: 12, radius: 20,
             subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)}` }));
 
         const page = panel(root, 'SkillBookPage', 0, -48, 692, 770, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
@@ -1296,7 +1316,8 @@ export class MainUI extends Component {
             text(preview, 'EmptyPreview', '点击“预览结果”查看本次种子下可能获得的宝宝。\n预览不会消耗金币、材料或父母。', 0, 15, 530, 100, 18, CuteTheme.muted, 'center', false);
         } else {
             const bp = this.fusionPreview.blueprint;
-            text(preview, 'Species', `物种：${safeName(bp?.species, bp?.speciesCode || '未知')}　${bp?.isMutant ? '变异' : '普通'}`, -284, 64, 310, 30, 16, CuteTheme.caramel, 'left', true);
+            image(preview, 'PreviewPetArt', getPetArtPath(bp, 'thumb'), 220, 54, 104, 104, CuteTheme.paperWarm);
+            text(preview, 'Species', `物种：${safeName(bp?.species, getPetSpeciesMeta(bp).name)}　${bp?.isMutant ? '变异' : '普通'}`, -284, 64, 310, 30, 16, CuteTheme.caramel, 'left', true);
             text(preview, 'Slots', `技能格：${Number(bp?.skillSlotCount || 0)}　特殊技能：${Number(bp?.specialSkillCount || 0)}`, -284, 25, 310, 30, 16, CuteTheme.caramel, 'left', true);
             text(preview, 'Growth', `成长：${Number(bp?.growth || 0).toFixed(3)}　品质：${Number(bp?.quality || 0)}`, -284, -14, 310, 30, 16, CuteTheme.caramel, 'left', true);
             const apt = bp?.aptitudes || {};
@@ -1378,25 +1399,29 @@ export class MainUI extends Component {
         text(editor, 'EditorHint', '点击宝宝加入或移出编队；寄售中的宝宝不能出战。', 0, 146, 550, 32, 14, CuteTheme.muted, 'center', true);
 
         const available = GameStore.pets
-            .filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed' && !pet?.tradeListingId)
-            .slice(0, 6);
+            .filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed' && !pet?.tradeListingId);
+        const rows = Math.max(1, Math.ceil(available.length / 3));
+        const choices = this.createScrollArea(editor, 'TeamPetScroll', 0, 8, 600, 270, 600, rows * 122 + 12, 'vertical');
         available.forEach((pet, index) => {
             const selected = this.teamPetIds.includes(Number(pet?.id || 0));
             const col = index % 3;
             const row = Math.floor(index / 3);
-            button(editor, `PetChoice${pet?.id}`, safeName(pet?.nickname, `宝宝${index + 1}`), -205 + col * 205, 62 - row * 120, 176, 102, () => this.toggleTeamPet(Number(pet?.id || 0)), {
-                icon: selected ? '✓' : '🐾',
+            button(choices.content, `PetChoice${pet?.id}`, safeName(pet?.nickname, `宝宝${index + 1}`), -198 + col * 198, -58 - row * 122, 182, 106, () => this.toggleTeamPet(Number(pet?.id || 0)), {
+                iconPath: getPetArtPath(pet, 'thumb'),
+                iconSize: 58,
                 selected,
                 fill: selected ? CuteTheme.mint : CuteTheme.paperWarm,
                 textColor: selected ? CuteTheme.white : CuteTheme.caramel,
                 fontSize: 14,
                 radius: 24,
-                subtitle: `Lv.${Number(pet?.level || 1)} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,
+                subtitle: `${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,
             });
         });
 
         if (!available.length) {
-            text(editor, 'EmptyPets', '暂无可出战宝宝，请先完成孵化。', 0, 30, 500, 60, 20, CuteTheme.muted, 'center', true);
+            text(editor, 'EmptyPets', '暂无可出战宝宝，请先完成孵化。', 0, 20, 500, 60, 20, CuteTheme.muted, 'center', true);
+        } else if (available.length > 6) {
+            this.scrollHint(editor, 'TeamScrollHint', '上下滑动查看全部可出战宝宝', 0, -132, 300);
         }
 
         text(editor, 'SelectedCount', `已选择 ${this.teamPetIds.length}/3`, -260, -154, 180, 32, 16, CuteTheme.caramel, 'left', true);
@@ -1507,7 +1532,9 @@ export class MainUI extends Component {
         GameStore.friends.forEach((friend, index) => {
             const col = index % 2; const rowIndex = Math.floor(index / 2);
             const photo = panel(area.content, `FriendPhoto_${friend?.id ?? index}`, -156 + col * 312, -116 - rowIndex * 250, 286, 232, new Color(255, 250, 231, 255), 28, true, CuteTheme.white, 3);
-            text(photo, 'Avatar', '🐾', -96, 55, 72, 72, 42, CuteTheme.peachDark, 'center', true);
+            const coverPet = Array.isArray(friend?.pets) ? friend.pets[0] : null;
+            if (coverPet) image(photo, 'PetPhoto', getPetArtPath(coverPet, 'thumb'), -96, 55, 78, 78, CuteTheme.paperWarm);
+            else text(photo, 'Avatar', '🐾', -96, 55, 72, 72, 42, CuteTheme.peachDark, 'center', true);
             text(photo, 'Name', safeName(friend?.nickname, `玩家${friend?.id || ''}`), -48, 78, 172, 34, 20, CuteTheme.caramel, 'left', true);
             text(photo, 'Meta', `Lv.${Number(friend?.level || 1)} · 宝宝${Array.isArray(friend?.pets) ? friend.pets.length : 0}只`, -48, 41, 174, 28, 13, CuteTheme.muted, 'left', true);
             const petNames = (Array.isArray(friend?.pets) ? friend.pets : []).slice(0, 2).map((pet: any) => safeName(pet?.nickname, '宝宝')).join('、');
@@ -1617,7 +1644,8 @@ export class MainUI extends Component {
 
         const left = panel(parent, 'OwnPet', -164, 110, 282, 280, new Color(255, 249, 235, 255), 28, true, CuteTheme.white, 3);
         text(left, 'Owner', '我的宝宝', 0, 104, 220, 32, 17, CuteTheme.caramel, 'center', true);
-        text(left, 'PetIcon', '🐶', 0, 35, 100, 90, 58, CuteTheme.honeyDark, 'center', true);
+        if (own) image(left, 'PetArt', getPetArtPath(own, 'thumb'), 0, 35, 104, 104, CuteTheme.paperWarm);
+        else text(left, 'PetIcon', '🐶', 0, 35, 100, 90, 58, CuteTheme.honeyDark, 'center', true);
         text(left, 'Name', safeName(own?.nickname, '暂无可用宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
         text(left, 'Meta', own ? `Lv.${Number(own?.level || 1)} · ${this.genderText(own)} · 生育力${Number(own?.fertility || 100)}` : '请先获得宝宝', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
         button(left, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('own', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: ownPets.length < 2 });
@@ -1625,7 +1653,8 @@ export class MainUI extends Component {
 
         const right = panel(parent, 'TargetPet', 164, 110, 282, 280, new Color(255, 244, 242, 255), 28, true, CuteTheme.white, 3);
         text(right, 'Owner', '好友宝宝', 0, 104, 220, 32, 17, CuteTheme.caramel, 'center', true);
-        text(right, 'PetIcon', '🐱', 0, 35, 100, 90, 58, CuteTheme.peachDark, 'center', true);
+        if (target) image(right, 'PetArt', getPetArtPath(target, 'thumb'), 0, 35, 104, 104, CuteTheme.paperWarm);
+        else text(right, 'PetIcon', '🐱', 0, 35, 100, 90, 58, CuteTheme.peachDark, 'center', true);
         text(right, 'Name', safeName(target?.nickname, '暂无好友宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
         text(right, 'Meta', target ? `Lv.${Number(target?.level || 1)} · ${this.genderText(target)} · 生育力${Number(target?.fertility || 100)}` : '先添加有宝宝的好友', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
         button(right, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('target', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: targetPets.length < 2 });
@@ -1676,9 +1705,10 @@ export class MainUI extends Component {
         this.rankingEntries.forEach((item, index) => {
             const rank = Number(item?.rank || index + 1);
             const row = panel(area.content, `Rank_${rank}`, 0, -45 - index * 93, 604, 78, rank <= 3 ? new Color(255, 247, 220, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 21, false, CuteTheme.white, 2);
-            text(row, 'Medal', rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank), -262, 0, 58, 48, rank <= 3 ? 28 : 20, CuteTheme.honeyDark, 'center', true);
-            text(row, 'Name', safeName(item?.petName || item?.playerName || item?.nickname, `玩家${item?.userId || ''}`), -218, 14, 260, 30, 17, CuteTheme.caramel, 'left', true);
-            text(row, 'Owner', item?.petName ? safeName(item?.playerName, '玩家') : `ID ${item?.userId || '-'}`, -218, -15, 260, 24, 12, CuteTheme.muted, 'left', true);
+            text(row, 'Medal', rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank), -270, 0, 50, 48, rank <= 3 ? 26 : 18, CuteTheme.honeyDark, 'center', true);
+            if (item?.petName || item?.speciesCode) image(row, 'PetThumb', getPetArtPath(item, 'thumb'), -222, 0, 54, 54, CuteTheme.paperWarm);
+            text(row, 'Name', safeName(item?.petName || item?.playerName || item?.nickname, `玩家${item?.userId || ''}`), -184, 14, 226, 30, 17, CuteTheme.caramel, 'left', true);
+            text(row, 'Owner', item?.petName ? safeName(item?.playerName, '玩家') : `ID ${item?.userId || '-'}`, -184, -15, 226, 24, 12, CuteTheme.muted, 'left', true);
             text(row, 'Score', this.rankingScoreText(item), 265, 0, 170, 34, 16, CuteTheme.peachDark, 'right', true);
         });
     }
@@ -1736,7 +1766,7 @@ export class MainUI extends Component {
             return;
         }
         const petCard = panel(parent, 'ListPet', 0, 135, 520, 210, new Color(255, 248, 235, 255), 28, true, CuteTheme.white, 3);
-        text(petCard, 'Icon', '🐶', -190, 20, 110, 100, 62, CuteTheme.honeyDark, 'center', true);
+        image(petCard, 'PetArt', getPetArtPath(pet, 'thumb'), -190, 20, 112, 112, CuteTheme.paperWarm);
         text(petCard, 'Name', safeName(pet?.nickname, '宝宝'), -115, 58, 300, 38, 22, CuteTheme.caramel, 'left', true);
         const attrs = this.battleAttributesOf(pet);
         text(petCard, 'Meta', `Lv.${Number(pet?.level || 1)} · ${this.rarityName(pet)} · 战力 ${formatNumber(attrs.power)}\n成长 ${this.growthValue(pet).toFixed(3)} · 特殊技能 ${this.specialSkills(pet).length}`, -115, -3, 330, 68, 15, CuteTheme.muted, 'left', true);
@@ -1756,7 +1786,7 @@ export class MainUI extends Component {
         const y = yOverride ?? (230 - index * 108);
         const row = panel(parent, `Trade_${action}_${listing?.id ?? index}`, 0, y, 602, 92, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 22, false, CuteTheme.white, 2);
         const pet = listing?.pet || listing?.petSnapshot || {};
-        text(row, 'Icon', pet?.isMutant ? '✨' : '🐶', -260, 0, 46, 46, 26, pet?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'center', true);
+        image(row, 'PetThumb', getPetArtPath(pet, 'thumb'), -260, 0, 54, 54, pet?.isMutant ? CuteTheme.peach : CuteTheme.paperWarm);
         text(row, 'Name', safeName(pet?.nickname, `宝宝${listing?.petId || ''}`), -224, 18, 230, 30, 17, CuteTheme.caramel, 'left', true);
         text(row, 'Meta', `Lv.${Number(pet?.level || 1)} · 战力${formatNumber(listing?.power || pet?.power || 0)} · ${Number(pet?.specialSkillCount || this.specialSkills(pet).length)}特殊`, -224, -17, 300, 24, 12, CuteTheme.muted, 'left', true);
         text(row, 'Price', `${formatNumber(listing?.price || 0)} ${listing?.currencyType === 'diamond' ? '◆' : '●'}`, 100, 0, 160, 34, 17, CuteTheme.peachDark, 'right', true);
@@ -2731,7 +2761,8 @@ export class MainUI extends Component {
     private fusionParentCard(parent: Node, name: string, title: string, pet: any, x: number, y: number, side: 'A' | 'B') {
         const card = panel(parent, name, x, y, 292, 300, CuteTheme.paper, 28, true, CuteTheme.white, 3);
         headingTag(card, 'Title', title, 0, 118, 132, side === 'A' ? CuteTheme.mint : CuteTheme.peach);
-        text(card, 'Portrait', '🐾', 0, 52, 90, 70, 48, CuteTheme.honeyDark, 'center', true);
+        if (pet) image(card, 'Portrait', getPetArtPath(pet, 'thumb'), 0, 52, 92, 92, CuteTheme.paperWarm);
+        else text(card, 'PortraitFallback', '🐾', 0, 52, 90, 70, 48, CuteTheme.honeyDark, 'center', true);
         text(card, 'Name', pet ? safeName(pet?.nickname, '宝宝') : '未选择', 0, -8, 240, 36, 22, CuteTheme.caramel, 'center', true);
         text(card, 'Meta', pet ? `Lv.${Number(pet?.level || 1)}　${this.rarityName(pet)}　成长 ${this.growthValue(pet).toFixed(3)}` : '请先准备两只宝宝', 0, -45, 260, 30, 14, CuteTheme.muted, 'center', false);
         text(card, 'Skills', pet ? `技能 ${Array.isArray(pet?.skills) ? pet.skills.length : 0}　特殊 ${this.specialSkills(pet).length}` : '', 0, -78, 250, 28, 14, CuteTheme.caramel, 'center', true);
@@ -2822,7 +2853,7 @@ export class MainUI extends Component {
             text(slot, 'EmptyText', '空位', 0, -43, 100, 28, 15, CuteTheme.muted, 'center', true);
             return;
         }
-        text(slot, 'PetIcon', '🐾', -53, 4, 48, 48, 27, CuteTheme.honeyDark, 'center', true);
+        image(slot, 'PetIcon', getPetArtPath(pet, 'thumb'), -53, 4, 50, 50, CuteTheme.paperWarm);
         text(slot, 'PetName', safeName(pet?.nickname, '宝宝'), -22, 15, 104, 30, 15, CuteTheme.caramel, 'left', true);
         text(slot, 'PetMeta', `Lv.${Number(pet?.level || 1)}\n战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -22, -28, 105, 52, 13, CuteTheme.muted, 'left', true);
     }

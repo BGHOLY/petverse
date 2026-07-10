@@ -20,6 +20,9 @@ import { isSpecialSkill } from '../skill/config/skill.config';
 import { SkillService } from '../skill/skill.service';
 import {
   findPetSpeciesConfig,
+  getRandomPetSpeciesConfig,
+  hasPetSpeciesConfig,
+  PET_SPECIES_CONFIGS,
   getAptitudeRange,
   getGrowthRange,
   PET_CONFIG_VERSION,
@@ -98,6 +101,7 @@ export class PetService {
   }
 
   async getUserPets(userId: number) {
+    await this.repairLegacySpeciesForUser(userId);
     const pets = await this.petRepository.find({
       where: {
         ownerId: userId,
@@ -717,12 +721,72 @@ export class PetService {
     const existing = await this.getMainPet(userId);
     if (existing) return existing;
 
+    const species = getRandomPetSpeciesConfig(`starter-${userId}-${Date.now()}`);
     return this.createPet(userId, {
-      nickname: 'Mochi',
-      speciesCode: 'PET004',
+      nickname: species.name,
+      speciesCode: species.speciesCode,
       rarity: 2,
-      sourceType: 'starter',
+      sourceType: 'starter-random-v81',
     });
+  }
+
+  async repairLegacySpeciesForUser(userId: number) {
+    const pets = await this.petRepository.find({
+      where: { ownerId: userId, isEgg: false },
+      order: { id: 'ASC' },
+    });
+    let repairedCount = 0;
+
+    for (const pet of pets) {
+      const code = String(pet.speciesCode || '').toUpperCase();
+      const nickname = String(pet.nickname || '').trim();
+      const speciesName = String(pet.species || '').trim();
+      const placeholderName = /^(flow[-_ ]|rare dog|uncommon|starter buddy|test|demo|petverse)/i.test(nickname);
+      const invalid = !hasPetSpeciesConfig(code || speciesName);
+      const moonCatPlaceholder = code === 'PET004' && placeholderName;
+      if (!invalid && !moonCatPlaceholder) continue;
+
+      const species = PET_SPECIES_CONFIGS[(Math.max(1, Number(pet.id || 1)) - 1) % PET_SPECIES_CONFIGS.length];
+      const initial = this.breedingService.generateInitialAptitudes(
+        species.speciesCode,
+        Boolean(pet.isMutant),
+        `v81-repair-${userId}-${pet.id}-${species.speciesCode}`,
+      );
+      const aptitudes: PetAptitudes = initial.aptitudes;
+      const growth = initial.growth;
+      const rarity = this.clampRarity(Number(pet.rarity || 1));
+      const slotCount = this.clampSkillSlotCount(Number(pet.skillSlotCount || 3));
+      const stats = this.generateLegacyStats(species, rarity, aptitudes, growth);
+
+      pet.speciesCode = species.speciesCode;
+      pet.species = species.name;
+      pet.hpAptitude = aptitudes.hp;
+      pet.attackAptitude = aptitudes.attack;
+      pet.defenseAptitude = aptitudes.defense;
+      pet.magicAptitude = aptitudes.magic;
+      pet.speedAptitude = aptitudes.speed;
+      pet.growth = growth;
+      pet.hp = stats.hp;
+      pet.attack = stats.attack;
+      pet.defense = stats.defense;
+      pet.intelligence = stats.magic;
+      pet.speed = stats.speed;
+      pet.agility = stats.speed;
+      pet.skills = await this.resolvePetSkills(
+        rarity,
+        slotCount,
+        undefined,
+        species.speciesCode,
+        Boolean(pet.isMutant),
+      );
+      pet.specialSkillCount = pet.skills.filter((skill) => isSpecialSkill(skill)).length;
+      pet.quality = this.calculateQualityFromProfile(species, Boolean(pet.isMutant), aptitudes, growth);
+      pet.configVersion = PET_CONFIG_VERSION;
+      await this.petRepository.save(pet);
+      repairedCount += 1;
+    }
+
+    return { success: true, repairedCount };
   }
 
   async feedPet(userId: number, petId?: number) {
@@ -859,11 +923,12 @@ export class PetService {
   }
 
   async hatchStarterEgg(userId: number) {
+    const species = getRandomPetSpeciesConfig(`starter-egg-${userId}-${Date.now()}`);
     const pet = await this.createPet(userId, {
-      nickname: 'Starter Buddy',
-      speciesCode: 'PET004',
+      nickname: species.name,
+      speciesCode: species.speciesCode,
       rarity: 1,
-      sourceType: 'starter-egg',
+      sourceType: 'starter-egg-random-v81',
     });
     const pets = await this.getUserPets(userId);
 
