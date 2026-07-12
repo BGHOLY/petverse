@@ -113,7 +113,7 @@ export class BattleV10Service {
     }
     const enemyFormationCode = getFormationConfig(body?.enemyFormationCode || this.randomFormationCode()).code;
     const leftTeam = this.buildPlayerUnits(pets, teamResult.slotAssignments, formationCode, formationLevel, 'left');
-    const rightTeam = this.buildEnemyUnits(averageLevel, difficulty, enemyFormationCode, bossBattle);
+    const rightTeam = this.buildEnemyUnits(averageLevel, difficulty, enemyFormationCode, bossBattle, String(body?.enemySpeciesCode || ''));
 
     const session = await this.sessionRepository.save(this.sessionRepository.create({
       userId,
@@ -608,9 +608,11 @@ export class BattleV10Service {
     return ordered.slice(0, 5).map((pet, slotIndex) => this.fromPet(pet, side, slotIndex, formationCode, formationLevel));
   }
 
-  private buildEnemyUnits(level: number, difficulty: number, formationCode: string, boss: boolean) {
+  private buildEnemyUnits(level: number, difficulty: number, formationCode: string, boss: boolean, featuredSpeciesCode = '') {
     return Array.from({ length: 5 }, (_, slotIndex) => {
-      const species = PET_SPECIES_CONFIGS[(level + slotIndex * 3) % PET_SPECIES_CONFIGS.length];
+      const species = slotIndex === 0 && featuredSpeciesCode
+        ? findPetSpeciesConfig(featuredSpeciesCode)
+        : PET_SPECIES_CONFIGS[(level + slotIndex * 3) % PET_SPECIES_CONFIGS.length];
       const multiplier = difficulty * (boss && slotIndex === 0 ? 1.35 : 1);
       const base = {
         id: -(slotIndex + 1),

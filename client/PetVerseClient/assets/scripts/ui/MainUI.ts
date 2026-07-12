@@ -108,8 +108,9 @@ export class MainUI extends Component {
     private lockedSkillCodes = new Set<string>();
     private fusionParentAId = 0;
     private fusionParentBId = 0;
-    private fusionPreview: any = null;
-    private adventureMode: 'tower' | 'pve' | 'friend' = 'tower';
+    private adventureMode: 'world' | 'tower' | 'pve' | 'friend' = 'world';
+    private worldExploration: any = null;
+    private selectedRegionCode = 'moon-forest';
     private teamPetIds: number[] = [];
     private teamPets: any[] = [];
     private teamEditing = false;
@@ -124,7 +125,6 @@ export class MainUI extends Component {
     private fusionPickerSide: 'A' | 'B' | null = null;
     private pendingIncubation: { egg: any; slot: number } | null = null;
     private fusionConfirmOpen = false;
-    private hatchDeviceNodes = new Map<number, Node>();
     private formationSlotNodes = new Map<number, Node>();
     private formationCandidateNodes = new Map<number, Node>();
     private homePetId = loadHomePetId();
@@ -344,6 +344,7 @@ export class MainUI extends Component {
                 ApiClient.get('/achievement/list'),
                 ApiClient.get('/friend/requests'),
                 ApiClient.get('/marriage/proposals?direction=incoming'),
+                ApiClient.get('/exploration/world'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -363,6 +364,7 @@ export class MainUI extends Component {
             this.achievements = this.resultList(results[13], ['achievements', 'data', 'items', 'list']);
             this.incomingFriendRequests = this.resultList(results[14], ['requests', 'data', 'items', 'list']);
             this.marriageProposals = this.resultList(results[15], ['proposals', 'data', 'items', 'list']);
+            this.applyWorldExploration(results[16]);
             this.ensureSelectedShopItem();
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
@@ -533,16 +535,18 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'adventure': {
-                    const [tower, team, pets, friends] = await Promise.all([
+                    const [tower, team, pets, friends, world] = await Promise.all([
                         ApiClient.get('/tower/status'),
                         ApiClient.get('/team'),
                         ApiClient.get('/pet/my'),
                         ApiClient.get('/friend/list'),
+                        ApiClient.get('/exploration/world'),
                     ]);
                     if (tower?.success !== false) GameStore.setTower(tower);
                     if (pets?.success !== false) GameStore.setPets(pets);
                     if (friends?.success !== false) GameStore.setList('friends', friends);
                     this.applyTeamResult(team);
+                    this.applyWorldExploration(world);
                     this.ensureSelectedFriend();
                     break;
                 }
@@ -873,8 +877,12 @@ export class MainUI extends Component {
         });
         this.addNotificationBadge(welfareButton, this.pageNotificationCount('benefits'), 43, 42);
 
-        // Home intentionally keeps the pet stage clean. Tapping the pet opens a precise picker.
-        tag(scene, 'TapHint', '轻点宝宝更换心仪', 72, -386, 210, CuteTheme.paperWarm);
+        // Keep the pet stage clean while making the five-pet tactical loop visible
+        // from the first screen instead of leading only with welfare entries.
+        tag(scene, 'TapHint', '轻点宝宝更换心仪', 72, -326, 210, CuteTheme.paperWarm);
+        button(scene, 'CoreAdventure', '探索生态大陆', 72, -392, 286, 58, () => { this.adventureMode='world'; this.showPage('adventure'); }, {
+            icon: '👑', fill: CuteTheme.honey, fontSize: 17, radius: 25,
+        });
     }
 
     private createScrollArea(
@@ -1340,9 +1348,7 @@ export class MainUI extends Component {
         const root = this.pageRoot;
         const room = panel(root, 'HatcheryResearch', 0, 0, 692, 905, new Color(239, 250, 232, 255), 40, true, CuteTheme.caramelSoft, 4);
         headingTag(room, 'Title', '三槽孵化室', 0, 390, 190, CuteTheme.mint);
-        text(room, 'Hint', '把宠物蛋拖到空闲装置，或点击“选择装置”；确认后才开始计时。', 0, 348, 620, 38, 15, CuteTheme.muted, 'center', true);
-
-        this.hatchDeviceNodes.clear();
+        text(room, 'Hint', '点击任意宠物蛋选择空闲装置；确认后才开始计时。上下滑动可查看全部宠物蛋。', 0, 348, 620, 38, 15, CuteTheme.muted, 'center', true);
         const activeEggs = GameStore.eggs
             .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
             .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
@@ -1354,11 +1360,10 @@ export class MainUI extends Component {
             const slot = index + 1;
             const egg = slotEgg(slot);
             const device = panel(room, `Device_${slot}`, x, 190, 202, 300, egg ? new Color(255, 247, 219, 255) : new Color(249, 252, 239, 255), 30, true, egg ? CuteTheme.honeyDark : CuteTheme.mintDark, egg?.isMutant ? 5 : 3);
-            this.hatchDeviceNodes.set(slot, device);
             headingTag(device, 'Title', `${slot}号装置`, 0, 124, 112, egg ? CuteTheme.paperWarm : CuteTheme.mint);
             if (!egg) {
                 text(device, 'EggEmpty', '🥚', 0, 42, 100, 100, 56, CuteTheme.honeyDark, 'center', true);
-                text(device, 'State', '空闲\n拖入宠物蛋', 0, -40, 150, 58, 17, CuteTheme.muted, 'center', false);
+                text(device, 'State', '空闲\n等待选择宠物蛋', 0, -40, 150, 58, 17, CuteTheme.muted, 'center', false);
                 tag(device, 'Free', '可使用', 0, -108, 92, CuteTheme.mint);
                 return;
             }
@@ -1395,7 +1400,7 @@ export class MainUI extends Component {
             text(card, 'Name', getEggDisplayName(egg), -52, 28, 186, 36, 15, CuteTheme.caramel, 'left', false);
             text(card, 'Time', `孵化 ${this.formatEggDuration(egg)}${egg?.isMutant ? ' · 发光' : ''}`, -52, -8, 180, 28, 13, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'left', true);
             button(card, 'Put', '选择装置', 72, -38, 102, 34, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 11, radius: 15, disabled: activeEggs.length >= 3 });
-            card.on(Node.EventType.TOUCH_END, (event: any) => this.handleEggDrop(egg, event));
+            card.on(Node.EventType.TOUCH_END, () => this.requestIncubation(egg, 0));
         });
         if (!storedEggs.length) text(area.content, 'Empty', '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);
     }
@@ -1443,24 +1448,19 @@ export class MainUI extends Component {
         this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 168, 152, 'B');
         text(page, 'FusionMark', '＋', 0, 165, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
 
-        const preview = panel(page, 'Preview', 0, -190, 640, 206, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
-        headingTag(preview, 'PreviewTitle', '炼妖结果预览', -220, 76, 190, CuteTheme.paperWarm);
-        if (!this.fusionPreview?.blueprint) {
-            text(preview, 'EmptyPreview', '点击“预览结果”查看物种、稀有度、成长、资质与完整技能。\n预览不会消耗宝宝或资源。', 0, -4, 560, 86, 16, CuteTheme.muted, 'center', false);
+        const preview = panel(page, 'OutcomeRange', 0, -190, 640, 206, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        headingTag(preview, 'RangeTitle', '可能结果范围', -220, 76, 190, CuteTheme.paperWarm);
+        if (!parentA || !parentB) {
+            text(preview, 'RangeEmpty', '分别选择父系和母系宝宝后，这里会自动显示可能出现的物种、稀有度、成长、资质、技能和变异范围。', 0, -4, 560, 92, 16, CuteTheme.muted, 'center', false);
         } else {
-            const bp = this.fusionPreview.blueprint;
-            image(preview, 'PreviewPetArt', getPetArtPath(bp, 'thumb'), 240, 18, 96, 96, CuteTheme.paperWarm);
-            text(preview, 'Species', `${safeName(bp?.species, getPetSpeciesMeta(bp).name)}　${this.rarityName(bp)}${bp?.isMutant ? ' · 变异' : ''}`, -292, 44, 410, 32, 17, CuteTheme.caramel, 'left', true);
-            text(preview, 'Growth', `成长 ${Number(bp?.growth || 0).toFixed(3)}　品质 ${Number(bp?.quality || 0)}　技能格 ${Number(bp?.skillSlotCount || 0)}`, -292, 12, 440, 28, 14, CuteTheme.caramel, 'left', true);
-            const apt = bp?.aptitudes || {};
-            text(preview, 'Aptitudes', `体 ${Number(apt.hp || 0)}　攻 ${Number(apt.attack || 0)}　防 ${Number(apt.defense || 0)}
-法 ${Number(apt.magic || 0)}　速 ${Number(apt.speed || 0)}　特殊 ${Number(bp?.specialSkillCount || 0)}`, -292, -28, 450, 54, 14, CuteTheme.muted, 'left', true);
-            const skillNames = (Array.isArray(bp?.inheritedSkills) ? bp.inheritedSkills : []).map((skill: any) => this.skillName(skill)).join('、');
-            text(preview, 'Skills', `技能：${skillNames || '随机生成'}`, -292, -73, 480, 30, 13, CuteTheme.peachDark, 'left', false);
+            const range = this.fusionOutcomeRange(parentA, parentB);
+            text(preview, 'SpeciesRange', `可能物种：${range.species.join(' / ')}　稀有度：${range.rarity}`, -292, 44, 584, 30, 16, CuteTheme.caramel, 'left', true);
+            text(preview, 'GrowthRange', `成长 ${range.growth}　品质 ${range.quality}　技能格 ${range.skillSlots}`, -292, 12, 584, 28, 14, CuteTheme.caramel, 'left', true);
+            text(preview, 'AptitudeRange', `体 ${range.aptitudes.hp}　攻 ${range.aptitudes.attack}　防 ${range.aptitudes.defense}\n法 ${range.aptitudes.magic}　速 ${range.aptitudes.speed}`, -292, -29, 584, 54, 14, CuteTheme.muted, 'left', true);
+            text(preview, 'SkillRange', `技能数 ${range.skillCount}　特殊技能 ${range.specialSkills}　变异概率 ${range.mutation}`, -292, -72, 584, 28, 13, CuteTheme.peachDark, 'left', true);
         }
 
-        button(page, 'PreviewButton', '预览结果', -118, -350, 210, 62, () => void this.previewFusion(), { icon: '🔍', fill: CuteTheme.mint, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:preview') });
-        button(page, 'ExecuteButton', '确认并炼妖', 118, -350, 220, 62, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -350, 240, 62, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
         text(page, 'Cost', '消耗：1000金币＋合宠核心×1　｜　两只父母会被消耗，操作不可撤销', 0, -402, 620, 30, 14, CuteTheme.peachDark, 'center', true);
     }
 
@@ -1476,23 +1476,95 @@ export class MainUI extends Component {
         button(teamCard,'FormationBtn','阵法设置',100,-88,126,44,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:13,radius:19});
         button(teamCard,'EditTeam',this.teamEditing?'取消编辑':'调整编队',245,-88,126,44,()=>this.teamEditing?this.cancelTeamEditing():this.beginTeamEditing(),{icon:this.teamEditing?'↩':'✎',fill:this.teamEditing?CuteTheme.peach:CuteTheme.mint,fontSize:13,radius:19});
         if(this.teamEditing){this.renderTeamEditor(page);return;}
-        const modes=[{key:'tower' as const,title:'爬塔/BOSS',icon:'🏯',fill:CuteTheme.paperWarm},{key:'pve' as const,title:'区域冒险',icon:'⚔',fill:CuteTheme.mint},{key:'friend' as const,title:'竞技切磋',icon:'🤝',fill:CuteTheme.peach}];
-        modes.forEach((mode,index)=>button(page,`Mode_${mode.key}`,mode.title,-210+index*210,112,184,64,()=>{this.adventureMode=mode.key;this.renderCurrentPage(false);},{icon:mode.icon,selected:this.adventureMode===mode.key,fill:mode.fill,textColor:this.adventureMode===mode.key?CuteTheme.white:CuteTheme.caramel,fontSize:14,radius:26}));
+        const modes=[
+            {key:'world' as const,title:'世界主线',icon:'🗺',fill:CuteTheme.honey},
+            {key:'pve' as const,title:'区域危机',icon:'⚔',fill:CuteTheme.mint},
+            {key:'tower' as const,title:'无尽遗迹',icon:'🏯',fill:CuteTheme.paperWarm},
+            {key:'friend' as const,title:'好友协作',icon:'🤝',fill:CuteTheme.peach},
+        ];
+        modes.forEach((mode,index)=>button(page,`Mode_${mode.key}`,mode.title,-240+index*160,112,148,64,()=>{this.adventureMode=mode.key;this.renderCurrentPage(false);},{icon:mode.icon,selected:this.adventureMode===mode.key,fill:mode.fill,textColor:this.adventureMode===mode.key?CuteTheme.white:CuteTheme.caramel,fontSize:13,radius:24}));
         const content=panel(page,'ModeContent',0,-170,640,440,CuteTheme.paper,30,false,CuteTheme.caramelSoft,2);
-        if(this.adventureMode==='tower'){
+        if(this.adventureMode==='world'){
+            this.renderWorldExploration(content);
+        } else if(this.adventureMode==='tower'){
             headingTag(content,'Title','高难首领与爬塔',0,170,210,CuteTheme.paperWarm);
             text(content,'Info','五宠同时上场；首次挑战不可跳过。肉盾、治疗、物伤、法伤和辅助站位会受到阵法加成。\n每回合可选择：集火、守护、套盾、净化；阵法大招前置冷却2～3回合。',0,70,560,110,17,CuteTheme.caramel,'center',false);
             text(content,'Power',`当前战力 ${formatNumber(this.teamPower())}　推荐 ${formatNumber(Number(GameStore.tower?.recommendedPower||4200))}`,0,-28,500,36,16,CuteTheme.muted,'center',true);
             button(content,'Start','挑战BOSS',0,-126,250,70,()=>void this.startAdventureBattle('tower'),{icon:'👑',fill:CuteTheme.honey,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
         } else if(this.adventureMode==='pve'){
-            headingTag(content,'Title','区域冒险',0,170,180,CuteTheme.mint);
-            text(content,'Info','普通战斗采用半自动回合指令；可开启本场自动或4倍播放。\n区域探索与巢穴系统将复用这套五宠战斗底层。',0,72,550,100,17,CuteTheme.caramel,'center',false);
-            button(content,'Start','开始五宠冒险',0,-126,260,70,()=>void this.startAdventureBattle('pve'),{icon:'⚔',fill:CuteTheme.mint,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
+            headingTag(content,'Title','每日区域危机',0,170,200,CuteTheme.mint);
+            text(content,'Info','每日1次主题危机，敌方阵容与区域效果轮换。\n使用集火、守护、套盾和净化应对机制；失败不消耗主线体力。',0,72,550,100,17,CuteTheme.caramel,'center',false);
+            button(content,'Start','挑战今日危机',0,-126,260,70,()=>void this.startAdventureBattle('pve'),{icon:'⚔',fill:CuteTheme.mint,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
         } else {
-            headingTag(content,'Title','玩家竞技',0,170,170,CuteTheme.peach);
-            text(content,'Info','竞技场只能全自动。玩家在战前决定五宠、阵法、槽位和战术预设，战斗中不能手动改指令。\n这样避免网络与操作速度影响公平性。',0,65,560,120,17,CuteTheme.caramel,'center',false);
-            button(content,'Start','全自动切磋',0,-126,240,70,()=>void this.startAdventureBattle('friend'),{icon:'▶',fill:CuteTheme.peach,fontSize:18,radius:29,disabled:this.teamPetIds.length!==5});
+            headingTag(content,'Title','好友协作首领',0,170,200,CuteTheme.peach);
+            text(content,'Info','当前版本以好友阵容镜像进行全自动协作演练。\n正式赛季将按双方五宠、阵法和贡献结算协作首领奖励。',0,65,560,120,17,CuteTheme.caramel,'center',false);
+            button(content,'Start','开始协作演练',0,-126,240,70,()=>void this.startAdventureBattle('friend'),{icon:'▶',fill:CuteTheme.peach,fontSize:18,radius:29,disabled:this.teamPetIds.length!==5});
         }
+    }
+
+    private renderWorldExploration(parent:Node) {
+        const world=this.worldExploration;
+        const regions=Array.isArray(world?.regions)?world.regions:[];
+        headingTag(parent,'WorldTitle',safeName(world?.title,'PetVerse生态大陆'),0,188,230,CuteTheme.honey);
+        text(parent,'WorldLoop','区域探索 → 发现物种 → 100%开放巢穴 → 获得独立物种蛋',0,154,586,28,13,CuteTheme.caramel,'center',true);
+        if(!regions.length){text(parent,'WorldLoading','正在同步世界主线进度…',0,15,520,80,19,CuteTheme.muted,'center',true);return;}
+
+        const strip=this.createScrollArea(parent,'RegionStrip',0,101,600,82,Math.max(600,regions.length*132+8),82,'horizontal');
+        regions.forEach((region:any,index:number)=>button(strip.content,`Region_${region?.code||index}`,safeName(region?.name,'未知地区'),66+index*132,0,122,72,()=>{
+            if(!region?.unlocked){this.showToast('先击败前一区域的巢穴首领');return;}
+            this.selectedRegionCode=String(region.code);this.renderCurrentPage(false);
+        },{icon:region?.nestUnlocked?'🥚':region?.unlocked?'🧭':'🔒',selected:String(region?.code)===this.selectedRegionCode,fill:region?.unlocked?CuteTheme.paperWarm:new Color(218,216,210,255),fontSize:12,radius:21,disabled:!region?.unlocked,subtitle:region?.unlocked?`探索 ${Number(region?.exploration||0)}%`:'尚未解锁'}));
+
+        const region=regions.find((item:any)=>String(item?.code)===this.selectedRegionCode)||regions.find((item:any)=>item?.unlocked)||regions[0];
+        const detail=panel(parent,'RegionDetail',0,-47,604,205,new Color(248,252,238,255),26,false,CuteTheme.mintDark,2);
+        text(detail,'Chapter',`${safeName(region?.chapter,'主线')} · ${safeName(region?.name,'区域')}`, -270,72,360,32,20,CuteTheme.caramel,'left',true);
+        tag(detail,'Element',`${safeName(region?.element,'生态')}系生态`,222,72,100,CuteTheme.mint);
+        text(detail,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),-270,39,540,30,14,CuteTheme.muted,'left',true);
+        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-270,9,130,26,15,CuteTheme.caramel,'left',true);
+        progress(detail,'ExploreProgress',-65,9,280,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
+        text(detail,'Species',`可发现：${safeName(region?.speciesName,'目标物种')} / ${safeName(region?.companionSpecies,'伴生物种')}　推荐战力 ${formatNumber(region?.recommendedPower||0)}`,-270,-22,540,28,14,CuteTheme.caramel,'left',true);
+        const attempts=world?.attempts||{};
+        text(detail,'Attempt',`巢穴奖励次数 ${Number(attempts?.remaining||0)}　累计 ${Number(attempts?.stored||0)}/6　战败不扣次数`,-270,-51,540,26,13,CuteTheme.peachDark,'left',true);
+        button(detail,'Explore',Number(region?.exploration||0)>=100?'探索完成':'推进探索',-112,-78,196,48,()=>void this.startRegionBattle('explore',region),{icon:'🧭',fill:CuteTheme.mint,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||Number(region?.exploration||0)>=100});
+        button(detail,'Nest',region?.nestUnlocked?'挑战首领巢穴':'探索100%开放',118,-78,220,48,()=>void this.startRegionBattle('nest',region),{icon:'🥚',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
+        const pity=world?.pity||{};
+        text(parent,'Pity',`保底：史诗 ${Number(pity?.epic?.remaining||10)}蛋内　传说 ${Number(pity?.legendary?.remaining||40)}蛋内　变异 ${Number(pity?.mutation?.remaining||80)}能量内`,0,-188,588,26,13,CuteTheme.peachDark,'center',true);
+    }
+
+    private async startRegionBattle(kind:'explore'|'nest',region:any) {
+        if(this.teamPetIds.length!==5){this.showToast('世界主线需要完整五宠编队');return;}
+        if(!this.battleLayer||!region?.code)return;
+        this.adventureMode='world';
+        showFivePetBattle(this.battleLayer,{
+            mode:kind==='nest'?'boss':'pve',
+            title:kind==='nest'?`${safeName(region?.name,'区域')}·首领巢穴`:`${safeName(region?.name,'区域')}·生态探索`,
+            formationCode:this.selectedFormationCode,
+            difficulty:Number(region?.difficulty||1),
+            enemySpeciesCode:String(region?.speciesCode||''),
+            onClose:()=>{this.showPage('adventure');void this.refreshWorldExploration();},
+            onComplete:(session:any)=>void this.settleRegionBattle(kind,region,session),
+        });
+    }
+
+    private async settleRegionBattle(kind:'explore'|'nest',region:any,session:any) {
+        const key=`region-settle:${session?.id||0}`;
+        if(!session?.id||this.busy.has(key))return;
+        this.busy.add(key);
+        try{
+            const result=await ApiClient.post(kind==='nest'?'/exploration/settle-nest':'/exploration/settle-explore',{regionCode:String(region?.code||''),sessionId:Number(session.id)});
+            this.applyWorldExploration(result);
+            if(result?.egg){const eggs=await ApiClient.get('/hatchery/eggs');if(eggs?.success!==false)GameStore.setList('eggs',eggs);}
+            this.showToast(result?.message||'世界主线进度已更新');
+            if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
+            this.renderCurrentPage(false);
+        }catch(error){console.error('[CuteMainUI] settle region battle failed:',error);this.showToast('世界主线结算失败，请稍后重试');}
+        finally{this.busy.delete(key);}
+    }
+
+    private async refreshWorldExploration() {
+        const result=await ApiClient.get('/exploration/world');
+        this.applyWorldExploration(result);
+        if(this.currentPage==='adventure')this.renderCurrentPage(false);
     }
 
     private renderTeamEditor(page: Node) {
@@ -1519,7 +1591,7 @@ export class MainUI extends Component {
             tag(slot, 'Role', `${index+1} · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 42, 100, pet ? CuteTheme.mint : CuteTheme.paperWarm);
             if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 10, 46, 46, CuteTheme.paperWarm);
             else text(slot, 'Empty', '＋', 0, 10, 44, 44, 28, CuteTheme.muted, 'center', true);
-            text(slot, 'Name', pet ? safeName(pet?.nickname,'宝宝') : '拖到这里', 0, -20, 102, 20, 11, CuteTheme.caramel, 'center', true);
+            text(slot, 'Name', pet ? this.compactPetName(pet) : '拖到这里', 0, -20, 102, 20, 11, CuteTheme.caramel, 'center', true);
             text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -41, 104, 18, 10, CuteTheme.peachDark, 'center', true);
             slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; });
             slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.highlightFormationDropTarget(event));
@@ -1537,7 +1609,7 @@ export class MainUI extends Component {
             const card=panel(choices.content,`Pet_${id}`,-202+col*202,-46-row*100,190,88,selected?CuteTheme.honey:CuteTheme.paperWarm,20,true,selected?CuteTheme.honeyDark:CuteTheme.white,2);
             this.formationCandidateNodes.set(id,card);
             image(card,'Icon',getPetArtPath(pet,'thumb'),-62,2,54,54,CuteTheme.paperWarm);
-            text(card,'Name',safeName(pet?.nickname,`宝宝${index+1}`),-25,19,116,26,13,CuteTheme.caramel,'left',true);
+            text(card,'Name',this.compactPetName(pet,`宝宝${index+1}`),-25,19,116,26,13,CuteTheme.caramel,'left',true);
             text(card,'Meta',`${this.rarityName(pet)} · ${formatNumber(this.battleAttributesOf(pet).power)}`,-25,-13,116,24,11,CuteTheme.muted,'left',true);
             if(selected)tag(card,'Selected','已选',60,31,48,CuteTheme.mint);
             card.on(Node.EventType.TOUCH_START,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;});
@@ -1860,7 +1932,13 @@ export class MainUI extends Component {
 
     private renderTradeHistory(parent: Node) {
         headingTag(parent, 'HistoryTitle', `交易记录 ${this.tradeHistory.length}`, 0, 306, 200, CuteTheme.paperWarm);
-        if (!this.tradeHistory.length) { text(parent, 'HistoryEmpty', '暂无成交记录', 0, 80, 420, 80, 20, CuteTheme.muted, 'center', true); return; }
+        if (!this.tradeHistory.length) {
+            text(parent, 'HistoryIcon', '🏷', 0, 145, 120, 100, 54, CuteTheme.lilac, 'center', true);
+            text(parent, 'HistoryEmpty', '暂时没有成交记录\n先逛逛市场，或上架一只非出战宝宝。', 0, 42, 500, 96, 19, CuteTheme.muted, 'center', true);
+            button(parent, 'HistoryMarket', '去逛市场', -112, -78, 190, 58, () => { this.tradeMode = 'market'; this.renderCurrentPage(false); }, { icon: '🛒', fill: CuteTheme.sky, fontSize: 16, radius: 25 });
+            button(parent, 'HistoryList', '我要上架', 112, -78, 190, 58, () => { this.tradeMode = 'list'; this.renderCurrentPage(false); }, { icon: '➕', fill: CuteTheme.lilac, fontSize: 16, radius: 25 });
+            return;
+        }
         const area = this.createScrollArea(parent, 'TradeHistoryScroll', 0, -15, 620, 590, 620, this.tradeHistory.length * 92 + 12, 'vertical');
         this.tradeHistory.forEach((record, index) => {
             const row = panel(area.content, `TradeHistory_${record?.id ?? index}`, 0, -42 - index * 92, 602, 76, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 20, false, CuteTheme.white, 2);
@@ -2428,7 +2506,7 @@ export class MainUI extends Component {
                 text(item,'Name',safeName(pet?.nickname,'宝宝'),-52,40,178,28,16,CuteTheme.caramel,'left',true);
                 text(item,'Meta',`${this.rarityName(pet)}${pet?.isMutant?'·变异':''} · 成长${this.growthValue(pet).toFixed(3)}`,-52,8,180,26,13,CuteTheme.muted,'left',true);
                 text(item,'Skills',`技能${Array.isArray(pet?.skills)?pet.skills.length:0} 特殊${this.specialSkills(pet).length} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,-52,-24,190,26,12,CuteTheme.muted,'left',true);
-                button(item,'Choose',invalid?reason:'选择',74,-44,100,34,()=>{if(invalid)return;if(side==='A')this.fusionParentAId=id;else this.fusionParentBId=id;this.fusionPreview=null;this.closeUtilityModal();this.renderCurrentPage(false);},{fill:invalid?new Color(210,208,202,255):(side==='A'?CuteTheme.mint:CuteTheme.peach),fontSize:11,radius:15,disabled:invalid});
+                button(item,'Choose',invalid?reason:'选择',74,-44,100,34,()=>{if(invalid)return;if(side==='A')this.fusionParentAId=id;else this.fusionParentBId=id;this.closeUtilityModal();this.renderCurrentPage(false);},{fill:invalid?new Color(210,208,202,255):(side==='A'?CuteTheme.mint:CuteTheme.peach),fontSize:11,radius:15,disabled:invalid});
             });
             button(card,'Close','关闭',0,-410,170,54,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:23});
             return;
@@ -2518,15 +2596,6 @@ export class MainUI extends Component {
         if(active.length>=3){this.showToast('三台孵化装置都在使用中');return;}
         this.pendingIncubation={egg,slot};
         this.renderUtilityModal();
-    }
-
-    private handleEggDrop(egg:any,event:any) {
-        const hit=[...this.hatchDeviceNodes.entries()].find(([slot,node])=>!this.isHatchSlotOccupied(slot)&&this.nodeContainsTouch(node,event));
-        this.requestIncubation(egg,hit?.[0]||0);
-    }
-
-    private isHatchSlotOccupied(slot:number) {
-        return GameStore.eggs.some((egg)=>['incubating','hatching'].includes(String(egg?.status||''))&&Number(egg?.incubatorSlot||0)===slot);
     }
 
     private async startEggIncubationNow(egg:any,slot:number) {
@@ -2721,26 +2790,6 @@ export class MainUI extends Component {
         button(card, 'Select', pet ? '重新选择' : '选择宝宝', 0, -164, 142, 44, () => this.openFusionPicker(side), { icon: '🔍', fill: side === 'A' ? CuteTheme.mint : CuteTheme.peach, fontSize: 13, radius: 20 });
     }
 
-    private async previewFusion() {
-        if (!this.fusionParentAId || !this.fusionParentBId || this.busy.has('fusion:preview')) return;
-        this.busy.add('fusion:preview');
-        try {
-            const result = await ApiClient.post('/fusion/preview', {
-                parentAId: this.fusionParentAId,
-                parentBId: this.fusionParentBId,
-            });
-            if (result?.success === false) {
-                this.showToast(result?.message || '预览失败');
-                return;
-            }
-            this.fusionPreview = result;
-            this.showToast('预览已生成，不会消耗任何资源');
-        } finally {
-            this.busy.delete('fusion:preview');
-            this.renderCurrentPage(false);
-        }
-    }
-
     private async executeFusion() {
         if (!this.fusionParentAId || !this.fusionParentBId || this.busy.has('fusion:execute')) return;
         this.busy.add('fusion:execute');
@@ -2762,7 +2811,6 @@ export class MainUI extends Component {
             if (pets?.success !== false) GameStore.setPets(pets);
             if (inventory?.success !== false) GameStore.setList('inventory', inventory);
             if (profile?.success !== false) GameStore.setProfile(profile);
-            this.fusionPreview = null;
             this.fusionParentAId = 0;
             this.fusionParentBId = 0;
             this.ensureFusionParents();
@@ -2784,6 +2832,16 @@ export class MainUI extends Component {
         }
     }
 
+    private applyWorldExploration(result:any) {
+        if(!result||result?.success===false)return;
+        this.worldExploration=result?.world||result?.data?.world||result?.data||result;
+        const regions=Array.isArray(this.worldExploration?.regions)?this.worldExploration.regions:[];
+        const selected=regions.find((region:any)=>String(region?.code)===this.selectedRegionCode&&region?.unlocked)
+            ||regions.find((region:any)=>String(region?.code)===String(this.worldExploration?.currentRegionCode)&&region?.unlocked)
+            ||regions.find((region:any)=>region?.unlocked);
+        if(selected?.code)this.selectedRegionCode=String(selected.code);
+    }
+
     private applyTeamResult(result: any) {
         if(!result||result?.success===false)return;
         const team=result?.team||result?.data?.team||result?.data||result;
@@ -2803,7 +2861,7 @@ export class MainUI extends Component {
         tag(slot,'Index',`${index}号`,0,48,62,pet?CuteTheme.mint:CuteTheme.paperWarm);
         if(!pet){text(slot,'Empty','＋',0,0,50,50,30,CuteTheme.muted,'center',true);return;}
         image(slot,'PetIcon',getPetArtPath(pet,'thumb'),0,12,58,58,CuteTheme.paperWarm);
-        text(slot,'Name',safeName(pet?.nickname,'宝宝'),0,-28,106,24,12,CuteTheme.caramel,'center',true);
+        text(slot,'Name',this.compactPetName(pet),0,-28,106,24,12,CuteTheme.caramel,'center',true);
         text(slot,'Power',`${formatNumber(this.battleAttributesOf(pet).power)}`,0,-50,100,22,11,CuteTheme.muted,'center',true);
     }
 
@@ -3882,6 +3940,19 @@ export class MainUI extends Component {
         return ['普通', '优秀', '稀有', '史诗', '传说', '神话'][Math.max(0, Math.min(5, rarity - 1))];
     }
 
+    private compactPetName(pet: any, fallback = '宝宝') {
+        const value = safeName(pet?.nickname, fallback);
+        let width = 0;
+        let result = '';
+        for (const char of value) {
+            const next = /[\u0000-\u00ff]/.test(char) ? 1 : 2;
+            if (width + next > 14) return `${result}…`;
+            result += char;
+            width += next;
+        }
+        return result;
+    }
+
     private aptitudesOf(pet: any): AptitudeView {
         const source = pet?.aptitudes || pet?.aptitude || pet?.qualification || {};
         const quality = Math.round(Number(pet?.quality || 100));
@@ -3907,6 +3978,31 @@ export class MainUI extends Component {
         const value = Number(pet?.growth || pet?.growthRate || 0);
         if (value > 0) return value;
         return Math.max(0.9, Math.min(1.35, Number(pet?.quality || 100) / 100 + 0.05));
+    }
+
+    private fusionOutcomeRange(parentA:any,parentB:any) {
+        const aptA=this.aptitudesOf(parentA); const aptB=this.aptitudesOf(parentB);
+        const interval=(a:number,b:number,low=.9,high=1.1)=>`${Math.round(Math.min(a,b)*low)}～${Math.round(Math.max(a,b)*high)}`;
+        const growthA=this.growthValue(parentA); const growthB=this.growthValue(parentB);
+        const rarityA=Math.max(1,Number(parentA?.rarity||1)); const rarityB=Math.max(1,Number(parentB?.rarity||1));
+        const rarityMin=Math.max(1,Math.min(rarityA,rarityB)-1); const rarityMax=Math.min(6,Math.max(rarityA,rarityB)+1);
+        const skillsA=Array.isArray(parentA?.skills)?parentA.skills.length:0; const skillsB=Array.isArray(parentB?.skills)?parentB.skills.length:0;
+        const slotsA=Math.max(2,Number(parentA?.skillSlotCount||skillsA||3)); const slotsB=Math.max(2,Number(parentB?.skillSlotCount||skillsB||3));
+        const nameOf=(pet:any)=>safeName(pet?.species,getPetSpeciesMeta(pet).name);
+        return {
+            species:[...new Set([nameOf(parentA),nameOf(parentB)])],
+            rarity:`${this.rarityName({rarity:rarityMin})}～${this.rarityName({rarity:rarityMax})}`,
+            growth:`${Math.max(.8,Math.min(growthA,growthB)-.06).toFixed(3)}～${Math.min(1.5,Math.max(growthA,growthB)+.08).toFixed(3)}`,
+            quality:interval(Number(parentA?.quality||100),Number(parentB?.quality||100),.92,1.08),
+            skillSlots:`${Math.max(2,Math.min(slotsA,slotsB)-1)}～${Math.min(10,Math.max(slotsA,slotsB)+2)}`,
+            skillCount:`${Math.max(1,Math.min(skillsA,skillsB)-1)}～${Math.min(10,Math.max(skillsA,skillsB)+2)}`,
+            specialSkills:`0～${Math.min(3,this.specialSkills(parentA).length+this.specialSkills(parentB).length+1)}`,
+            mutation:parentA?.isMutant||parentB?.isMutant?'5%～10%':'1%～5%',
+            aptitudes:{
+                hp:interval(aptA.hp,aptB.hp), attack:interval(aptA.attack,aptB.attack), defense:interval(aptA.defense,aptB.defense),
+                magic:interval(aptA.magic,aptB.magic), speed:interval(aptA.speed,aptB.speed),
+            },
+        };
     }
 
     private specialSkills(pet: any) {

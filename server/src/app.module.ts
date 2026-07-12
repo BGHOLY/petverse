@@ -37,6 +37,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { DevModule } from './modules/dev/dev.module';
 import { FormationModule } from './modules/formation/formation.module';
 import { GuildModule } from './modules/guild/guild.module';
+import { ExplorationModule } from './modules/exploration/exploration.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { GuildModule } from './modules/guild/guild.module';
     MaintenanceModule,
     FormationModule,
     GuildModule,
+    ExplorationModule,
     DevModule,
   ],
   controllers: [AppController],

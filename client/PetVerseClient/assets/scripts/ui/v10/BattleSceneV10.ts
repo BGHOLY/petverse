@@ -21,6 +21,7 @@ export type FivePetBattleOptions = {
     title?: string;
     formationCode?: string;
     difficulty?: number;
+    enemySpeciesCode?: string;
     onClose: () => void;
     onComplete?: (result: any) => void;
 };
@@ -206,6 +207,11 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         node.on(Node.EventType.TOUCH_MOVE, (event: any) => {
             const delta = event?.getUIDelta?.() || event?.getDelta?.();
             if (delta) node.setPosition(node.position.x + Number(delta.x || 0), node.position.y + Number(delta.y || 0), node.position.z);
+            const hoveredId = targetAtTouch(event, meta.side);
+            for (const [id, entry] of unitNodes.entries()) {
+                const valid = entry.alive && ((meta.side === 'enemy' && entry.enemy) || (meta.side === 'ally' && !entry.enemy));
+                entry.node.setScale(valid ? (id === hoveredId ? new Vec3(1.14, 1.14, 1) : new Vec3(1.04, 1.04, 1)) : Vec3.ONE);
+            }
         });
         node.on(Node.EventType.TOUCH_CANCEL, () => { node.setPosition(origin); render(); });
         node.on(Node.EventType.TOUCH_END, (event: any) => {
@@ -234,6 +240,12 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             if (!entry.alive || (side === 'enemy') !== entry.enemy) continue;
             const transform = entry.node.getComponent(UITransform);
             if (transform?.hitTest(point)) return id;
+            // The preview may report screen-scaled UI coordinates while hitTest
+            // expects design coordinates. Formation cards have stable design-space
+            // centers, so use that as a safe fallback for touch and mouse drags.
+            const centerX = DESIGN_WIDTH / 2 + Number(entry.node.position.x || 0);
+            const centerY = DESIGN_HEIGHT / 2 + Number(entry.node.position.y || 0);
+            if (Math.abs(point.x - centerX) <= 78 && Math.abs(point.y - centerY) <= 94) return id;
         }
         return '';
     };
@@ -310,7 +322,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         await AudioDirector.playBgm(boss ? 'boss' : 'battle');
         const result = options.mode === 'arena'
             ? await ApiClient.post('/battle/v10/arena', { formationCode: options.formationCode, difficulty: options.difficulty || 1.05 })
-            : await ApiClient.post('/battle/v10/start', { mode: options.mode, boss, formationCode: options.formationCode, difficulty: options.difficulty || (boss ? 1.25 : 1) });
+            : await ApiClient.post('/battle/v10/start', { mode: options.mode, boss, formationCode: options.formationCode, difficulty: options.difficulty || (boss ? 1.25 : 1), enemySpeciesCode: options.enemySpeciesCode || '' });
         if (result?.success === false) {
             session = { status: 'ended', winnerSide: 'right', round: 0, battleLog: [{ text: result?.message || '战斗发起失败' }], leftTeam: [], rightTeam: [] };
             render();
