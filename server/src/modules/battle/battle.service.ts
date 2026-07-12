@@ -198,7 +198,7 @@ export class BattleService {
               pet.tradeStatus !== 'listed' &&
               !pet.tradeListingId,
           )
-          .slice(0, 3)
+          .slice(0, 5)
       : [];
 
     if (!pets.length) {
@@ -257,7 +257,7 @@ export class BattleService {
               pet.tradeStatus !== 'listed' &&
               !pet.tradeListingId,
           )
-          .slice(0, 3)
+          .slice(0, 5)
       : [];
 
     const friendResult = await this.friendService.getFriends(userId);
@@ -275,7 +275,7 @@ export class BattleService {
               pet.tradeStatus !== 'listed' &&
               !pet.tradeListingId,
           )
-          .slice(0, 3)
+          .slice(0, 5)
       : [];
 
     if (!myPets.length || !friendPets.length) {
@@ -330,10 +330,10 @@ export class BattleService {
     rightTeamInput: Combatant[],
   ) {
     const leftTeam = leftTeamInput
-      .slice(0, 3)
+      .slice(0, 5)
       .map((pet) => this.cloneCombatant(pet));
     const rightTeam = rightTeamInput
-      .slice(0, 3)
+      .slice(0, 5)
       .map((pet) => this.cloneCombatant(pet));
     const battleLog: string[] = [];
     const duelResults: any[] = [];

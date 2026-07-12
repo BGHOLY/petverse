@@ -22,6 +22,7 @@ export class HatcheryController {
     return this.hatcheryService.startIncubation(
       DEFAULT_USER_ID,
       Number(body?.eggId || 0),
+      Number(body?.slot || body?.incubatorSlot || 0),
     );
   }
 

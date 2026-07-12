@@ -11,6 +11,7 @@ import {
   BreedingService,
 } from '../breeding/breeding.service';
 import { DailyTaskService } from '../daily-task/daily-task.service';
+import { EconomyService } from '../economy/economy.service';
 import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
 import {
   DEFAULT_USER_ID,
@@ -76,6 +77,7 @@ export class PetService {
     private readonly breedingService: BreedingService,
     private readonly dailyTaskService: DailyTaskService,
     private readonly petCapacityService: PetCapacityService,
+    private readonly economyService: EconomyService,
   ) {}
 
   async getAllPets() {
@@ -166,6 +168,8 @@ export class PetService {
         generation: Number(pet.generation || 1),
       },
       finalAttributes: this.calculateFinalAttributes(pet),
+      statPoints: this.getStatPointView(pet),
+      statBreakdown: this.getStatBreakdown(pet),
     };
   }
 
@@ -174,69 +178,74 @@ export class PetService {
     const level = Math.max(1, Number(pet.level || 1));
     const growth = Math.max(0.8, Number(pet.growth || 1.1));
     const aptitudes = this.getPetAptitudes(pet);
+    const points = this.getStatPointView(pet);
 
+    let base: { hp: number; attack: number; defense: number; magic: number; speed: number };
     const hasNewAptitudes = Object.values(aptitudes).every((value) => value > 0);
     if (!hasNewAptitudes) {
       const qualityRate = this.clampQuality(Number(pet.quality || 100)) / 100;
-      return {
+      base = {
         hp: Math.max(1, Math.round(Number(pet.hp || 100) * qualityRate)),
-        attack: Math.max(
-          1,
-          Math.round(Number(pet.attack || 20) * qualityRate),
-        ),
-        defense: Math.max(
-          1,
-          Math.round(Number(pet.defense || 20) * qualityRate),
-        ),
-        magic: Math.max(
-          1,
-          Math.round(Number(pet.intelligence || 20) * qualityRate),
-        ),
-        speed: Math.max(
-          1,
-          Math.round(
-            Number(pet.speed || pet.agility || 20) * qualityRate,
-          ),
-        ),
+        attack: Math.max(1, Math.round(Number(pet.attack || 20) * qualityRate)),
+        defense: Math.max(1, Math.round(Number(pet.defense || 20) * qualityRate)),
+        magic: Math.max(1, Math.round(Number(pet.intelligence || 20) * qualityRate)),
+        speed: Math.max(1, Math.round(Number(pet.speed || pet.agility || 20) * qualityRate)),
+      };
+    } else {
+      base = {
+        hp: Math.max(1, Math.round(species.baseStats.hp + level * aptitudes.hp * growth * 0.08)),
+        attack: Math.max(1, Math.round(species.baseStats.attack + level * aptitudes.attack * growth * 0.012)),
+        defense: Math.max(1, Math.round(species.baseStats.defense + level * aptitudes.defense * growth * 0.011)),
+        magic: Math.max(1, Math.round(species.baseStats.magic + level * aptitudes.magic * growth * 0.012)),
+        speed: Math.max(1, Math.round(species.baseStats.speed + level * aptitudes.speed * growth * 0.01)),
       };
     }
 
     return {
-      hp: Math.max(
-        1,
-        Math.round(
-          species.baseStats.hp +
-            level * aptitudes.hp * growth * 0.08,
-        ),
-      ),
-      attack: Math.max(
-        1,
-        Math.round(
-          species.baseStats.attack +
-            level * aptitudes.attack * growth * 0.012,
-        ),
-      ),
-      defense: Math.max(
-        1,
-        Math.round(
-          species.baseStats.defense +
-            level * aptitudes.defense * growth * 0.011,
-        ),
-      ),
-      magic: Math.max(
-        1,
-        Math.round(
-          species.baseStats.magic +
-            level * aptitudes.magic * growth * 0.012,
-        ),
-      ),
-      speed: Math.max(
-        1,
-        Math.round(
-          species.baseStats.speed +
-            level * aptitudes.speed * growth * 0.01,
-        ),
-      ),
+      hp: Math.max(1, Math.round(base.hp + points.constitution * 3)),
+      attack: Math.max(1, Math.round(base.attack + points.strength * 0.35)),
+      defense: Math.max(1, Math.round(base.defense + points.endurance * 0.25)),
+      magicDefense: Math.max(1, Math.round(base.defense + points.endurance * 0.25)),
+      magic: Math.max(1, Math.round(base.magic + points.spirit * 0.35)),
+      speed: Math.max(1, Math.round(base.speed + points.speed * 0.15)),
+      healingPower: Math.max(0, Math.round(points.spirit * 0.15)),
+    };
+  }
+
+  getStatPointView(pet: Pet) {
+    return {
+      unspent: Math.max(0, Number(pet.unspentStatPoints || 0)),
+      constitution: Math.max(0, Number(pet.constitutionPoints || 0)),
+      strength: Math.max(0, Number(pet.strengthPoints || 0)),
+      spirit: Math.max(0, Number(pet.spiritPoints || 0)),
+      endurance: Math.max(0, Number(pet.endurancePoints || 0)),
+      speed: Math.max(0, Number(pet.speedStatPoints || 0)),
+      totalEarned: Math.max(0, (Math.max(1, Number(pet.level || 1)) - 1) * 5),
+      freeResetAvailable: String(pet.freeStatResetWeek || '') !== this.weekKey(),
+    };
+  }
+
+  getStatBreakdown(pet: Pet) {
+    const finalAttributes = this.calculateFinalAttributes(pet);
+    const points = this.getStatPointView(pet);
+    return {
+      final: finalAttributes,
+      freePoints: {
+        hp: Math.round(points.constitution * 3),
+        attack: Math.round(points.strength * 0.35 * 100) / 100,
+        magic: Math.round(points.spirit * 0.35 * 100) / 100,
+        defense: Math.round(points.endurance * 0.25 * 100) / 100,
+        magicDefense: Math.round(points.endurance * 0.25 * 100) / 100,
+        speed: Math.round(points.speed * 0.15 * 100) / 100,
+      },
+      aptitudeGrowth: {
+        hpAptitude: Number(pet.hpAptitude || 0),
+        attackAptitude: Number(pet.attackAptitude || 0),
+        defenseAptitude: Number(pet.defenseAptitude || 0),
+        magicAptitude: Number(pet.magicAptitude || 0),
+        speedAptitude: Number(pet.speedAptitude || 0),
+        growth: Number(pet.growth || 1),
+      },
     };
   }
 
@@ -343,6 +352,14 @@ export class PetService {
       level: 1,
       exp: 0,
       nextExp: 100,
+      unspentStatPoints: 0,
+      constitutionPoints: 0,
+      strengthPoints: 0,
+      spiritPoints: 0,
+      endurancePoints: 0,
+      speedStatPoints: 0,
+      freeStatResetWeek: '',
+      statPointsVersion: '10.0.0',
       hp: stats.hp,
       attack: stats.attack,
       defense: stats.defense,
@@ -517,6 +534,14 @@ export class PetService {
       level: 1,
       exp: 0,
       nextExp: 100,
+      unspentStatPoints: 0,
+      constitutionPoints: 0,
+      strengthPoints: 0,
+      spiritPoints: 0,
+      endurancePoints: 0,
+      speedStatPoints: 0,
+      freeStatResetWeek: '',
+      statPointsVersion: '10.0.0',
       hp: stats.hp,
       attack: stats.attack,
       defense: stats.defense,
@@ -866,6 +891,8 @@ export class PetService {
     while (pet.exp >= pet.nextExp) {
       pet.exp -= pet.nextExp;
       pet.level = Number(pet.level || 1) + 1;
+      pet.unspentStatPoints = Number(pet.unspentStatPoints || 0) + 5;
+      pet.statPointsVersion = '10.0.0';
       pet.hp = Math.round(Number(pet.hp || 100) * 1.06);
       pet.attack = Math.round(
         Number(pet.attack || 20) * 1.04,
@@ -884,6 +911,120 @@ export class PetService {
     }
 
     return this.petRepository.save(pet);
+  }
+
+  async allocateStatPoints(
+    userId: number,
+    petId: number,
+    rawPoints: Record<string, any>,
+  ) {
+    const pet = await this.petRepository.findOne({ where: { id: petId, ownerId: userId, isEgg: false } });
+    if (!pet) return { success: false, message: 'Pet not found' };
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return { success: false, message: 'Listed pet cannot change stat points' };
+    }
+    await this.ensureBetaFields(pet);
+    const points = {
+      constitution: Math.max(0, Math.floor(Number(rawPoints?.constitution || 0))),
+      strength: Math.max(0, Math.floor(Number(rawPoints?.strength || 0))),
+      spirit: Math.max(0, Math.floor(Number(rawPoints?.spirit || 0))),
+      endurance: Math.max(0, Math.floor(Number(rawPoints?.endurance || 0))),
+      speed: Math.max(0, Math.floor(Number(rawPoints?.speed || 0))),
+    };
+    const total = Object.values(points).reduce((sum, value) => sum + value, 0);
+    if (total <= 0) return { success: false, message: 'Allocate at least 1 stat point' };
+    if (total > Number(pet.unspentStatPoints || 0)) {
+      return { success: false, message: 'Not enough unspent stat points', statPoints: this.getStatPointView(pet) };
+    }
+    pet.constitutionPoints = Number(pet.constitutionPoints || 0) + points.constitution;
+    pet.strengthPoints = Number(pet.strengthPoints || 0) + points.strength;
+    pet.spiritPoints = Number(pet.spiritPoints || 0) + points.spirit;
+    pet.endurancePoints = Number(pet.endurancePoints || 0) + points.endurance;
+    pet.speedStatPoints = Number(pet.speedStatPoints || 0) + points.speed;
+    pet.unspentStatPoints = Number(pet.unspentStatPoints || 0) - total;
+    pet.statPointsVersion = '10.0.0';
+    const saved = await this.petRepository.save(pet);
+    return {
+      success: true,
+      message: `Allocated ${total} stat points`,
+      pet: saved,
+      statPoints: this.getStatPointView(saved),
+      finalAttributes: this.calculateFinalAttributes(saved),
+      statBreakdown: this.getStatBreakdown(saved),
+    };
+  }
+
+  async applyRecommendedStatPoints(userId: number, petId: number, template = 'auto') {
+    const pet = await this.petRepository.findOne({ where: { id: petId, ownerId: userId, isEgg: false } });
+    if (!pet) return { success: false, message: 'Pet not found' };
+    await this.ensureBetaFields(pet);
+    const available = Number(pet.unspentStatPoints || 0);
+    if (available <= 0) return { success: false, message: 'No unspent stat points' };
+    const species = findPetSpeciesConfig(pet.speciesCode || pet.species);
+    const role = template === 'auto'
+      ? (species.roleTags?.[0] || 'physical')
+      : String(template || 'physical');
+    const weights: Record<string, Record<string, number>> = {
+      tank: { constitution: 0.45, endurance: 0.40, speed: 0.15 },
+      healer: { spirit: 0.50, constitution: 0.30, speed: 0.20 },
+      support: { spirit: 0.35, endurance: 0.30, speed: 0.35 },
+      magic: { spirit: 0.55, speed: 0.25, constitution: 0.20 },
+      magic_burst: { spirit: 0.55, speed: 0.25, constitution: 0.20 },
+      speed: { speed: 0.45, strength: 0.35, constitution: 0.20 },
+      assassin: { strength: 0.50, speed: 0.35, constitution: 0.15 },
+      physical: { strength: 0.55, speed: 0.25, constitution: 0.20 },
+      physical_burst: { strength: 0.55, speed: 0.25, constitution: 0.20 },
+    };
+    const selected = weights[role] || weights.physical;
+    const result: Record<string, number> = { constitution: 0, strength: 0, spirit: 0, endurance: 0, speed: 0 };
+    let assigned = 0;
+    for (const [key, weight] of Object.entries(selected)) {
+      const value = Math.floor(available * weight);
+      result[key] += value;
+      assigned += value;
+    }
+    const primary = Object.keys(selected)[0] || 'constitution';
+    result[primary] += available - assigned;
+    return this.allocateStatPoints(userId, petId, result);
+  }
+
+  async resetStatPoints(userId: number, petId: number) {
+    const pet = await this.petRepository.findOne({ where: { id: petId, ownerId: userId, isEgg: false } });
+    if (!pet) return { success: false, message: 'Pet not found' };
+    if (pet.tradeStatus === 'listed' || pet.tradeListingId) {
+      return { success: false, message: 'Listed pet cannot reset stat points' };
+    }
+    await this.ensureBetaFields(pet);
+    const week = this.weekKey();
+    const free = String(pet.freeStatResetWeek || '') !== week;
+    if (!free) {
+      try {
+        await this.economyService.transaction(async (manager) => {
+          await this.economyService.spend(manager, userId, { gold: 5000 });
+        });
+      } catch (error: any) {
+        return { success: false, message: String(error?.message || 'Reset failed') };
+      }
+    }
+    const refunded = Number(pet.constitutionPoints || 0) + Number(pet.strengthPoints || 0) +
+      Number(pet.spiritPoints || 0) + Number(pet.endurancePoints || 0) + Number(pet.speedStatPoints || 0);
+    pet.constitutionPoints = 0;
+    pet.strengthPoints = 0;
+    pet.spiritPoints = 0;
+    pet.endurancePoints = 0;
+    pet.speedStatPoints = 0;
+    pet.unspentStatPoints = Number(pet.unspentStatPoints || 0) + refunded;
+    pet.freeStatResetWeek = week;
+    const saved = await this.petRepository.save(pet);
+    return {
+      success: true,
+      message: free ? 'Weekly free stat reset used' : 'Stat points reset for 5000 gold',
+      free,
+      refunded,
+      pet: saved,
+      statPoints: this.getStatPointView(saved),
+      finalAttributes: this.calculateFinalAttributes(saved),
+    };
   }
 
   async updatePetStatus(pet: Pet) {
@@ -1174,6 +1315,28 @@ export class PetService {
         100,
         Number(pet.level || 1) * 100,
       );
+      changed = true;
+    }
+
+    const allocatedPoints = Math.max(0, Number(pet.constitutionPoints || 0)) +
+      Math.max(0, Number(pet.strengthPoints || 0)) +
+      Math.max(0, Number(pet.spiritPoints || 0)) +
+      Math.max(0, Number(pet.endurancePoints || 0)) +
+      Math.max(0, Number(pet.speedStatPoints || 0));
+    const earnedPoints = Math.max(0, (Math.max(1, Number(pet.level || 1)) - 1) * 5);
+    const expectedUnspent = Math.max(0, earnedPoints - allocatedPoints);
+    if (!pet.statPointsVersion || pet.statPointsVersion !== '10.0.0') {
+      pet.unspentStatPoints = expectedUnspent;
+      pet.constitutionPoints = Math.max(0, Number(pet.constitutionPoints || 0));
+      pet.strengthPoints = Math.max(0, Number(pet.strengthPoints || 0));
+      pet.spiritPoints = Math.max(0, Number(pet.spiritPoints || 0));
+      pet.endurancePoints = Math.max(0, Number(pet.endurancePoints || 0));
+      pet.speedStatPoints = Math.max(0, Number(pet.speedStatPoints || 0));
+      pet.freeStatResetWeek = String(pet.freeStatResetWeek || '');
+      pet.statPointsVersion = '10.0.0';
+      changed = true;
+    } else if (Number(pet.unspentStatPoints || 0) < expectedUnspent) {
+      pet.unspentStatPoints = expectedUnspent;
       changed = true;
     }
 
@@ -1546,6 +1709,15 @@ export class PetService {
       0,
       Math.min(1, (Number(value) - min) / (max - min)),
     );
+  }
+
+  private weekKey(date = new Date()) {
+    const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = copy.getUTCDay() || 7;
+    copy.setUTCDate(copy.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((copy.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return `${copy.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
   }
 
   private randomRarity() {

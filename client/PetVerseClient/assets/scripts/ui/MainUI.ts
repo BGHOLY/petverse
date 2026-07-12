@@ -9,7 +9,9 @@ import {
     ScrollView,
     UIOpacity,
     UITransform,
+    Vec2,
     Vec3,
+    profiler,
     tween,
 } from 'cc';
 import { EDITOR } from 'cc/env';
@@ -41,6 +43,10 @@ import { createPetArtSprite } from './pet/PetArtView';
 import { showBattlePlayback } from './advanced/BattlePlayback';
 import { loadHomePetId, loadPetFilter, saveHomePetId, savePetFilter } from './advanced/PetExperienceState';
 import { showPetReveal } from './advanced/RevealOverlay';
+import AudioDirector from './v10/AudioDirector';
+import { showFivePetBattle } from './v10/BattleSceneV10';
+import { getEggArtPath, getEggDisplayName, getEggMeta, RARITY_NAMES as EGG_RARITY_NAMES } from './v10/EggArtRegistry';
+import { renderFormationPanel, renderGuildPanel } from './v10/V10Panels';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -61,7 +67,9 @@ type PageName =
     | 'trade'
     | 'profile'
     | 'settings'
-    | 'benefits';
+    | 'benefits'
+    | 'formation'
+    | 'guild';
 
 type AptitudeView = {
     hp: number;
@@ -110,13 +118,30 @@ export class MainUI extends Component {
     private battleTitle = '';
     private eggSyncRunning = false;
     private hatchAcceleratorOpen = false;
+    private hatchAcceleratorEggId = 0;
+    private homePetPickerOpen = false;
+    private pendingHomePetId = 0;
+    private fusionPickerSide: 'A' | 'B' | null = null;
+    private pendingIncubation: { egg: any; slot: number } | null = null;
+    private fusionConfirmOpen = false;
+    private hatchDeviceNodes = new Map<number, Node>();
+    private formationSlotNodes = new Map<number, Node>();
+    private formationCandidateNodes = new Map<number, Node>();
     private homePetId = loadHomePetId();
     private inventoryTargetPetId = 0;
     private petFilter = loadPetFilter();
-    private petCompareMode = false;
-    private petCompareIds: number[] = [];
     private pageHistory: PageName[] = [];
     private lastBattleMode: 'tower' | 'pve' | 'friend' = 'tower';
+    private formationOverview: any = null;
+    private guildOverview: any = null;
+    private selectedFormationCode = 'dragon';
+    private teamSlotAssignments: any[] = [];
+    private petDetailTab: 'attributes' | 'aptitudes' | 'skills' | 'stats' | 'lineage' = 'attributes';
+    private petSelectorOffset = 0;
+    private petSelectorScrollToken = 0;
+    private teamEditSnapshot: { petIds: number[]; slots: number[]; formationCode: string } | null = null;
+    private teamDragPetId = 0;
+    private teamDragSourceSlot = -1;
 
     private friendMode: 'friends' | 'requests' | 'discover' = 'friends';
     private incomingFriendRequests: any[] = [];
@@ -167,6 +192,7 @@ export class MainUI extends Component {
 
     onLoad() {
         MainUI.instance = this;
+        try { profiler.hideStats(); } catch {}
         ApiClient.setBaseUrl(this.apiBaseUrl);
         ToastManager.bind(this.showToast);
 
@@ -176,7 +202,13 @@ export class MainUI extends Component {
         if (EDITOR && !GameStore.pets.length) GameStore.seedPreview();
 
         this.buildShell();
-        if (this.root) CuteFeedback.initialize(this.root);
+        if (this.root) {
+            CuteFeedback.initialize(this.root);
+            AudioDirector.initialize(this.root);
+            this.root.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
+            this.root.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
+            void AudioDirector.playBgm('home');
+        }
         this.refreshAllVisuals();
     }
 
@@ -188,6 +220,7 @@ export class MainUI extends Component {
         if (MainUI.instance === this) MainUI.instance = null;
         this.unsubscribeStore?.();
         this.unsubscribeStore = null;
+        this.root?.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
         ToastManager.unbind(this.showToast);
     }
 
@@ -229,6 +262,8 @@ export class MainUI extends Component {
     public showProfile() { this.showPage('profile'); }
     public showSettings() { this.showPage('settings'); }
     public showBenefits() { this.showPage('benefits'); }
+    public showFormation() { this.showPage('formation'); }
+    public showGuild() { this.showPage('guild'); }
 
     public showPage(page: PageName) {
         const changed = this.currentPage !== page;
@@ -240,7 +275,13 @@ export class MainUI extends Component {
         this.drawerOpen = false;
         this.detailSkill = null;
         this.hatchAcceleratorOpen = false;
+        this.hatchAcceleratorEggId = 0;
+        this.homePetPickerOpen = false;
+        this.fusionPickerSide = null;
+        this.pendingIncubation = null;
+        this.fusionConfirmOpen = false;
         if (changed) CuteFeedback.playPage();
+        if (page !== 'adventure') void AudioDirector.playBgm('home');
         this.renderCurrentPage(true);
         this.renderTopBar();
         this.renderBottomNav();
@@ -505,6 +546,19 @@ export class MainUI extends Component {
                     this.ensureSelectedFriend();
                     break;
                 }
+                case 'formation': {
+                    const [formation, team] = await Promise.all([
+                        ApiClient.get('/formation'),
+                        ApiClient.get('/team'),
+                    ]);
+                    this.formationOverview = formation?.data || formation || this.formationOverview;
+                    this.applyTeamResult(team);
+                    break;
+                }
+                case 'guild': {
+                    this.guildOverview = (await ApiClient.get('/guild/my')) || this.guildOverview;
+                    break;
+                }
                 case 'ranking': {
                     const [ranking, season] = await Promise.all([
                         ApiClient.get(`/ranking/${this.rankingMode}`),
@@ -630,12 +684,13 @@ export class MainUI extends Component {
         text(this.topBar, 'Paw', '🐾', -135, -18, 34, 28, 18, CuteTheme.mintDark, 'center', true);
 
         const secondary = !['home', 'pet', 'inventory', 'adventure', 'more'].includes(this.currentPage);
-        if (secondary) {
+        const showBack = secondary && this.currentPage !== 'profile';
+        if (showBack) {
             button(this.topBar, 'BackPage', '', -92, 3, 48, 48, () => this.goBackPage(), {
                 icon: '‹', fill: CuteTheme.paperWarm, fontSize: 18, radius: 21,
             });
         }
-        cloudSign(this.topBar, 'SceneTitle', this.titleForPage(this.currentPage), secondary ? 25 : 5, 3, secondary ? 150 : 190, 66);
+        cloudSign(this.topBar, 'SceneTitle', this.titleForPage(this.currentPage), showBack ? 25 : 5, 3, showBack ? 150 : 190, 66);
 
         capsule(
             this.topBar,
@@ -767,6 +822,12 @@ export class MainUI extends Component {
             case 'settings':
                 this.renderSettings();
                 break;
+            case 'formation':
+                this.renderFormation();
+                break;
+            case 'guild':
+                this.renderGuild();
+                break;
             default:
                 this.renderSecondaryPage(this.currentPage);
                 break;
@@ -783,67 +844,37 @@ export class MainUI extends Component {
         const scene = panel(root, 'HomeScene', 0, 8, 692, 920, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
         image(scene, 'RoomArt', 'pet-art/home_empty_room', 72, 28, 526, 824, CuteTheme.mint);
 
-        // The home pet is a transparent sprite, not a square image card. Its soft
-        // outline is baked into the PNG and the node runs a subtle idle breath.
         const speciesMeta = getPetSpeciesMeta(pet);
-        const homePet = createPetArtSprite(scene, 'HomePetArt', getPetArtPath(pet, 'home'), 72, -8, 390, 390);
+        const homePet = createPetArtSprite(scene, 'HomePetArt', getPetArtPath(pet, 'home'), 72, -42, 430, 430);
         homePet.setScale(new Vec3(0.985, 0.985, 1));
-        homePet.on(Node.EventType.TOUCH_END, () => this.showPage('pet'));
+        homePet.on(Node.EventType.TOUCH_END, () => this.openHomePetPicker());
         tween(homePet)
             .repeatForever(
                 tween(homePet)
-                    .to(1.8, { position: new Vec3(72, 3, 0), scale: new Vec3(1.015, 1.025, 1) }, { easing: 'sineInOut' })
-                    .to(1.8, { position: new Vec3(72, -8, 0), scale: new Vec3(0.985, 0.985, 1) }, { easing: 'sineInOut' }),
+                    .to(1.8, { position: new Vec3(72, -29, 0), scale: new Vec3(1.015, 1.025, 1) }, { easing: 'sineInOut' })
+                    .to(1.8, { position: new Vec3(72, -42, 0), scale: new Vec3(0.985, 0.985, 1) }, { easing: 'sineInOut' }),
             )
             .start();
-        tag(scene, 'SpeciesTag', `${speciesMeta.element} · ${speciesMeta.name}`, 72, 264, 176, pet?.isMutant ? CuteTheme.peach : CuteTheme.mint);
-        if (pet?.isMutant) tag(scene, 'MutationTag', '✨ 变异', 214, 220, 94, CuteTheme.peach);
+        tag(scene, 'SpeciesTag', `${speciesMeta.element} · ${speciesMeta.name}`, 72, 270, 190, pet?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        if (pet?.isMutant) tag(scene, 'MutationTag', '✨ 变异', 220, 226, 98, CuteTheme.peach);
 
         headingTag(scene, 'PromoTitle', '限时福利', -274, 365, 118, CuteTheme.paperWarm);
         button(scene, 'ValueMall', '超值商城', -274, 276, 122, 112, () => this.showPage('shop'), {
-            icon: '🎁',
-            fill: CuteTheme.peach,
-            fontSize: 15,
-            radius: 26,
-            subtitle: '每日特惠',
+            icon: '🎁', fill: CuteTheme.peach, fontSize: 16, radius: 26, subtitle: '每日特惠',
         });
         button(scene, 'MonthCard', '月卡', -274, 142, 122, 112, () => { this.benefitMode = 'month'; this.showPage('benefits'); }, {
-            icon: '🌙',
-            fill: CuteTheme.lilac,
-            fontSize: 16,
-            radius: 26,
-            subtitle: '每日钻石',
+            icon: '🌙', fill: CuteTheme.lilac, fontSize: 17, radius: 26, subtitle: '每日钻石',
         });
         button(scene, 'BattlePass', '战令', -274, 8, 122, 112, () => { this.benefitMode = 'pass'; this.showPage('benefits'); }, {
-            icon: '🏅',
-            fill: CuteTheme.honey,
-            fontSize: 16,
-            radius: 26,
-            subtitle: '赛季奖励',
+            icon: '🏅', fill: CuteTheme.honey, fontSize: 17, radius: 26, subtitle: '赛季奖励',
         });
         const welfareButton = button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => { this.benefitMode = 'sign'; this.showPage('benefits'); }, {
-            icon: '🎀',
-            fill: CuteTheme.mint,
-            fontSize: 16,
-            radius: 26,
-            subtitle: '签到活动',
+            icon: '🎀', fill: CuteTheme.mint, fontSize: 17, radius: 26, subtitle: '签到活动',
         });
         this.addNotificationBadge(welfareButton, this.pageNotificationCount('benefits'), 43, 42);
 
-        const namePlate = panel(scene, 'NamePlate', 72, -356, 480, 96, new Color(255, 252, 239, 242), 28, true, CuteTheme.white, 3);
-        text(namePlate, 'Name', safeName(pet?.nickname, '暂无宝宝'), -214, 18, 220, 36, 25, CuteTheme.caramel, 'left', true);
-        text(namePlate, 'Meta', `Lv.${Number(pet?.level || 1)}　${safeName(pet?.species, getPetSpeciesMeta(pet).name)}　${this.rarityName(pet)}`, -214, -20, 280, 30, 15, CuteTheme.muted, 'left', true);
-        button(namePlate, 'ChangeHomePet', '更换心仪', 76, 0, 112, 52, () => this.cycleHomePet(), {
-            icon: '♥', fill: CuteTheme.peach, fontSize: 13, radius: 22,
-        });
-        button(namePlate, 'PetDetail', '查看宝宝', 190, 0, 104, 52, () => {
-            if (pet?.id) GameStore.selectPet(Number(pet.id));
-            this.showPage('pet');
-        }, {
-            icon: '🐾', fill: CuteTheme.honey, fontSize: 13, radius: 22,
-        });
-
-        text(scene, 'HomeHint', '点击宝宝进入详情，培养、打书与炼妖均在宝宝功能中完成。', 72, -421, 500, 30, 14, CuteTheme.muted, 'center', false);
+        // Home intentionally keeps the pet stage clean. Tapping the pet opens a precise picker.
+        tag(scene, 'TapHint', '轻点宝宝更换心仪', 72, -386, 210, CuteTheme.paperWarm);
     }
 
     private createScrollArea(
@@ -862,7 +893,7 @@ export class MainUI extends Component {
         setRect(view, x, y, width, height);
 
         const mask = view.addComponent(Mask);
-        mask.type = Mask.Type.RECT;
+        mask.type = Mask.Type.GRAPHICS_RECT;
 
         const content = new Node(`${name}_Content`);
         view.addChild(content);
@@ -896,6 +927,33 @@ export class MainUI extends Component {
         text(parent, name, value, x, y, width, 24, 12, CuteTheme.muted, 'center', true);
     }
 
+    private capturePetSelectorOffset(scroll: ScrollView) {
+        if (!scroll?.isValid || !scroll.content?.isValid) return;
+        try {
+            const offset = scroll.getScrollOffset();
+            if (Number.isFinite(offset?.x)) this.petSelectorOffset = Math.max(0, Number(offset.x));
+        } catch {}
+    }
+
+    private restorePetSelectorOffset(
+        selector: { view: Node; content: Node; scroll: ScrollView },
+        targetOffset: number,
+    ) {
+        const token = ++this.petSelectorScrollToken;
+        this.petSelectorOffset = targetOffset;
+        this.scheduleOnce(() => {
+            if (token !== this.petSelectorScrollToken) return;
+            const { view, content, scroll } = selector;
+            if (!view?.isValid || !content?.isValid || !scroll?.isValid || scroll.content !== content) return;
+            try {
+                scroll.stopAutoScroll();
+                scroll.scrollToOffset(new Vec2(targetOffset, 0), 0);
+            } catch (error) {
+                console.warn('[CuteMainUI] skipped stale pet selector scroll', error);
+            }
+        }, 0);
+    }
+
     private renderPetDetail() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
@@ -904,103 +962,120 @@ export class MainUI extends Component {
         const pets = this.filteredPetList();
         const selected = GameStore.currentPet || allPets[0] || {};
 
-        const selectorStep = 178;
-        const selectorWidth = Math.max(680, pets.length * selectorStep + 24);
-        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 400, 680, 132, selectorWidth, 132, 'horizontal');
+        const selectorStep = 164;
+        const selectorWidth = Math.max(680, pets.length * selectorStep + 18);
+        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 418, 680, 116, selectorWidth, 116, 'horizontal');
         pets.forEach((item, index) => {
             const id = Number(item?.id || 0);
-            const compareSelected = this.petCompareIds.includes(id);
-            const card = button(
-                selector.content,
-                `PetTab_${id || index}`,
-                safeName(item?.nickname, `宝宝${index + 1}`),
-                88 + index * selectorStep,
-                0,
-                168,
-                112,
-                () => {
-                    if (this.petCompareMode) this.togglePetCompare(id);
-                    else {
-                        GameStore.selectPet(id);
-                        this.renderCurrentPage(false);
-                    }
-                },
-                {
-                    iconPath: getPetArtPath(item, 'thumb'),
-                    iconSize: 66,
-                    selected: this.petCompareMode ? compareSelected : id === Number(GameStore.currentPetId),
-                    fill: compareSelected ? CuteTheme.lilac : id === Number(GameStore.currentPetId) ? CuteTheme.honey : CuteTheme.paperWarm,
-                    fontSize: 15,
-                    radius: 24,
-                    subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)}`,
-                },
-            );
+            const card = button(selector.content, `PetTab_${id || index}`, safeName(item?.nickname, `宝宝${index + 1}`), 80 + index * selectorStep, 0, 154, 102, () => {
+                this.capturePetSelectorOffset(selector.scroll);
+                GameStore.selectPet(id);
+                this.petDetailTab = 'attributes';
+                this.renderCurrentPage(false);
+            }, {
+                iconPath: getPetArtPath(item, 'thumb'), iconSize: 62,
+                selected: id === Number(GameStore.currentPetId),
+                fill: id === Number(GameStore.currentPetId) ? CuteTheme.honey : CuteTheme.paperWarm,
+                fontSize: 14, radius: 22,
+                subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)} · ${formatNumber(this.battleAttributesOf(item).power)}`,
+            });
             const teamIndex = this.teamPetIds.indexOf(id);
-            if (teamIndex >= 0) tag(card, 'TeamBadge', `⚔${teamIndex + 1}`, 55, 42, 52, CuteTheme.mint);
-            if (id === this.homePetId) tag(card, 'HomeBadge', '♥心仪', -42, 42, 68, CuteTheme.peach);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `出战${teamIndex + 1}`, 46, 38, 60, CuteTheme.mint);
+            if (item?.isLocked) tag(card, 'LockBadge', '锁定', -48, 38, 54, CuteTheme.paperWarm);
+            if (item?.isMutant) tag(card, 'MutantBadge', '变异', 48, -38, 54, CuteTheme.peach);
         });
-        if (!pets.length) text(selector.content, 'NoPets', '当前筛选下没有宝宝', 330, 0, 420, 60, 20, CuteTheme.muted, 'center', true);
+        const selectedIndex = Math.max(0, pets.findIndex((pet) => Number(pet?.id) === Number(selected?.id)));
+        const maxOffset = Math.max(0, selectorWidth - 680);
+        const selectedLeft = selectedIndex * selectorStep;
+        const selectedRight = selectedLeft + 154;
+        let targetOffset = Math.max(0, Math.min(maxOffset, this.petSelectorOffset));
+        if (selectedLeft < targetOffset) targetOffset = selectedLeft;
+        else if (selectedRight > targetOffset + 680) targetOffset = selectedRight - 680;
+        this.restorePetSelectorOffset(selector, Math.max(0, Math.min(maxOffset, targetOffset)));
 
-        const toolbar = panel(root, 'PetToolbar', 0, 318, 680, 56, new Color(255, 252, 239, 250), 22, false, CuteTheme.caramelSoft, 2);
-        button(toolbar, 'RarityFilter', this.petFilter.rarity ? `稀有度:${this.rarityName({ rarity: this.petFilter.rarity })}` : '稀有度:全部', -230, 0, 150, 42, () => this.cyclePetRarityFilter(), { icon: '◆', fill: CuteTheme.paperWarm, fontSize: 12, radius: 18 });
-        button(toolbar, 'ElementFilter', `属性:${this.petFilter.element === 'all' ? '全部' : this.petFilter.element}`, -66, 0, 146, 42, () => this.cyclePetElementFilter(), { icon: '✦', fill: CuteTheme.mint, fontSize: 12, radius: 18 });
-        button(toolbar, 'Sort', `排序:${this.petSortLabel()}`, 92, 0, 142, 42, () => this.cyclePetSort(), { icon: '⇅', fill: CuteTheme.sky, fontSize: 12, radius: 18 });
-        button(toolbar, 'Compare', this.petCompareMode ? `对比 ${this.petCompareIds.length}/2` : '宝宝对比', 244, 0, 130, 42, () => {
-            this.petCompareMode = !this.petCompareMode;
-            if (!this.petCompareMode) this.petCompareIds = [];
-            this.renderCurrentPage(false);
-        }, { icon: '≍', fill: this.petCompareMode ? CuteTheme.honey : CuteTheme.lilac, fontSize: 12, radius: 18, selected: this.petCompareMode });
+        const book = panel(root, 'PetResearchBook', 0, -42, 692, 808, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
+        const profile = panel(book, 'Profile', -214, 72, 244, 620, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
+        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 176, 216, 226, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        button(profile, 'Lock', selected?.isLocked ? '' : '', 88, 252, 48, 48, () => void this.togglePetLock(selected), {
+            icon: selected?.isLocked ? '🔒' : '🔓', fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
+            fontSize: 17, radius: 22,
+        });
+        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 44, 214, 38, 24, CuteTheme.caramel, 'center', true);
+        text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 9, 214, 28, 15, CuteTheme.muted, 'center', true);
+        tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -42 : 0, -30, 108, CuteTheme.lilac);
+        if (selected?.isMutant) tag(profile, 'Mutant', '✨变异', 62, -30, 90, CuteTheme.peach);
+        const attrs = this.battleAttributesOf(selected);
+        text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -72, 205, 38, 20, CuteTheme.honeyDark, 'center', true);
+        const role = (selected?.speciesConfig?.roleTags || [getPetSpeciesMeta(selected).role || '综合']).slice(0, 2).map((value:any)=>this.petRoleLabel(value)).join(' / ');
+        const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
+        const identity = panel(profile, 'Identity', 0, -150, 210, 106, new Color(250, 244, 226, 255), 20, false, CuteTheme.white, 1);
+        text(identity, 'Role', `◆ 定位：${role}`, -94, 30, 188, 26, 14, CuteTheme.caramel, 'left', true);
+        text(identity, 'Marriage', `♥ 婚姻：${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'}　蛋 ${Number(selected?.breedCount || 0)}`, -94, 0, 188, 26, 14, CuteTheme.caramel, 'left', true);
+        text(identity, 'Team', `⚔ 出战：${teamIndex >= 0 ? `${teamIndex + 1}号位 · ${this.formationName(this.selectedFormationCode)}` : '未出战'}`, -94, -30, 188, 26, 14, CuteTheme.caramel, 'left', true);
+        button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -232, 184, 48, () => this.setHomePet(Number(selected?.id || 0)), {
+            icon: '♥', fill: CuteTheme.peach, fontSize: 14, radius: 20,
+        });
+        text(profile, 'LockHint', selected?.isLocked ? '已锁定：禁止交易、炼妖、打书和婚姻' : '未锁定：危险操作前请先确认', 0, -276, 204, 46, 12, selected?.isLocked ? CuteTheme.peachDark : CuteTheme.muted, 'center', false);
 
-        if (this.petCompareIds.length === 2) {
-            const petA = allPets.find((item) => Number(item?.id) === this.petCompareIds[0]);
-            const petB = allPets.find((item) => Number(item?.id) === this.petCompareIds[1]);
-            if (petA && petB) {
-                this.renderPetComparison(root, petA, petB);
-                return;
-            }
+        const data = panel(book, 'ResearchData', 116, 72, 420, 620, new Color(249, 252, 240, 255), 28, false, CuteTheme.mintDark, 2);
+        const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['aptitudes','资质'],['skills','技能'],['stats','加点'],['lineage','血脉']];
+        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -164 + index * 82, 274, 76, 42, () => {
+            this.petDetailTab = key; this.renderCurrentPage(false);
+        }, { selected: this.petDetailTab === key, fill: this.petDetailTab === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 18 }));
+
+        if (this.petDetailTab === 'attributes') {
+            text(data, 'Explain', '核心战斗属性', -180, 226, 360, 34, 19, CuteTheme.caramel, 'left', true);
+            const survival = panel(data, 'Survival', 0, 137, 384, 120, new Color(255, 250, 232, 255), 22, false, CuteTheme.white, 1);
+            headingTag(survival, 'Title', '生存', -137, 38, 90, CuteTheme.mint);
+            this.battleStat(survival, 'Hp', '❤', '生命', attrs.hp, -88, -10);
+            this.battleStat(survival, 'Def', '◆', '防御', attrs.defense, 88, -10);
+            const output = panel(data, 'Output', 0, -4, 384, 120, new Color(255, 245, 238, 255), 22, false, CuteTheme.white, 1);
+            headingTag(output, 'Title', '输出', -137, 38, 90, CuteTheme.peach);
+            this.battleStat(output, 'Atk', '⚔', '物攻', attrs.attack, -88, -10);
+            this.battleStat(output, 'Magic', '✦', '法攻', attrs.magic, 88, -10);
+            const develop = panel(data, 'Develop', 0, -174, 384, 184, new Color(242, 249, 238, 255), 22, false, CuteTheme.white, 1);
+            headingTag(develop, 'Title', '速度与培养', -118, 70, 140, CuteTheme.sky);
+            this.battleStat(develop, 'Speed', '➤', '速度', attrs.speed, -88, 20);
+            this.battleStat(develop, 'Growth', '🌱', '成长', this.growthValue(selected).toFixed(3), 88, 20);
+            this.battleStat(develop, 'Quality', '◇', '品质', Number(selected?.quality || 100), -88, -52);
+            this.battleStat(develop, 'Skills', '📕', '技能数', Array.isArray(selected?.skills) ? selected.skills.length : 0, 88, -52);
+        } else if (this.petDetailTab === 'aptitudes') {
+            const apt=this.aptitudesOf(selected);
+            text(data,'Explain','资质决定升级后转化出的实际属性',0,226,380,34,16,CuteTheme.muted,'center',true);
+            ([['体力资质',apt.hp,'❤'],['攻击资质',apt.attack,'⚔'],['防御资质',apt.defense,'◆'],['法力资质',apt.magic,'✦'],['速度资质',apt.speed,'➤']] as Array<[string,number,string]>).forEach(([name,value,icon],index)=>this.aptitudeRow(data,`Apt_${index}`,icon,name,value,154-index*75));
+            text(data,'Growth',`成长 ${this.growthValue(selected).toFixed(3)}　品质 ${Number(selected?.quality || 100)}`,0,-228,360,36,18,CuteTheme.caramel,'center',true);
+        } else if (this.petDetailTab === 'skills') {
+            text(data,'Explain','技能效果、触发条件和目标优先展示',0,226,380,36,15,CuteTheme.muted,'center',true);
+            const skills=Array.isArray(selected?.skills)?selected.skills:[];
+            const area=this.createScrollArea(data,'SkillResearchScroll',0,-3,392,390,392,Math.max(390,skills.length*88+8),'vertical');
+            skills.forEach((skill:any,index:number)=>button(area.content,`Skill_${index}`,this.skillName(skill),0,-40-index*88,364,76,()=>this.showSkillDetail(skill),{
+                iconPath:this.skillIconPath(skill),iconSize:54,fill:this.skillColor(skill),textColor:this.skillTier(skill)==='low'?CuteTheme.caramel:CuteTheme.white,fontSize:16,radius:22,
+                subtitle:`${this.skillTierLabel(skill)} · ${safeName(skill?.description,'点击查看完整效果').slice(0,30)}`,
+            }));
+            button(data,'Learn','前往打书',-100,-242,176,48,()=>this.showPage('skills'),{icon:'📕',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+            button(data,'Fusion','前往炼妖',100,-242,176,48,()=>this.showPage('fusion'),{icon:'🔮',fill:CuteTheme.lilac,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+        } else if (this.petDetailTab === 'stats') {
+            const points=selected?.statPoints || { unspent:Number(selected?.unspentStatPoints||0), constitution:Number(selected?.constitutionPoints||0), strength:Number(selected?.strengthPoints||0), spirit:Number(selected?.spiritPoints||0), endurance:Number(selected?.endurancePoints||0), speed:Number(selected?.speedStatPoints||0) };
+            text(data,'Available',`可分配属性点：${Number(points.unspent||0)}（每升1级获得5点）`,0,222,390,36,18,CuteTheme.honeyDark,'center',true);
+            const stats:Array<[string,string,string,string]>= [['体质','constitution','生命 +3/点','❤'],['力量','strength','物攻 +0.35/点','⚔'],['灵力','spirit','法攻 +0.35/点，提升治疗','✦'],['耐力','endurance','双防 +0.25/点','◆'],['敏捷','speed','速度 +0.15/点','➤']];
+            stats.forEach(([name,key,desc,icon],index)=>{
+                const y=158-index*70; text(data,`S_${key}`,`${icon} ${name}　${Number(points[key]||0)}`,-188,y,155,30,17,CuteTheme.caramel,'left',true); text(data,`D_${key}`,desc,-35,y,190,28,13,CuteTheme.muted,'left',true);
+                button(data,`P1_${key}`,'+1',116,y,58,38,()=>void this.allocatePetStats({[key]:1}),{fill:CuteTheme.mint,fontSize:13,radius:16,disabled:Number(points.unspent||0)<1});
+                button(data,`P5_${key}`,'+5',178,y,58,38,()=>void this.allocatePetStats({[key]:5}),{fill:CuteTheme.honey,fontSize:13,radius:16,disabled:Number(points.unspent||0)<5});
+            });
+            button(data,'Recommend','一键推荐',-100,-222,176,48,()=>void this.recommendPetStats(),{icon:'✨',fill:CuteTheme.sky,fontSize:15,radius:21,disabled:Number(points.unspent||0)<=0});
+            button(data,'Reset','重置加点',100,-222,176,48,()=>void this.resetPetStats(),{icon:'↻',fill:CuteTheme.paperWarm,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+        } else {
+            const lineage=selected?.lineage||{};
+            text(data,'LineageTitle','血脉与繁育信息',0,215,360,38,21,CuteTheme.caramel,'center',true);
+            const info=[`👨 父系：${Number(lineage.fatherId||selected?.fatherId||0)||'初代'}`,`👩 母系：${Number(lineage.motherId||selected?.motherId||0)||'初代'}`,`💍 婚姻：${selected?.married||selected?.marriedPetId?'已婚':'未婚'}`,`🥚 生蛋：${Number(selected?.breedCount||0)}个`, `🌳 代数：${Number(lineage.generation||selected?.generation||1)}`,`🧬 基因：${safeName(selected?.geneCode,'AAAA')}`,`🌸 生育力：${Number(selected?.fertility||100)}/100`];
+            info.forEach((line,index)=>text(data,`L_${index}`,line,-170,156-index*54,340,36,17,index<2?CuteTheme.muted:CuteTheme.caramel,'left',true));
         }
 
-        const book = panel(root, 'PetBook', 0, -95, 692, 755, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
-        panel(book, 'Spine', -329, 0, 18, 716, new Color(190, 126, 70, 255), 8, false, CuteTheme.woodDark, 2);
-        const left = panel(book, 'BattleProfile', -171, 0, 320, 704, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
-        image(left, 'PetPortrait', getPetArtPath(selected, 'portrait'), 0, 204, 286, 260, CuteTheme.mint);
-        text(left, 'Name', safeName(selected?.nickname, '未命名宝宝'), -140, 65, 180, 42, 27, CuteTheme.caramel, 'left', true);
-        tag(left, 'Rarity', this.rarityName(selected), 122, 65, 92, CuteTheme.lilac);
-        const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
-        text(left, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)}　Lv.${Number(selected?.level || 1)}　${selected?.isMutant ? '变异' : '普通'}${teamIndex >= 0 ? `　⚔出战${teamIndex + 1}` : ''}`, -140, 24, 280, 30, 14, CuteTheme.muted, 'left', true);
-        button(left, 'SetHome', Number(selected?.id || 0) === this.homePetId ? '心仪宝宝' : '设为心仪', -82, -20, 132, 42, () => this.setHomePet(Number(selected?.id || 0)), { icon: '♥', fill: Number(selected?.id || 0) === this.homePetId ? CuteTheme.peach : CuteTheme.paperWarm, fontSize: 12, radius: 18, selected: Number(selected?.id || 0) === this.homePetId });
-        button(left, 'ToggleCompare', '加入对比', 84, -20, 132, 42, () => { this.petCompareMode = true; this.togglePetCompare(Number(selected?.id || 0)); }, { icon: '≍', fill: CuteTheme.sky, fontSize: 12, radius: 18 });
-
-        headingTag(left, 'StatsTitle', '详细属性', 0, -70, 132, CuteTheme.paperWarm);
-        const attr = this.battleAttributesOf(selected);
-        const statRows = [
-            ['生命', attr.hp, '❤'], ['物攻', attr.attack, '⚔'], ['法攻', attr.magic, '✦'], ['防御', attr.defense, '◆'],
-            ['速度', attr.speed, '➤'], ['战力', attr.power, '★'], ['成长', this.growthValue(selected).toFixed(3), '🌱'], ['代数', Number(selected?.generation || 1), '◇'],
-        ] as Array<[string, string | number, string]>;
-        statRows.forEach(([title, value, icon], index) => {
-            const col = index % 2;
-            const row = Math.floor(index / 2);
-            this.battleStat(left, `Battle_${title}`, icon, title, value, -76 + col * 152, -126 - row * 62);
-        });
-        text(left, 'BreedInfo', `生育力 ${Number(selected?.fertility || 100)}/100　繁育 ${Number(selected?.breedCount || 0)}/${Number(selected?.breedLimit || selected?.maxBreedCount || 20)}`, 0, -326, 280, 30, 13, CuteTheme.muted, 'center', true);
-
-        const aptitudePanel = panel(book, 'AptitudePanel', 170, 176, 322, 322, new Color(247, 255, 240, 255), 28, false, CuteTheme.mintDark, 2);
-        headingTag(aptitudePanel, 'Title', '资质', 0, 124, 116, CuteTheme.mint);
-        text(aptitudePanel, 'Hint', '资质影响升级后的属性成长', 0, 94, 280, 24, 12, CuteTheme.muted, 'center', false);
-        const apt = this.aptitudesOf(selected);
-        const aptRows = [['体力资质', apt.hp, '❤'], ['攻击资质', apt.attack, '⚔'], ['防御资质', apt.defense, '◆'], ['法力资质', apt.magic, '✦'], ['速度资质', apt.speed, '➤']] as Array<[string, number, string]>;
-        aptRows.forEach(([title, value, icon], index) => this.aptitudeRow(aptitudePanel, `Apt_${index}`, icon, title, value, 64 - index * 45));
-        text(aptitudePanel, 'Growth', `成长 ${this.growthValue(selected).toFixed(3)}　品质 ${Number(selected?.quality || 100)}`, 0, -128, 284, 28, 14, CuteTheme.caramel, 'center', true);
-
-        const skillPanel = panel(book, 'SkillPanel', 170, -190, 322, 360, new Color(255, 244, 240, 255), 28, false, CuteTheme.peachDark, 2);
-        headingTag(skillPanel, 'Title', '技能', 0, 142, 116, CuteTheme.peach);
-        text(skillPanel, 'Hint', '点击技能查看完整效果、概率与目标', 0, 112, 276, 24, 12, CuteTheme.muted, 'center', false);
-        const skills = Array.isArray(selected?.skills) ? selected.skills : [];
-        const skillScroll = this.createScrollArea(skillPanel, 'PetSkillScroll', 0, 12, 294, 192, 294, Math.max(192, Math.ceil(skills.length / 2) * 72 + 8), 'vertical');
-        skills.forEach((skill: any, index: number) => this.skillIconButton(skillScroll.content, `Skill_${index}`, skill, -74 + (index % 2) * 148, -36 - Math.floor(index / 2) * 72, 136, 62));
-        if (!skills.length) text(skillScroll.content, 'Empty', '暂无技能', 0, -82, 220, 50, 20, CuteTheme.muted, 'center', true);
-        button(skillPanel, 'LearnSkill', '打技能', -76, -142, 138, 50, () => this.showPage('skills'), { icon: '📕', fill: CuteTheme.honey, fontSize: 14, radius: 22 });
-        button(skillPanel, 'Fusion', '炼妖', 76, -142, 138, 50, () => this.showPage('fusion'), { icon: '🔮', fill: CuteTheme.lilac, fontSize: 14, radius: 22 });
+        const toolbar=panel(book,'Toolbar',0,-320,650,62,new Color(255,252,239,255),22,false,CuteTheme.caramelSoft,2);
+        button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
+        button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
+        tag(toolbar,'Sort','出战优先 · 战力降序',205,0,180,CuteTheme.sky);
     }
 
     private renderInventory() {
@@ -1058,7 +1133,7 @@ export class MainUI extends Component {
     private renderShop() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'ShopSign', '萌宠集市', 0, 456, 220, 66);
+
         const page = panel(root, 'ShopPage', 0, -2, 692, 910, new Color(255, 246, 224, 255), 40, true, CuteTheme.caramelSoft, 4);
         text(page, 'Wallet', `金币 ${formatNumber(GameStore.user?.gold)}　◆ 钻石 ${formatNumber(GameStore.user?.diamond)}`, 0, 382, 600, 32, 16, CuteTheme.caramel, 'center', true);
         const categories: Array<['featured' | 'nurture' | 'skills' | 'materials', string, string]> = [
@@ -1105,7 +1180,7 @@ export class MainUI extends Component {
     private renderBenefits() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'BenefitSign', '福利成长', 0, 456, 220, 66);
+
         const page = panel(root, 'BenefitPage', 0, -2, 692, 910, new Color(255, 248, 228, 255), 40, true, CuteTheme.caramelSoft, 4);
 
         const tabs: Array<['sign' | 'daily' | 'achievement' | 'month' | 'pass', string, string]> = [
@@ -1263,111 +1338,95 @@ export class MainUI extends Component {
     private renderHatchery() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        const room = panel(root, 'HatcheryRoom', 0, 0, 692, 905, new Color(239, 250, 232, 255), 40, true, CuteTheme.caramelSoft, 4);
-        headingTag(room, 'Title', '温室孵化房', -220, 390, 190, CuteTheme.mint);
-        text(room, 'Hint', '孵化室只有一台装置。先从仓库选择宠物蛋放入，再等待或使用加速道具。', -305, 346, 580, 34, 14, CuteTheme.muted, 'left', true);
+        const room = panel(root, 'HatcheryResearch', 0, 0, 692, 905, new Color(239, 250, 232, 255), 40, true, CuteTheme.caramelSoft, 4);
+        headingTag(room, 'Title', '三槽孵化室', 0, 390, 190, CuteTheme.mint);
+        text(room, 'Hint', '把宠物蛋拖到空闲装置，或点击“选择装置”；确认后才开始计时。', 0, 348, 620, 38, 15, CuteTheme.muted, 'center', true);
 
-        const activeEgg = GameStore.eggs.find((egg) => ['incubating', 'hatching', 'unhatched'].includes(String(egg?.status || ''))) || null;
-        const storedEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
-        const device = panel(room, 'IncubatorDevice', 0, 142, 640, 370, new Color(255, 247, 219, 255), 46, true, CuteTheme.honeyDark, 4);
-        headingTag(device, 'DeviceTitle', '单槽孵化装置', 0, 154, 190, CuteTheme.paperWarm);
-        panel(device, 'Glass', 0, 12, 320, 250, new Color(214, 242, 235, 220), 80, false, CuteTheme.white, 5);
-        panel(device, 'Base', 0, -118, 420, 66, new Color(203, 151, 86, 255), 26, true, CuteTheme.woodDark, 3);
-        if (!activeEgg) {
-            text(device, 'EmptyIcon', '🥚', 0, 45, 140, 140, 72, CuteTheme.honeyDark, 'center', true);
-            const emptyEggNode = device.getChildByName('EmptyIcon');
-            if (emptyEggNode) tween(emptyEggNode).repeatForever(tween(emptyEggNode).to(1.2, { scale: new Vec3(1.04, 0.97, 1) }, { easing: 'sineInOut' }).to(1.2, { scale: Vec3.ONE }, { easing: 'sineInOut' })).start();
-            text(device, 'EmptyText', '装置空闲', 0, -22, 280, 38, 22, CuteTheme.caramel, 'center', true);
-            text(device, 'EmptyHint', '请在下方孵化室仓库选择一枚蛋放入', 0, -62, 360, 30, 14, CuteTheme.muted, 'center', false);
-            tag(device, 'DeviceState', '等待放入', 0, -122, 126, CuteTheme.mint);
-        } else {
-            const remaining = Math.max(0, Number(activeEgg?.remainingSeconds || 0));
-            const total = Math.max(1, Number(activeEgg?.hatchDurationSeconds || remaining || 1));
-            const ready = Boolean(activeEgg?.canHatch) || remaining <= 0;
-            image(device, 'EggPreview', getPetArtPath(activeEgg, 'thumb'), -70, 40, 138, 138, CuteTheme.paperWarm);
-            const activeEggNode = device.getChildByName('EggPreview');
-            if (activeEggNode) tween(activeEggNode).repeatForever(tween(activeEggNode).by(0.16, { angle: 3 }).by(0.16, { angle: -6 }).by(0.16, { angle: 3 }).delay(1.2)).start();
-            text(device, 'EggName', `宠物蛋 #${Number(activeEgg?.id || 0)}`, 20, 73, 250, 38, 22, CuteTheme.caramel, 'left', true);
-            text(device, 'EggMeta', `${safeName(activeEgg?.species, '随机物种')} · 潜力 ${Number(activeEgg?.rarityPotential || 1)}`, 20, 34, 260, 30, 14, CuteTheme.muted, 'left', true);
-            progress(device, 'IncubationProgress', 130, -8, 230, 18, ready ? 1 : 1 - remaining / total, ready ? CuteTheme.green : CuteTheme.honey);
-            text(device, 'Remaining', ready ? '孵化完成，可以迎接宝宝了' : `剩余 ${this.formatSeconds(remaining)}`, 20, -44, 260, 30, 15, ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'left', true);
-            button(device, 'Accelerate', '加速道具', -92, -122, 170, 54, () => this.openHatchAccelerator(), { icon: '⏳', fill: CuteTheme.sky, fontSize: 15, radius: 23, disabled: ready });
-            button(device, 'Hatch', ready ? '立即孵化' : '孵化中', 108, -122, 170, 54, () => void this.hatchEgg(activeEgg), { icon: ready ? '✨' : '🕒', fill: ready ? CuteTheme.honey : new Color(222, 216, 202, 255), fontSize: 15, radius: 23, disabled: !ready || this.busy.has(`hatch:${activeEgg?.id}`) });
-        }
+        this.hatchDeviceNodes.clear();
+        const activeEggs = GameStore.eggs
+            .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
+            .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
+        const slotEgg = (slot: number) => activeEggs.find((egg) => Number(egg?.incubatorSlot || 0) === slot)
+            || activeEggs.find((egg, index) => !Number(egg?.incubatorSlot || 0) && index === slot - 1)
+            || null;
 
-        const warehouse = panel(room, 'EggWarehouse', 0, -258, 650, 340, new Color(255, 252, 239, 255), 30, true, CuteTheme.caramelSoft, 3);
-        headingTag(warehouse, 'WarehouseTitle', `孵化室仓库 ${storedEggs.length}`, -220, 138, 190, CuteTheme.paperWarm);
-        text(warehouse, 'WarehouseHint', '仓库只存放未开始孵化的宠物蛋，可上下滑动查看。', -290, 101, 520, 30, 13, CuteTheme.muted, 'left', true);
-        if (!storedEggs.length) {
-            text(warehouse, 'EmptyWarehouse', '仓库暂时没有宠物蛋\n可前往商城、繁育或炼妖系统获取', 0, -10, 430, 90, 19, CuteTheme.muted, 'center', true);
-            button(warehouse, 'GoShop', '前往商城', 0, -96, 170, 52, () => this.showPage('shop'), { icon: '🛒', fill: CuteTheme.honey, fontSize: 14, radius: 22 });
-            return;
-        }
-        const rows = Math.ceil(storedEggs.length / 3);
-        const area = this.createScrollArea(warehouse, 'EggWarehouseScroll', 0, -20, 622, 224, 622, rows * 126 + 10, 'vertical');
-        storedEggs.forEach((egg, index) => {
-            const col = index % 3; const rowIndex = Math.floor(index / 3);
-            const card = panel(area.content, `StoredEgg_${egg?.id || index}`, -208 + col * 208, -58 - rowIndex * 126, 192, 112,
-                index % 2 === 0 ? CuteTheme.paperWarm : CuteTheme.mint, 22, true, CuteTheme.white, 3);
-            image(card, 'EggSpeciesArt', getPetArtPath(egg, 'thumb'), -72, 14, 54, 54, CuteTheme.paperWarm);
-            text(card, 'Name', `蛋 #${Number(egg?.id || 0)}`, -28, 28, 118, 26, 16, CuteTheme.caramel, 'left', true);
-            text(card, 'Meta', `潜力 ${Number(egg?.rarityPotential || 1)}`, -28, -2, 118, 24, 12, CuteTheme.muted, 'left', true);
-            button(card, 'PutIn', activeEgg ? '使用中' : '放入', 42, -36, 94, 36, () => void this.startEggIncubation(egg), {
-                fill: activeEgg ? new Color(222, 216, 202, 255) : CuteTheme.honey, fontSize: 12, radius: 16,
-                disabled: Boolean(activeEgg) || this.busy.has(`hatch-start:${egg?.id}`) });
+        [-214, 0, 214].forEach((x, index) => {
+            const slot = index + 1;
+            const egg = slotEgg(slot);
+            const device = panel(room, `Device_${slot}`, x, 190, 202, 300, egg ? new Color(255, 247, 219, 255) : new Color(249, 252, 239, 255), 30, true, egg ? CuteTheme.honeyDark : CuteTheme.mintDark, egg?.isMutant ? 5 : 3);
+            this.hatchDeviceNodes.set(slot, device);
+            headingTag(device, 'Title', `${slot}号装置`, 0, 124, 112, egg ? CuteTheme.paperWarm : CuteTheme.mint);
+            if (!egg) {
+                text(device, 'EggEmpty', '🥚', 0, 42, 100, 100, 56, CuteTheme.honeyDark, 'center', true);
+                text(device, 'State', '空闲\n拖入宠物蛋', 0, -40, 150, 58, 17, CuteTheme.muted, 'center', false);
+                tag(device, 'Free', '可使用', 0, -108, 92, CuteTheme.mint);
+                return;
+            }
+            const remaining = Math.max(0, Number(egg?.remainingSeconds || 0));
+            const total = Math.max(1, Number(egg?.hatchDurationSeconds || remaining || 1));
+            const ready = Boolean(egg?.canHatch) || remaining <= 0;
+            const eggNode = image(device, 'Egg', getEggArtPath(egg), 0, 48, 104, 132, CuteTheme.paperWarm);
+            tween(eggNode).repeatForever(tween(eggNode).by(0.16, { angle: 3 }).by(0.16, { angle: -6 }).by(0.16, { angle: 3 }).delay(1.15)).start();
+            if (egg?.isMutant) {
+                const glow = panel(device, 'MutantGlow', 0, 48, 132, 160, new Color(255, 222, 112, 55), 72, false, CuteTheme.honey, 5);
+                glow.setSiblingIndex(Math.max(0, eggNode.getSiblingIndex() - 1));
+                tween(glow).repeatForever(tween(glow).to(.8, { scale: new Vec3(1.09, 1.09, 1) }, { easing: 'sineInOut' }).to(.8, { scale: Vec3.ONE }, { easing: 'sineInOut' })).start();
+            }
+            text(device, 'EggName', getEggDisplayName(egg), 0, -35, 184, 42, 15, CuteTheme.caramel, 'center', false);
+            progress(device, 'Progress', 0, -77, 166, 14, ready ? 1 : 1 - remaining / total, ready ? CuteTheme.green : CuteTheme.honey);
+            text(device, 'Time', ready ? '可以孵化' : this.formatSeconds(remaining), 0, -100, 176, 26, 14, ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+            button(device, 'Accelerate', '加速', -48, -128, 84, 38, () => this.openHatchAccelerator(egg), { icon: '⏳', fill: CuteTheme.sky, fontSize: 12, radius: 17, disabled: ready });
+            button(device, 'Hatch', ready ? '孵化' : '计时中', 48, -128, 84, 38, () => void this.hatchEgg(egg), { icon: ready ? '✨' : '🕒', fill: ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 17, disabled: !ready || this.busy.has(`hatch:${egg?.id}`) });
         });
+
+        const storedEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
+        const warehouse = panel(room, 'Warehouse', 0, -205, 650, 390, new Color(255, 252, 239, 255), 30, true, CuteTheme.caramelSoft, 3);
+        headingTag(warehouse, 'Title', `宠物蛋仓库 ${storedEggs.length}`, -205, 160, 210, CuteTheme.paperWarm);
+        text(warehouse, 'WarehouseHint', '蛋只显示物种外观、稀有度、变异状态和孵化时长', 102, 160, 360, 28, 13, CuteTheme.muted, 'center', true);
+        const rows = Math.max(1, Math.ceil(storedEggs.length / 2));
+        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -12, 616, 300, 616, Math.max(300, rows * 134 + 12), 'vertical');
+        storedEggs.forEach((egg, index) => {
+            const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
+            const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
+            const col = index % 2;
+            const row = Math.floor(index / 2);
+            const card = panel(area.content, `Egg_${egg?.id || index}`, -151 + col * 302, -62 - row * 134, 286, 120, rarityColor, 22, true, egg?.isMutant ? CuteTheme.honeyDark : CuteTheme.white, egg?.isMutant ? 5 : 3);
+            image(card, 'Icon', getEggArtPath(egg), -98, 0, 76, 92, CuteTheme.paperWarm);
+            text(card, 'Name', getEggDisplayName(egg), -52, 28, 186, 36, 15, CuteTheme.caramel, 'left', false);
+            text(card, 'Time', `孵化 ${this.formatEggDuration(egg)}${egg?.isMutant ? ' · 发光' : ''}`, -52, -8, 180, 28, 13, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'left', true);
+            button(card, 'Put', '选择装置', 72, -38, 102, 34, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 11, radius: 15, disabled: activeEggs.length >= 3 });
+            card.on(Node.EventType.TOUCH_END, (event: any) => this.handleEggDrop(egg, event));
+        });
+        if (!storedEggs.length) text(area.content, 'Empty', '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);
     }
 
     private renderSkillLearning() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
-        const pet = GameStore.currentPet || {};
-        const pets = GameStore.pets.filter((item) => !item?.isEgg);
-        const selectorWidth = Math.max(680, pets.length * 126 + 20);
-        const selector = this.createScrollArea(root, 'SkillPetSelector', 0, 430, 680, 94, selectorWidth, 94, 'horizontal');
-        pets.forEach((item, index) => button(selector.content, `SkillPet_${item?.id || index}`, safeName(item?.nickname, `宝宝${index + 1}`), 70 + index * 126, 0, 116, 76, () => {
-            GameStore.selectPet(Number(item?.id || 0)); this.lockedSkillCodes.clear(); this.renderCurrentPage(false);
-        }, { iconPath: getPetArtPath(item, 'thumb'), iconSize: 48, selected: Number(item?.id) === Number(GameStore.currentPetId), fill: CuteTheme.paperWarm, fontSize: 12, radius: 20,
-            subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)}` }));
-
-        const page = panel(root, 'SkillBookPage', 0, -48, 692, 770, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
-        const current = panel(page, 'CurrentSkills', -174, 55, 322, 590, new Color(245, 252, 238, 255), 28, false, CuteTheme.mintDark, 2);
-        headingTag(current, 'Title', `${safeName(pet?.nickname, '宝宝')}的技能`, 0, 256, 190, CuteTheme.mint);
-        text(current, 'Hint', '上下滑动；普通技能可选择保护。', 0, 218, 280, 32, 13, CuteTheme.muted, 'center', false);
-        const currentSkills = Array.isArray(pet?.skills) ? pet.skills : [];
-        const currentArea = this.createScrollArea(current, 'CurrentSkillScroll', 0, -5, 300, 390, 300, currentSkills.length * 58 + 8, 'vertical');
-        currentSkills.forEach((skill: any, index: number) => {
-            const y = -28 - index * 58; const code = this.skillCode(skill); const special = this.isSpecialSkill(skill);
-            button(currentArea.content, `Current_${index}`, this.skillName(skill), -35, y, 230, 48, () => this.showSkillDetail(skill), {
-                iconPath: this.skillIconPath(skill), iconSize: 42, fill: this.skillColor(skill), textColor: this.skillTier(skill) === 'low' ? CuteTheme.caramel : CuteTheme.white,
-                fontSize: 13, radius: 18, subtitle: this.skillTierLabel(skill) });
-            button(currentArea.content, `Lock_${index}`, this.lockedSkillCodes.has(code) ? '已锁' : '锁', 112, y, 58, 44, () => this.toggleSkillLock(skill), {
-                icon: this.lockedSkillCodes.has(code) ? '🔒' : '🔓', fill: this.lockedSkillCodes.has(code) ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 11, radius: 18, disabled: special });
-        });
-        if (!currentSkills.length) text(currentArea.content, 'Empty', '暂无技能', 0, -170, 220, 50, 20, CuteTheme.muted, 'center', true);
-        text(current, 'LockCost', `已保护 ${this.lockedSkillCodes.size} 个普通技能`, 0, -260, 250, 28, 14, CuteTheme.caramel, 'center', true);
-
-        const books = panel(page, 'SkillBooks', 174, 55, 322, 590, new Color(255, 245, 240, 255), 28, false, CuteTheme.peachDark, 2);
-        headingTag(books, 'Title', '技能书', 0, 256, 130, CuteTheme.peach);
-        const bookItems = this.skillBookItems();
-        if (!this.selectedSkillBookCode && bookItems.length) this.selectedSkillBookCode = String(bookItems[0]?.itemCode || '');
-        const bookArea = this.createScrollArea(books, 'SkillBookScroll', 0, -5, 300, 430, 300, bookItems.length * 58 + 8, 'vertical');
-        bookItems.forEach((item, index) => {
-            const selected = String(item?.itemCode || '') === this.selectedSkillBookCode;
-            button(bookArea.content, `Book_${index}`, safeName(item?.name, '技能书').replace('技能书', ''), -30, -28 - index * 58, 236, 48, () => {
-                this.selectedSkillBookCode = String(item?.itemCode || ''); this.renderCurrentPage(false);
-            }, { iconPath: this.skillBookIconPath(item), iconSize: 42, fill: this.itemTier(item) === 'high' ? new Color(232, 104, 103, 255) : new Color(116, 187, 82, 255),
-                textColor: CuteTheme.white, fontSize: 13, radius: 18, selected, subtitle: `${this.itemTier(item) === 'high' ? '高级' : '低级'} ×${Number(item?.quantity || 0)}` });
-        });
-        if (!bookItems.length) text(bookArea.content, 'Empty', '背包中没有技能书\n请前往商城购买', 0, -190, 240, 90, 18, CuteTheme.muted, 'center', true);
-
-        const selectedBook = bookItems.find((item) => String(item?.itemCode || '') === this.selectedSkillBookCode) || null;
-        const desc = panel(page, 'BookDescription', 0, -306, 640, 150, new Color(255, 252, 239, 255), 24, false, CuteTheme.caramelSoft, 2);
-        text(desc, 'Title', selectedBook ? safeName(selectedBook?.name, '技能书') : '打书说明', -292, 42, 370, 32, 18, CuteTheme.caramel, 'left', true);
-        text(desc, 'Text', selectedBook ? safeName(selectedBook?.description, '暂无描述') : '请选择一本技能书。', -292, -6, 420, 70, 14, CuteTheme.muted, 'left', false);
-        text(desc, 'Risk', '打书会随机覆盖未保护技能；特殊技能不能保护。', -292, -52, 420, 28, 13, CuteTheme.peachDark, 'left', true);
-        button(desc, 'Learn', '确认打书', 238, -2, 142, 66, () => void this.learnSelectedSkill(), { icon: '📕', fill: CuteTheme.honey, fontSize: 16, radius: 26,
-            disabled: !selectedBook || !pet?.id || this.busy.has('skill:learn') });
+        const root=this.pageRoot; const pet=GameStore.currentPet||{}; const pets=GameStore.pets.filter((item)=>!item?.isEgg);
+        const selector=this.createScrollArea(root,'SkillPetSelector',0,420,680,102,Math.max(680,pets.length*146+18),102,'horizontal');
+        pets.forEach((item,index)=>button(selector.content,`SkillPet_${item?.id||index}`,safeName(item?.nickname,`宝宝${index+1}`),72+index*146,0,136,88,()=>{GameStore.selectPet(Number(item?.id||0));this.lockedSkillCodes.clear();this.renderCurrentPage(false);},{iconPath:getPetArtPath(item,'thumb'),iconSize:56,selected:Number(item?.id)===Number(GameStore.currentPetId),fill:CuteTheme.paperWarm,fontSize:13,radius:21,subtitle:`${this.rarityName(item)} · Lv.${Number(item?.level||1)}`}));
+        const page=panel(root,'SkillResearchPage',0,-38,692,810,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
+        const header=panel(page,'Header',0,306,640,126,new Color(244,252,236,255),25,false,CuteTheme.mintDark,2);
+        image(header,'Pet',getPetArtPath(pet,'thumb'),-250,0,90,90,CuteTheme.paperWarm);
+        text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,-185,24,320,34,21,CuteTheme.caramel,'left',true);
+        text(header,'Role',`定位 ${(pet?.speciesConfig?.roleTags||[getPetSpeciesMeta(pet).role||'综合']).map((value:any)=>this.petRoleLabel(value)).join(' / ')}　技能格 ${Array.isArray(pet?.skills)?pet.skills.length:0}/${Number(pet?.skillSlotCount||3)}`,-185,-18,420,32,14,CuteTheme.muted,'left',true);
+        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',-185,-50,450,28,13,CuteTheme.peachDark,'left',true);
+        const current=panel(page,'Current',-170,38,326,402,new Color(245,252,238,255),26,false,CuteTheme.mintDark,2);
+        headingTag(current,'Title','当前技能',0,170,130,CuteTheme.mint);
+        const currentSkills=Array.isArray(pet?.skills)?pet.skills:[];
+        const cArea=this.createScrollArea(current,'CurrentScroll',0,-10,302,312,302,Math.max(312,currentSkills.length*72+8),'vertical');
+        currentSkills.forEach((skill:any,index:number)=>{const code=this.skillCode(skill);const special=this.isSpecialSkill(skill);button(cArea.content,`Skill_${index}`,this.skillName(skill),-35,-34-index*72,226,62,()=>this.showSkillDetail(skill),{iconPath:this.skillIconPath(skill),iconSize:48,fill:this.skillColor(skill),textColor:this.skillTier(skill)==='low'?CuteTheme.caramel:CuteTheme.white,fontSize:14,radius:20,subtitle:`${this.skillTierLabel(skill)} · ${safeName(skill?.description,'查看效果').slice(0,18)}`});button(cArea.content,`Lock_${index}`,this.lockedSkillCodes.has(code)?'已锁':'锁定',112,-34-index*72,58,52,()=>this.toggleSkillLock(skill),{icon:this.lockedSkillCodes.has(code)?'🔒':'🔓',fill:this.lockedSkillCodes.has(code)?CuteTheme.honey:CuteTheme.paperWarm,fontSize:10,radius:18,disabled:special});});
+        const books=panel(page,'Books',174,38,326,402,new Color(255,245,240,255),26,false,CuteTheme.peachDark,2);
+        headingTag(books,'Title','背包技能书',0,170,150,CuteTheme.peach);
+        const items=this.skillBookItems(); if(!this.selectedSkillBookCode&&items.length)this.selectedSkillBookCode=String(items[0]?.itemCode||'');
+        const bArea=this.createScrollArea(books,'BookScroll',0,-10,302,312,302,Math.max(312,items.length*72+8),'vertical');
+        items.forEach((item,index)=>{const selected=String(item?.itemCode||'')===this.selectedSkillBookCode;button(bArea.content,`Book_${index}`,safeName(item?.name,'技能书'),0,-34-index*72,278,62,()=>{this.selectedSkillBookCode=String(item?.itemCode||'');this.renderCurrentPage(false);},{iconPath:this.skillBookIconPath(item),iconSize:48,fill:this.itemTier(item)==='high'?new Color(232,104,103,255):new Color(116,187,82,255),textColor:CuteTheme.white,fontSize:14,radius:20,selected,subtitle:`${this.itemTier(item)==='high'?'高级':'低级'} · 数量 ${Number(item?.quantity||0)}`});});
+        const selectedBook=items.find((item)=>String(item?.itemCode||'')===this.selectedSkillBookCode)||null;
+        const desc=panel(page,'Description',0,-257,640,170,new Color(255,252,239,255),25,false,CuteTheme.caramelSoft,2);
+        text(desc,'Title',selectedBook?safeName(selectedBook?.name,'技能书'):'请选择技能书',-285,50,410,34,20,CuteTheme.caramel,'left',true);
+        text(desc,'Description',selectedBook?safeName(selectedBook?.description,'暂无说明'):'技能效果、触发概率、目标类型与替换风险都会在这里显示。',-285,2,430,70,15,CuteTheme.muted,'left',false);
+        text(desc,'Risk',`保护技能 ${this.lockedSkillCodes.size} 个　预计消耗锁印与技能书各1份`,-285,-52,430,30,14,CuteTheme.peachDark,'left',true);
+        button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{icon:'📕',fill:CuteTheme.honey,fontSize:17,radius:28,disabled:!selectedBook||!pet?.id||Boolean(pet?.isLocked)||this.busy.has('skill:learn')});
     }
 
     private renderFusion() {
@@ -1375,138 +1434,120 @@ export class MainUI extends Component {
         this.ensureFusionParents();
         const root = this.pageRoot;
         const page = panel(root, 'FusionPage', 0, 0, 692, 905, new Color(250, 241, 255, 255), 40, true, CuteTheme.caramelSoft, 4);
-        headingTag(page, 'Title', '炼妖', 0, 390, 128, CuteTheme.lilac);
-        text(page, 'Explain', '选择两只宝宝进行合宠。父母会被消耗，结果可能更强，也可能退化。', 0, 348, 610, 44, 15, CuteTheme.muted, 'center', true);
+        headingTag(page, 'Title', '炼妖研究室', 0, 390, 178, CuteTheme.lilac);
+        text(page, 'Explain', '精准选择两只宝宝。确认前完整查看成长、资质、技能、稀有度和消耗。', 0, 348, 620, 38, 15, CuteTheme.muted, 'center', true);
 
         const parentA = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentAId) || null;
         const parentB = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentBId) || null;
-        this.fusionParentCard(page, 'ParentA', '左侧宝宝', parentA, -174, 176, 'A');
-        this.fusionParentCard(page, 'ParentB', '右侧宝宝', parentB, 174, 176, 'B');
-        text(page, 'FusionMark', '＋', 0, 184, 70, 70, 48, CuteTheme.honeyDark, 'center', true);
+        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -168, 152, 'A');
+        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 168, 152, 'B');
+        text(page, 'FusionMark', '＋', 0, 165, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
 
-        const preview = panel(page, 'Preview', 0, -145, 640, 285, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
-        headingTag(preview, 'PreviewTitle', '结果预览', 0, 112, 144, CuteTheme.paperWarm);
+        const preview = panel(page, 'Preview', 0, -190, 640, 206, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        headingTag(preview, 'PreviewTitle', '炼妖结果预览', -220, 76, 190, CuteTheme.paperWarm);
         if (!this.fusionPreview?.blueprint) {
-            text(preview, 'EmptyPreview', '点击“预览结果”查看本次种子下可能获得的宝宝。\n预览不会消耗金币、材料或父母。', 0, 15, 530, 100, 18, CuteTheme.muted, 'center', false);
+            text(preview, 'EmptyPreview', '点击“预览结果”查看物种、稀有度、成长、资质与完整技能。\n预览不会消耗宝宝或资源。', 0, -4, 560, 86, 16, CuteTheme.muted, 'center', false);
         } else {
             const bp = this.fusionPreview.blueprint;
-            image(preview, 'PreviewPetArt', getPetArtPath(bp, 'thumb'), 220, 54, 104, 104, CuteTheme.paperWarm);
-            text(preview, 'Species', `物种：${safeName(bp?.species, getPetSpeciesMeta(bp).name)}　${bp?.isMutant ? '变异' : '普通'}`, -284, 64, 310, 30, 16, CuteTheme.caramel, 'left', true);
-            text(preview, 'Slots', `技能格：${Number(bp?.skillSlotCount || 0)}　特殊技能：${Number(bp?.specialSkillCount || 0)}`, -284, 25, 310, 30, 16, CuteTheme.caramel, 'left', true);
-            text(preview, 'Growth', `成长：${Number(bp?.growth || 0).toFixed(3)}　品质：${Number(bp?.quality || 0)}`, -284, -14, 310, 30, 16, CuteTheme.caramel, 'left', true);
+            image(preview, 'PreviewPetArt', getPetArtPath(bp, 'thumb'), 240, 18, 96, 96, CuteTheme.paperWarm);
+            text(preview, 'Species', `${safeName(bp?.species, getPetSpeciesMeta(bp).name)}　${this.rarityName(bp)}${bp?.isMutant ? ' · 变异' : ''}`, -292, 44, 410, 32, 17, CuteTheme.caramel, 'left', true);
+            text(preview, 'Growth', `成长 ${Number(bp?.growth || 0).toFixed(3)}　品质 ${Number(bp?.quality || 0)}　技能格 ${Number(bp?.skillSlotCount || 0)}`, -292, 12, 440, 28, 14, CuteTheme.caramel, 'left', true);
             const apt = bp?.aptitudes || {};
-            text(preview, 'Aptitudes', `体 ${Number(apt.hp || 0)}　攻 ${Number(apt.attack || 0)}　防 ${Number(apt.defense || 0)}\n法 ${Number(apt.magic || 0)}　速 ${Number(apt.speed || 0)}`, -284, -66, 400, 58, 15, CuteTheme.muted, 'left', true);
-            tag(preview, 'Gene', `基因 ${safeName(bp?.geneCode, 'AAAA')}`, 224, 28, 150, CuteTheme.mint);
-            tag(preview, 'Generation', `第 ${Number(bp?.generation || 1)} 代`, 224, -18, 150, CuteTheme.paperWarm);
+            text(preview, 'Aptitudes', `体 ${Number(apt.hp || 0)}　攻 ${Number(apt.attack || 0)}　防 ${Number(apt.defense || 0)}
+法 ${Number(apt.magic || 0)}　速 ${Number(apt.speed || 0)}　特殊 ${Number(bp?.specialSkillCount || 0)}`, -292, -28, 450, 54, 14, CuteTheme.muted, 'left', true);
+            const skillNames = (Array.isArray(bp?.inheritedSkills) ? bp.inheritedSkills : []).map((skill: any) => this.skillName(skill)).join('、');
+            text(preview, 'Skills', `技能：${skillNames || '随机生成'}`, -292, -73, 480, 30, 13, CuteTheme.peachDark, 'left', false);
         }
 
-        button(page, 'PreviewButton', '预览结果', -116, -344, 210, 64, () => void this.previewFusion(), {
-            icon: '🔍', fill: CuteTheme.mint, fontSize: 17, radius: 28,
-            disabled: !parentA || !parentB || this.busy.has('fusion:preview'),
-        });
-        button(page, 'ExecuteButton', '开始炼妖', 116, -344, 210, 64, () => void this.executeFusion(), {
-            icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 28,
-            disabled: !parentA || !parentB || this.busy.has('fusion:execute'),
-        });
-        text(page, 'Cost', '消耗：1000金币＋合宠核心×1　｜　操作不可撤销', 0, -397, 560, 30, 14, CuteTheme.peachDark, 'center', true);
+        button(page, 'PreviewButton', '预览结果', -118, -350, 210, 62, () => void this.previewFusion(), { icon: '🔍', fill: CuteTheme.mint, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:preview') });
+        button(page, 'ExecuteButton', '确认并炼妖', 118, -350, 220, 62, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        text(page, 'Cost', '消耗：1000金币＋合宠核心×1　｜　两只父母会被消耗，操作不可撤销', 0, -402, 620, 30, 14, CuteTheme.peachDark, 'center', true);
     }
 
     private renderAdventure() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
-        cloudSign(root, 'AdventureSign', '冒险营地', 0, 456, 220, 66);
-
-        const page = panel(root, 'AdventurePage', 0, 0, 692, 905, new Color(239, 247, 221, 255), 40, true, CuteTheme.caramelSoft, 4);
-
-        const teamCard = panel(page, 'TeamCard', 0, 286, 640, 230, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
-        headingTag(teamCard, 'TeamTitle', '出战编队', -235, 84, 142, CuteTheme.paperWarm);
-        text(teamCard, 'TeamPower', `总战力 ${formatNumber(this.teamPower())}`, 286, 84, 170, 32, 15, CuteTheme.caramel, 'right', true);
-
-        for (let index = 0; index < 3; index += 1) {
-            const pet = this.teamPets[index] || null;
-            this.adventureTeamSlot(teamCard, `TeamSlot${index}`, pet, -190 + index * 190, -15, index + 1);
+        const root=this.pageRoot;
+        const page=panel(root,'AdventurePage',0,0,692,905,new Color(239,247,221,255),40,true,CuteTheme.caramelSoft,4);
+        const teamCard=panel(page,'TeamCard',0,292,650,220,CuteTheme.paper,28,false,CuteTheme.caramelSoft,2);
+        headingTag(teamCard,'TeamTitle','五宠出战编队',-225,84,180,CuteTheme.paperWarm);
+        text(teamCard,'Power',`总战力 ${formatNumber(this.teamPower())}`,275,84,180,30,15,CuteTheme.caramel,'right',true);
+        for(let index=0;index<5;index+=1)this.adventureTeamSlot(teamCard,`TeamSlot${index}`,this.teamPets[index]||null,-252+index*126,-12,index+1);
+        text(teamCard,'Formation',`当前阵法：${this.formationName(this.selectedFormationCode)}`, -225,-91,250,30,14,CuteTheme.caramel,'left',true);
+        button(teamCard,'FormationBtn','阵法设置',100,-88,126,44,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:13,radius:19});
+        button(teamCard,'EditTeam',this.teamEditing?'取消编辑':'调整编队',245,-88,126,44,()=>this.teamEditing?this.cancelTeamEditing():this.beginTeamEditing(),{icon:this.teamEditing?'↩':'✎',fill:this.teamEditing?CuteTheme.peach:CuteTheme.mint,fontSize:13,radius:19});
+        if(this.teamEditing){this.renderTeamEditor(page);return;}
+        const modes=[{key:'tower' as const,title:'爬塔/BOSS',icon:'🏯',fill:CuteTheme.paperWarm},{key:'pve' as const,title:'区域冒险',icon:'⚔',fill:CuteTheme.mint},{key:'friend' as const,title:'竞技切磋',icon:'🤝',fill:CuteTheme.peach}];
+        modes.forEach((mode,index)=>button(page,`Mode_${mode.key}`,mode.title,-210+index*210,112,184,64,()=>{this.adventureMode=mode.key;this.renderCurrentPage(false);},{icon:mode.icon,selected:this.adventureMode===mode.key,fill:mode.fill,textColor:this.adventureMode===mode.key?CuteTheme.white:CuteTheme.caramel,fontSize:14,radius:26}));
+        const content=panel(page,'ModeContent',0,-170,640,440,CuteTheme.paper,30,false,CuteTheme.caramelSoft,2);
+        if(this.adventureMode==='tower'){
+            headingTag(content,'Title','高难首领与爬塔',0,170,210,CuteTheme.paperWarm);
+            text(content,'Info','五宠同时上场；首次挑战不可跳过。肉盾、治疗、物伤、法伤和辅助站位会受到阵法加成。\n每回合可选择：集火、守护、套盾、净化；阵法大招前置冷却2～3回合。',0,70,560,110,17,CuteTheme.caramel,'center',false);
+            text(content,'Power',`当前战力 ${formatNumber(this.teamPower())}　推荐 ${formatNumber(Number(GameStore.tower?.recommendedPower||4200))}`,0,-28,500,36,16,CuteTheme.muted,'center',true);
+            button(content,'Start','挑战BOSS',0,-126,250,70,()=>void this.startAdventureBattle('tower'),{icon:'👑',fill:CuteTheme.honey,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
+        } else if(this.adventureMode==='pve'){
+            headingTag(content,'Title','区域冒险',0,170,180,CuteTheme.mint);
+            text(content,'Info','普通战斗采用半自动回合指令；可开启本场自动或4倍播放。\n区域探索与巢穴系统将复用这套五宠战斗底层。',0,72,550,100,17,CuteTheme.caramel,'center',false);
+            button(content,'Start','开始五宠冒险',0,-126,260,70,()=>void this.startAdventureBattle('pve'),{icon:'⚔',fill:CuteTheme.mint,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
+        } else {
+            headingTag(content,'Title','玩家竞技',0,170,170,CuteTheme.peach);
+            text(content,'Info','竞技场只能全自动。玩家在战前决定五宠、阵法、槽位和战术预设，战斗中不能手动改指令。\n这样避免网络与操作速度影响公平性。',0,65,560,120,17,CuteTheme.caramel,'center',false);
+            button(content,'Start','全自动切磋',0,-126,240,70,()=>void this.startAdventureBattle('friend'),{icon:'▶',fill:CuteTheme.peach,fontSize:18,radius:29,disabled:this.teamPetIds.length!==5});
         }
-
-        button(teamCard, 'EditTeam', this.teamEditing ? '返回模式' : '调整编队', 248, -82, 126, 46, () => {
-            this.teamEditing = !this.teamEditing;
-            this.renderCurrentPage(false);
-        }, {
-            icon: this.teamEditing ? '↩' : '✎',
-            fill: this.teamEditing ? CuteTheme.peach : CuteTheme.mint,
-            fontSize: 14,
-            radius: 21,
-        });
-
-        if (this.teamEditing) {
-            this.renderTeamEditor(page);
-            return;
-        }
-
-        const modes = [
-            { key: 'tower' as const, title: '爬塔', icon: '🏯', fill: CuteTheme.paperWarm },
-            { key: 'pve' as const, title: '日常试炼', icon: '⚔', fill: CuteTheme.mint },
-            { key: 'friend' as const, title: '好友切磋', icon: '🤝', fill: CuteTheme.peach },
-        ];
-        modes.forEach((mode, index) => {
-            button(page, `Mode_${mode.key}`, mode.title, -210 + index * 210, 118, 184, 66, () => {
-                this.adventureMode = mode.key;
-                this.renderCurrentPage(false);
-            }, {
-                icon: mode.icon,
-                selected: this.adventureMode === mode.key,
-                fill: mode.fill,
-                textColor: this.adventureMode === mode.key ? CuteTheme.white : CuteTheme.caramel,
-                fontSize: 15,
-                radius: 27,
-            });
-        });
-
-        const content = panel(page, 'ModeContent', 0, -155, 640, 430, CuteTheme.paper, 30, false, CuteTheme.caramelSoft, 2);
-        if (this.adventureMode === 'tower') this.renderTowerMode(content);
-        else if (this.adventureMode === 'pve') this.renderPveMode(content);
-        else this.renderFriendMode(content);
     }
 
     private renderTeamEditor(page: Node) {
-        const editor = panel(page, 'TeamEditor', 0, -135, 640, 455, new Color(255, 250, 232, 255), 30, false, CuteTheme.caramelSoft, 2);
-        headingTag(editor, 'EditorTitle', '选择1～3只宝宝', 0, 186, 210, CuteTheme.mint);
-        text(editor, 'EditorHint', '点击宝宝加入或移出编队；寄售中的宝宝不能出战。', 0, 146, 550, 32, 14, CuteTheme.muted, 'center', true);
+        this.normalizeTeamAssignments();
+        const editor = panel(page, 'TeamEditor', 0, -140, 650, 610, new Color(255, 250, 232, 255), 30, false, CuteTheme.caramelSoft, 2);
+        editor.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
+        editor.on(Node.EventType.MOUSE_UP, this.finishTeamDrag, this);
+        editor.on(Node.EventType.TOUCH_START, this.beginTeamDragFromEvent, this);
+        editor.on(Node.EventType.MOUSE_DOWN, this.beginTeamDragFromEvent, this);
+        headingTag(editor, 'Title', '阵法站位编辑', -210, 272, 190, CuteTheme.mint);
+        text(editor, 'Hint', '拖动下方候选到阵位；拖动已上阵宝宝可直接交换，目标位会放大高亮。', -290, 234, 580, 32, 14, CuteTheme.muted, 'left', true);
+        const formationCodes = ['dragon','turtle','crane','tiger','phoenix'];
+        formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,196,110,40,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:17}));
 
-        const available = GameStore.pets
-            .filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed' && !pet?.tradeListingId);
+        const field = panel(editor, 'FormationField', 0, 70, 612, 232, new Color(243, 249, 236, 255), 25, false, CuteTheme.mintDark, 2);
+        this.formationSlotNodes.clear();
+        const positions = this.formationEditorPositions(this.selectedFormationCode);
+        const byId = new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
+        positions.forEach(([x,y], index) => {
+            const petId = Number(this.teamSlotAssignments[index] || 0);
+            const pet = byId.get(petId) || null;
+            const slot = panel(field, `Slot_${index}`, x, y, 112, 104, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 20, true, pet ? CuteTheme.honey : CuteTheme.caramelSoft, 2);
+            this.formationSlotNodes.set(index, slot);
+            tag(slot, 'Role', `${index+1} · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 42, 100, pet ? CuteTheme.mint : CuteTheme.paperWarm);
+            if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 10, 46, 46, CuteTheme.paperWarm);
+            else text(slot, 'Empty', '＋', 0, 10, 44, 44, 28, CuteTheme.muted, 'center', true);
+            text(slot, 'Name', pet ? safeName(pet?.nickname,'宝宝') : '拖到这里', 0, -20, 102, 20, 11, CuteTheme.caramel, 'center', true);
+            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -41, 104, 18, 10, CuteTheme.peachDark, 'center', true);
+            slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; });
+            slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.highlightFormationDropTarget(event));
+            slot.on(Node.EventType.MOUSE_DOWN, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; });
+            slot.on(Node.EventType.MOUSE_MOVE, (event:any) => this.highlightFormationDropTarget(event));
+        });
+
+        const available = GameStore.pets.filter((pet)=>!pet?.isEgg&&pet?.tradeStatus!=='listed'&&!pet?.tradeListingId);
+        this.formationCandidateNodes.clear();
         const rows = Math.max(1, Math.ceil(available.length / 3));
-        const choices = this.createScrollArea(editor, 'TeamPetScroll', 0, 8, 600, 270, 600, rows * 122 + 12, 'vertical');
-        available.forEach((pet, index) => {
-            const selected = this.teamPetIds.includes(Number(pet?.id || 0));
-            const col = index % 3;
-            const row = Math.floor(index / 3);
-            button(choices.content, `PetChoice${pet?.id}`, safeName(pet?.nickname, `宝宝${index + 1}`), -198 + col * 198, -58 - row * 122, 182, 106, () => this.toggleTeamPet(Number(pet?.id || 0)), {
-                iconPath: getPetArtPath(pet, 'thumb'),
-                iconSize: 58,
-                selected,
-                fill: selected ? CuteTheme.mint : CuteTheme.paperWarm,
-                textColor: selected ? CuteTheme.white : CuteTheme.caramel,
-                fontSize: 14,
-                radius: 24,
-                subtitle: `${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,
-            });
+        text(editor,'CandidateTitle','候选宝宝（可上下滚动）',-285,-72,300,28,15,CuteTheme.caramel,'left',true);
+        const choices = this.createScrollArea(editor,'TeamPetScroll',0,-174,610,172,610,Math.max(172,rows*100+8),'vertical');
+        available.forEach((pet,index)=>{
+            const id=Number(pet?.id||0); const selected=this.teamPetIds.includes(id); const col=index%3,row=Math.floor(index/3);
+            const card=panel(choices.content,`Pet_${id}`,-202+col*202,-46-row*100,190,88,selected?CuteTheme.honey:CuteTheme.paperWarm,20,true,selected?CuteTheme.honeyDark:CuteTheme.white,2);
+            this.formationCandidateNodes.set(id,card);
+            image(card,'Icon',getPetArtPath(pet,'thumb'),-62,2,54,54,CuteTheme.paperWarm);
+            text(card,'Name',safeName(pet?.nickname,`宝宝${index+1}`),-25,19,116,26,13,CuteTheme.caramel,'left',true);
+            text(card,'Meta',`${this.rarityName(pet)} · ${formatNumber(this.battleAttributesOf(pet).power)}`,-25,-13,116,24,11,CuteTheme.muted,'left',true);
+            if(selected)tag(card,'Selected','已选',60,31,48,CuteTheme.mint);
+            card.on(Node.EventType.TOUCH_START,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;});
+            card.on(Node.EventType.TOUCH_MOVE,(event:any)=>this.highlightFormationDropTarget(event));
+            card.on(Node.EventType.MOUSE_DOWN,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;});
+            card.on(Node.EventType.MOUSE_MOVE,(event:any)=>this.highlightFormationDropTarget(event));
         });
-
-        if (!available.length) {
-            text(editor, 'EmptyPets', '暂无可出战宝宝，请先完成孵化。', 0, 20, 500, 60, 20, CuteTheme.muted, 'center', true);
-        } else if (available.length > 6) {
-            this.scrollHint(editor, 'TeamScrollHint', '上下滑动查看全部可出战宝宝', 0, -132, 300);
-        }
-
-        text(editor, 'SelectedCount', `已选择 ${this.teamPetIds.length}/3`, -260, -154, 180, 32, 16, CuteTheme.caramel, 'left', true);
-        button(editor, 'CancelTeam', '取消', 108, -160, 132, 54, () => {
-            this.teamEditing = false;
-            this.renderCurrentPage(false);
-        }, { fill: CuteTheme.paperWarm, fontSize: 16, radius: 24 });
-        button(editor, 'SaveTeam', '保存编队', 248, -160, 150, 54, () => void this.saveTeam(), {
-            icon: '✓', fill: CuteTheme.honey, fontSize: 16, radius: 24,
-            disabled: !this.teamPetIds.length || this.busy.has('team:save'),
-        });
+        text(editor,'Count',`已选择 ${this.teamPetIds.length}/5　${this.formationName(this.selectedFormationCode)}`,-285,-282,300,30,15,CuteTheme.caramel,'left',true);
+        button(editor,'Cancel','取消修改',105,-282,140,48,()=>this.cancelTeamEditing(),{fill:CuteTheme.paperWarm,fontSize:15,radius:21});
+        button(editor,'Save','保存阵容',245,-282,140,48,()=>void this.saveTeam(),{icon:'✓',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||this.teamSlotAssignments.filter(Boolean).length!==5||this.busy.has('team:save')});
     }
 
     private renderTowerMode(parent: Node) {
@@ -1575,7 +1616,7 @@ export class MainUI extends Component {
     private renderFriends() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'FriendSign', '好友相册', 0, 456, 220, 66);
+
 
         const tabs = panel(root, 'FriendTabs', 0, 382, 650, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
         const items: Array<['friends' | 'requests' | 'discover', string, string]> = [
@@ -1658,7 +1699,7 @@ export class MainUI extends Component {
     private renderMarriage() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'MarriageSign', '心愿婚礼', 0, 456, 220, 66);
+
         const tabs = panel(root, 'MarriageTabs', 0, 382, 650, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
         const items: Array<['marriages' | 'proposals' | 'match', string, string]> = [
             ['marriages', '已结缘', '💞'], ['proposals', '申请', '💌'], ['match', '配对', '🎀'],
@@ -1742,7 +1783,7 @@ export class MainUI extends Component {
     private renderMail() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'MailSign', '邮差信箱', 0, 456, 220, 66);
+
         const toolbar = panel(root, 'MailToolbar', 0, 382, 650, 72, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
         text(toolbar, 'Count', `未读 ${this.mailUnreadCount} · 可领取 ${this.mailClaimableCount}`, -285, 0, 260, 34, 16, CuteTheme.caramel, 'left', true);
         button(toolbar, 'ReadAll', '全部已读', 120, 0, 136, 46, () => void this.readAllMail(), { fill: CuteTheme.sky, fontSize: 13, radius: 20, disabled: this.mailUnreadCount <= 0 });
@@ -1755,7 +1796,7 @@ export class MainUI extends Component {
             const row = panel(area.content, `Mail_${mail?.id ?? index}`, 0, -52 - index * 114, 602, 98, selected ? new Color(255, 243, 214, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 22, false, CuteTheme.white, 2);
             text(row, 'Icon', mail?.claimed ? '📭' : mail?.readed ? '✉️' : '💌', -260, 0, 46, 46, 27, mail?.readed ? CuteTheme.muted : CuteTheme.peachDark, 'center', true);
             text(row, 'Title', safeName(mail?.title, '系统邮件'), -224, 19, 280, 30, 17, CuteTheme.caramel, 'left', !mail?.readed);
-            text(row, 'Attach', this.attachmentSummary(mail), -224, -17, 300, 24, 13, CuteTheme.muted, 'left', true);
+            text(row, 'Attach', this.attachmentSummary(mail), -224, -17, 330, 26, 14, CuteTheme.muted, 'left', true);
             button(row, 'Read', '查看', 150, 0, 86, 44, () => void this.selectMail(mail), { fill: CuteTheme.sky, fontSize: 13, radius: 19 });
             button(row, 'Claim', mail?.claimed ? '已领取' : mail?.canClaim ? '领取' : '无附件', 252, 0, 108, 44, () => void this.claimMail(mail), { fill: mail?.canClaim ? CuteTheme.honey : new Color(220, 218, 208, 255), fontSize: 13, radius: 19, disabled: !mail?.canClaim || this.busy.has(`mail:claim:${mail?.id}`) });
         });
@@ -1767,7 +1808,7 @@ export class MainUI extends Component {
     private renderRanking() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'RankingSign', '森林排行榜', 0, 456, 230, 66);
+
         const tabs = panel(root, 'RankingTabs', 0, 382, 666, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
         const modes: Array<['tower' | 'level' | 'power' | 'season', string, string]> = [['tower', '爬塔', '🗼'], ['level', '等级', '⭐'], ['power', '战力', '⚔'], ['season', '赛季', '🏅']];
         modes.forEach(([key, title, icon], index) => button(tabs, `RankTab_${key}`, title, -246 + index * 164, 0, 148, 48, () => void this.changeRankingMode(key), { icon, selected: this.rankingMode === key, fill: this.rankingMode === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 20 }));
@@ -1790,7 +1831,7 @@ export class MainUI extends Component {
     private renderTrade() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'TradeSign', '萌宠寄售市场', 0, 456, 250, 66);
+
         const tabs = panel(root, 'TradeTabs', 0, 382, 666, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
         const modes: Array<['market' | 'mine' | 'history' | 'list', string, string]> = [
             ['market', '市场', '🏷'], ['mine', '我的', '📌'], ['history', '记录', '📒'], ['list', '上架', '➕'],
@@ -1876,7 +1917,7 @@ export class MainUI extends Component {
     private renderProfile() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        cloudSign(root, 'ProfileSign', '玩家手账', 0, 456, 220, 66);
+
         const book = panel(root, 'ProfileBook', 0, -24, 660, 810, CuteTheme.paper, 40, true, CuteTheme.caramelSoft, 3);
         const user = GameStore.user || {};
         text(book, 'Avatar', '👧', -245, 265, 112, 112, 58, CuteTheme.peachDark, 'center', true);
@@ -1917,160 +1958,104 @@ export class MainUI extends Component {
     }
 
     private renderMoreLanding() {
-        if (!this.pageRoot) return;
-        const root = this.pageRoot;
-        cloudSign(root, 'MoreSign', '更多功能', 0, 456, 220, 66);
-        const card = panel(root, 'MoreCard', 0, 10, 650, 790, CuteTheme.paper, 42, true, CuteTheme.caramelSoft, 3);
-        text(card, 'Hint', '点击下方“更多”打开玩具柜', 0, 315, 520, 44, 22, CuteTheme.caramel, 'center', true);
-        text(card, 'Decor', '🎀　🐾　✦　🌿　✿', 0, 220, 500, 80, 42, CuteTheme.honeyDark, 'center', true);
-        button(card, 'OpenDrawer', '打开玩具柜', 0, 90, 240, 72, () => this.toggleDrawer(), {
-            icon: '🧸',
-            fill: CuteTheme.honey,
-            fontSize: 20,
-            radius: 30,
+        if(!this.pageRoot)return;const root=this.pageRoot;
+
+        const card=panel(root,'MoreCard',0,10,650,790,CuteTheme.paper,42,true,CuteTheme.caramelSoft,3);
+        text(card,'Hint','核心养成与协作入口',0,315,520,44,22,CuteTheme.caramel,'center',true);
+        button(card,'Formation','五宠阵法',-150,175,260,150,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:22,radius:30,subtitle:'5套阵型 · 10级成长 · 阵法大招'});
+        button(card,'Guild','萌宠公会',150,175,260,150,()=>this.showPage('guild'),{icon:'🏰',fill:CuteTheme.mint,fontSize:22,radius:30,subtitle:'签到 · 任务 · 首领 · 远征 · 互助'});
+        button(card,'OpenDrawer','打开全部功能柜',0,-10,280,70,()=>this.toggleDrawer(),{icon:'🧸',fill:CuteTheme.honey,fontSize:19,radius:29});
+        text(card,'Summary','研究型页面已重排：宝宝数值、职业、技能、资质和操作占主要空间；\n装饰贴图退到次要层级，关键信息字号更大。',0,-125,540,100,18,CuteTheme.muted,'center',false);
+        text(card,'Audio','🎵 家园萌系音乐　⚔ 普通战斗音乐　👑 BOSS战音乐\n点击、确认、报错、攻击、治疗和护盾均使用新音效',0,-265,540,90,16,CuteTheme.caramel,'center',false);
+    }
+
+    private renderFormation() {
+        if(!this.pageRoot)return;
+        renderFormationPanel(this.pageRoot,this.formationOverview||{},this.selectedFormationCode,{
+            onSelect:(code)=>void this.selectFormation(code),
+            onUpgrade:(code)=>void this.upgradeFormation(code),
+            onBuyKnowledge:()=>void this.buyFormationKnowledge(),
+            onBuyCore:()=>void this.buyFormationCore(),
+            onEditTeam:()=>{this.beginTeamEditing();this.showPage('adventure');},
+            onBack:()=>this.goBackPage(),
         });
-        text(card, 'Summary', '集市、孵化、技能、好友、排行、婚姻、邮件和交易\n都会从这里进入。', 0, -80, 520, 110, 20, CuteTheme.muted, 'center', false);
+    }
+
+    private renderGuild() {
+        if(!this.pageRoot)return;
+        renderGuildPanel(this.pageRoot,this.guildOverview||{}, {
+            onJoin:()=>void this.guildAction('/guild/join-default',{}),
+            onSign:()=>void this.guildAction('/guild/sign',{}),
+            onDonateGold:()=>void this.guildAction('/guild/donate',{type:'gold',amount:5000}),
+            onDonateDiamond:()=>void this.guildAction('/guild/donate',{type:'diamond',amount:10}),
+            onBoss:()=>this.startGuildBossBattle(),
+            onTask:(id)=>void this.guildAction('/guild/tasks/claim',{taskId:id}),
+            onExpedition:()=>void this.guildAction('/guild/expedition/start',{petIds:this.teamPetIds,routeCode:'forest'}),
+            onClaimExpedition:(id)=>void this.guildAction('/guild/expedition/claim',{expeditionId:id}),
+            onBack:()=>this.goBackPage(),
+        });
+    }
+
+    private formationName(code: string) {
+        const map:Record<string,string>={dragon:'龙阵',turtle:'龟阵',crane:'鹤阵',tiger:'虎阵',phoenix:'凤阵'};
+        return map[String(code)]||'龙阵';
+    }
+
+    private async selectFormation(code:string) {
+        this.selectedFormationCode=code;
+        if(this.teamPetIds.length===5) await this.saveTeam();
+        else { this.showToast(`已选择${this.formationName(code)}，完成五宠编队后保存`); this.renderCurrentPage(false); }
+    }
+
+    private async upgradeFormation(code:string) { await this.formationAction('/formation/upgrade',{formationCode:code}); }
+    private async buyFormationKnowledge() { await this.formationAction('/formation/purchase-knowledge',{quantity:30}); }
+    private async buyFormationCore() { await this.formationAction('/formation/purchase-core',{}); }
+    private async formationAction(path:string,body:any) {
+        const result=await ApiClient.post(path,body);this.showToast(result?.message||'阵法操作完成');
+        if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
+        this.formationOverview=(await ApiClient.get('/formation'))||this.formationOverview;this.renderCurrentPage(false);
+    }
+
+    private async guildAction(path:string,body:any) {
+        const result=await ApiClient.post(path,body);this.showToast(result?.message||'公会操作完成');
+        if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
+        this.guildOverview=(await ApiClient.get('/guild/my'))||this.guildOverview;this.renderCurrentPage(false);
+    }
+
+    private startGuildBossBattle() {
+        if(this.teamPetIds.length!==5){this.showToast('公会首领需要完整五宠编队');return;}
+        if(!this.battleLayer)return;
+        showFivePetBattle(this.battleLayer,{mode:'guild-boss',title:'公会首领战',formationCode:this.selectedFormationCode,onClose:()=>{this.showPage('guild');},onComplete:async()=>{const result=await ApiClient.post('/guild/boss/challenge',{});this.showToast(result?.message||'公会首领结算完成');this.guildOverview=(await ApiClient.get('/guild/my'))||this.guildOverview;}});
+    }
+
+    private async allocatePetStats(points:Record<string,number>) {
+        const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
+        const result=await ApiClient.post('/pet/stats/allocate',{petId,points});
+        if(result?.success===false){this.showToast(result?.message||'加点失败');void AudioDirector.playSfx('error');return;}
+        const detail=await ApiClient.get(`/pet/${petId}`);if(detail?.success!==false){const pet=detail?.data||detail?.pet||detail;GameStore.updatePet(pet);}this.showToast('属性点已分配');void AudioDirector.playSfx('confirm');
+    }
+    private async recommendPetStats() {
+        const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
+        const result=await ApiClient.post('/pet/stats/recommend',{petId,template:'auto'});if(result?.success===false){this.showToast(result?.message||'推荐加点失败');return;}await GameStore.ensureCurrentPetDetail(true);this.showToast('已按宝宝定位完成推荐加点');
+    }
+    private async resetPetStats() {
+        const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
+        const result=await ApiClient.post('/pet/stats/reset',{petId});this.showToast(result?.message||'加点已重置');if(result?.success!==false)await GameStore.ensureCurrentPetDetail(true);
     }
 
     private renderSettings() {
-        if (!this.pageRoot) return;
-        const root = this.pageRoot;
-        const settings = CuteFeedback.getSettings();
-        const book = panel(
-            root,
-            'SettingsBook',
-            0,
-            0,
-            692,
-            905,
-            new Color(255, 250, 232, 255),
-            40,
-            true,
-            CuteTheme.caramelSoft,
-            4,
-        );
-        headingTag(book, 'Title', '游戏设置', -245, 390, 154, CuteTheme.paperWarm);
-        text(book, 'Hint', '设置保存在本机。声音与点击反馈立即生效，画质档位将在正式构建时应用。', -305, 346, 590, 38, 14, CuteTheme.muted, 'left', true);
-
-        const soundCard = panel(book, 'SoundCard', 0, 205, 630, 250, new Color(238, 248, 230, 255), 28, false, CuteTheme.mintDark, 2);
-        headingTag(soundCard, 'SoundTitle', '声音与反馈', -215, 98, 160, CuteTheme.mint);
-
-        this.settingToggle(
-            soundCard,
-            'SoundToggle',
-            '声音开关',
-            settings.soundEnabled,
-            -78,
-            48,
-            () => {
-                CuteFeedback.setSettings({ soundEnabled: !settings.soundEnabled });
-                this.renderCurrentPage(false);
-            },
-        );
-        this.settingToggle(
-            soundCard,
-            'VibrateToggle',
-            '轻触震动',
-            settings.vibrationEnabled,
-            170,
-            48,
-            () => {
-                CuteFeedback.setSettings({ vibrationEnabled: !settings.vibrationEnabled });
-                this.renderCurrentPage(false);
-            },
-        );
-
-        text(soundCard, 'MasterLabel', '总音量', -275, -12, 100, 30, 15, CuteTheme.caramel, 'left', true);
-        button(soundCard, 'MasterMinus', '－', -145, -12, 42, 42, () => this.changeFeedbackVolume('masterVolume', -0.1), {
-            fill: CuteTheme.paperWarm, fontSize: 20, radius: 18,
-        });
-        progress(soundCard, 'MasterProgress', 4, -12, 220, 16, settings.masterVolume, CuteTheme.honey);
-        text(soundCard, 'MasterValue', `${Math.round(settings.masterVolume * 100)}%`, 152, -12, 66, 28, 14, CuteTheme.caramel, 'center', true);
-        button(soundCard, 'MasterPlus', '＋', 235, -12, 42, 42, () => this.changeFeedbackVolume('masterVolume', 0.1), {
-            fill: CuteTheme.honey, fontSize: 20, radius: 18,
-        });
-
-        text(soundCard, 'SfxLabel', '点击音效', -275, -72, 100, 30, 15, CuteTheme.caramel, 'left', true);
-        button(soundCard, 'SfxMinus', '－', -145, -72, 42, 42, () => this.changeFeedbackVolume('sfxVolume', -0.1), {
-            fill: CuteTheme.paperWarm, fontSize: 20, radius: 18,
-        });
-        progress(soundCard, 'SfxProgress', 4, -72, 220, 16, settings.sfxVolume, CuteTheme.green);
-        text(soundCard, 'SfxValue', `${Math.round(settings.sfxVolume * 100)}%`, 152, -72, 66, 28, 14, CuteTheme.caramel, 'center', true);
-        button(soundCard, 'SfxPlus', '＋', 235, -72, 42, 42, () => this.changeFeedbackVolume('sfxVolume', 0.1), {
-            fill: CuteTheme.mint, fontSize: 20, radius: 18,
-        });
-
-        const visualCard = panel(book, 'VisualCard', 0, -55, 630, 220, new Color(242, 239, 253, 255), 28, false, CuteTheme.lilac, 2);
-        headingTag(visualCard, 'VisualTitle', '画面与动效', -215, 84, 160, CuteTheme.lilac);
-        this.settingToggle(
-            visualCard,
-            'AnimationToggle',
-            '页面动效',
-            settings.animationEnabled,
-            -78,
-            32,
-            () => {
-                CuteFeedback.setSettings({ animationEnabled: !settings.animationEnabled });
-                this.renderCurrentPage(false);
-            },
-        );
-        text(visualCard, 'QualityLabel', '画质档位', -275, -30, 110, 30, 15, CuteTheme.caramel, 'left', true);
-        const presets: Array<{ key: ResolutionPreset; title: string }> = [
-            { key: 'high', title: '高清\n720×1280' },
-            { key: 'balanced', title: '均衡\n540×960' },
-            { key: 'saving', title: '省电\n360×640' },
-        ];
-        presets.forEach((preset, index) => {
-            button(
-                visualCard,
-                `Resolution_${preset.key}`,
-                preset.title,
-                -95 + index * 150,
-                -45,
-                132,
-                66,
-                () => this.setResolutionPreset(preset.key),
-                {
-                    fill: settings.resolutionPreset === preset.key ? CuteTheme.honey : CuteTheme.paper,
-                    selected: settings.resolutionPreset === preset.key,
-                    fontSize: 14,
-                    radius: 22,
-                },
-            );
-        });
-        text(visualCard, 'QualityHint', `当前：${CuteFeedback.resolutionLabel(settings.resolutionPreset)} · 正式小游戏构建时生效`, 0, -92, 520, 26, 12, CuteTheme.muted, 'center', true);
-
-        const info = panel(book, 'InfoCard', 0, -300, 630, 210, new Color(255, 238, 230, 255), 28, false, CuteTheme.peachDark, 2);
-        headingTag(info, 'InfoTitle', '操作手感', -215, 78, 142, CuteTheme.peach);
-        text(
-            info,
-            'Description',
-            '按钮按下会轻微缩放并回弹；页面切换使用短距离滑入；“更多”抽屉从底部弹出。微信设备开启轻触震动后，还会提供轻微触觉反馈。',
-            -275,
-            12,
-            550,
-            90,
-            15,
-            CuteTheme.caramel,
-            'left',
-            false,
-        );
-        button(info, 'TestSound', '测试反馈', -196, -72, 142, 52, () => CuteFeedback.playSuccess(), {
-            icon: '🔔', fill: CuteTheme.mint, fontSize: 13, radius: 22,
-        });
-        button(info, 'ReplayGuide', '新手引导', 0, -72, 142, 52, () => {
-            CuteGuideState.reset();
-            this.startGuide(true);
-        }, {
-            icon: '🐾', fill: CuteTheme.honey, fontSize: 13, radius: 22,
-        });
-        button(info, 'Reset', '恢复默认', 196, -72, 142, 52, () => {
-            CuteFeedback.resetSettings();
-            this.showToast('设置已恢复默认');
-            this.renderCurrentPage(false);
-        }, {
-            icon: '↻', fill: CuteTheme.paperWarm, fontSize: 13, radius: 22,
-        });
+        if(!this.pageRoot)return;const root=this.pageRoot;const settings=CuteFeedback.getSettings();const audio=AudioDirector.getSettings();
+        const book=panel(root,'SettingsBook',0,0,692,905,new Color(255,250,232,255),40,true,CuteTheme.caramelSoft,4);
+        headingTag(book,'Title','游戏设置',-245,390,154,CuteTheme.paperWarm);
+        const sound=panel(book,'Sound',0,205,630,280,new Color(238,248,230,255),28,false,CuteTheme.mintDark,2);
+        headingTag(sound,'Title','音乐与音效',-210,112,170,CuteTheme.mint);
+        this.settingToggle(sound,'AudioToggle','音乐音效',audio.enabled,-90,58,()=>{AudioDirector.setSettings({enabled:!audio.enabled});this.renderCurrentPage(false);});
+        this.settingToggle(sound,'Vibrate','轻触震动',settings.vibrationEnabled,165,58,()=>{CuteFeedback.setSettings({vibrationEnabled:!settings.vibrationEnabled});this.renderCurrentPage(false);});
+        text(sound,'BgmLabel','背景音乐',-275,2,110,30,15,CuteTheme.caramel,'left',true);button(sound,'BgmMinus','－',-140,2,42,42,()=>{AudioDirector.setSettings({bgmVolume:audio.bgmVolume-.1});this.renderCurrentPage(false);},{fill:CuteTheme.paperWarm,fontSize:20,radius:18});progress(sound,'Bgm',5,2,220,16,audio.bgmVolume,CuteTheme.honey);text(sound,'BgmValue',`${Math.round(audio.bgmVolume*100)}%`,155,2,66,28,14,CuteTheme.caramel,'center',true);button(sound,'BgmPlus','＋',235,2,42,42,()=>{AudioDirector.setSettings({bgmVolume:audio.bgmVolume+.1});this.renderCurrentPage(false);},{fill:CuteTheme.honey,fontSize:20,radius:18});
+        text(sound,'SfxLabel','点击音效',-275,-58,110,30,15,CuteTheme.caramel,'left',true);button(sound,'SfxMinus','－',-140,-58,42,42,()=>{AudioDirector.setSettings({sfxVolume:audio.sfxVolume-.1});this.renderCurrentPage(false);},{fill:CuteTheme.paperWarm,fontSize:20,radius:18});progress(sound,'Sfx',5,-58,220,16,audio.sfxVolume,CuteTheme.sky);text(sound,'SfxValue',`${Math.round(audio.sfxVolume*100)}%`,155,-58,66,28,14,CuteTheme.caramel,'center',true);button(sound,'SfxPlus','＋',235,-58,42,42,()=>{AudioDirector.setSettings({sfxVolume:audio.sfxVolume+.1});this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:20,radius:18});
+        button(sound,'Test','试听新点击声',0,-112,180,42,()=>AudioDirector.playCuteClick(),{icon:'♪',fill:CuteTheme.paperWarm,fontSize:13,radius:18});
+        const visual=panel(book,'Visual',0,-30,630,190,new Color(242,238,255,255),28,false,CuteTheme.lilac,2);headingTag(visual,'Title','画面与反馈',-205,70,170,CuteTheme.lilac);this.settingToggle(visual,'Anim','界面动效',settings.animationEnabled,-90,15,()=>{CuteFeedback.setSettings({animationEnabled:!settings.animationEnabled});this.renderCurrentPage(false);});this.settingToggle(visual,'SoundCompat','旧版反馈声',settings.soundEnabled,165,15,()=>{CuteFeedback.setSettings({soundEnabled:!settings.soundEnabled});this.renderCurrentPage(false);});text(visual,'Hint','战斗、孵化和变异蛋会使用独立动画；低性能设备可关闭界面动效。',0,-58,560,40,14,CuteTheme.muted,'center',false);
+        const info=panel(book,'Info',0,-285,630,210,CuteTheme.paperWarm,28,false,CuteTheme.caramelSoft,2);headingTag(info,'Title','本版本音频',-205,78,170,CuteTheme.paperWarm);text(info,'Text','家园：萌系开朗循环音乐\n普通战斗：轻快节奏音乐\nBOSS战：更有压迫感的独立音乐\n新音效：三种随机点击、确认、错误、物理、法术、治疗、护盾',-275,-10,550,140,16,CuteTheme.caramel,'left',false);
     }
 
     private settingToggle(
@@ -2261,7 +2246,7 @@ export class MainUI extends Component {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
         const title = this.titleForPage(page);
-        cloudSign(root, 'SecondarySign', title, 0, 456, 220, 66);
+
 
         const card = panel(root, 'SecondaryCard', 0, 15, 660, 790, CuteTheme.paper, 40, true, CuteTheme.caramelSoft, 3);
         text(card, 'Icon', this.iconForPage(page), 0, 215, 240, 160, 88, CuteTheme.caramel, 'center', true);
@@ -2295,91 +2280,31 @@ export class MainUI extends Component {
         if (!this.drawerOpen) return;
 
         if (!this.drawerLayer.getComponent(BlockInputEvents)) this.drawerLayer.addComponent(BlockInputEvents);
-        const dim = panel(
-            this.drawerLayer,
-            'Dim',
-            0,
-            0,
-            DESIGN_WIDTH,
-            DESIGN_HEIGHT,
-            new Color(91, 56, 35, 82),
-            0,
-            false,
-            CuteTheme.transparent,
-            0,
-        );
+        const dim = panel(this.drawerLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(91, 56, 35, 82), 0, false, CuteTheme.transparent, 0);
         dim.on(Node.EventType.TOUCH_END, () => this.closeDrawer());
 
-        const drawer = panel(
-            this.drawerLayer,
-            'Drawer',
-            0,
-            -238,
-            704,
-            660,
-            new Color(255, 246, 224, 255),
-            42,
-            true,
-            CuteTheme.caramelSoft,
-            4,
-        );
-        headingTag(drawer, 'DrawerTitle', '功能柜', 0, 280, 170, CuteTheme.paperWarm);
-        button(drawer, 'Close', '×', 310, 280, 46, 46, () => this.closeDrawer(), {
-            fill: CuteTheme.peach,
-            fontSize: 28,
-            radius: 23,
-        });
+        const drawer = panel(this.drawerLayer, 'Drawer', 0, -205, 704, 730, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
+        headingTag(drawer, 'DrawerTitle', '功能柜', 0, 322, 178, CuteTheme.paperWarm);
+        button(drawer, 'Close', '×', 310, 322, 48, 48, () => this.closeDrawer(), { fill: CuteTheme.peach, fontSize: 28, radius: 23 });
 
         const entries = [
-            ['shop', '商城', '🛒', CuteTheme.honey],
-            ['benefits', '福利', '🎀', CuteTheme.peach],
-            ['hatchery', '孵化室', '🥚', CuteTheme.mint],
-            ['skills', '打技能', '📕', CuteTheme.sky],
-            ['fusion', '炼妖', '🔮', CuteTheme.lilac],
-            ['friends', '好友', '📷', CuteTheme.peach],
-            ['ranking', '排行', '🏆', CuteTheme.paperWarm],
-            ['marriage', '婚姻', '💞', CuteTheme.pink],
-            ['mail', '邮件', '💌', CuteTheme.mint],
-            ['trade', '交易', '🏷', CuteTheme.lilac],
-            ['profile', '玩家', '📒', CuteTheme.sky],
-            ['settings', '设置', '⚙', new Color(235, 232, 216, 255)],
+            ['shop', '商城', '🛒', CuteTheme.honey], ['benefits', '福利', '🎀', CuteTheme.peach],
+            ['hatchery', '孵化室', '🥚', CuteTheme.mint], ['skills', '打技能', '📕', CuteTheme.sky],
+            ['fusion', '炼妖', '🔮', CuteTheme.lilac], ['formation', '阵法', '🐉', CuteTheme.lilac],
+            ['guild', '公会', '🏰', CuteTheme.mint], ['friends', '好友', '📷', CuteTheme.peach],
+            ['ranking', '排行', '🏆', CuteTheme.paperWarm], ['marriage', '婚姻', '💞', CuteTheme.pink],
+            ['mail', '邮件', '💌', CuteTheme.mint], ['trade', '交易', '🏷', CuteTheme.lilac],
+            ['profile', '玩家', '📒', CuteTheme.sky], ['settings', '设置', '⚙', new Color(235, 232, 216, 255)],
         ] as Array<[PageName, string, string, Color]>;
 
         entries.forEach(([page, title, icon, fill], index) => {
             const col = index % 4;
             const row = Math.floor(index / 4);
-            const entryNode = button(
-                drawer,
-                `Entry_${page}`,
-                title,
-                -237 + col * 158,
-                142 - row * 145,
-                138,
-                112,
-                () => this.showPage(page),
-                {
-                    icon,
-                    fill,
-                    fontSize: 14,
-                    radius: 26,
-                },
-            );
-            this.addNotificationBadge(entryNode, this.pageNotificationCount(page), 49, 42);
+            const entryNode = button(drawer, `Entry_${page}`, title, -237 + col * 158, 206 - row * 132, 138, 108, () => this.showPage(page), {
+                icon, fill, fontSize: 16, radius: 26,
+            });
+            this.addNotificationBadge(entryNode, this.pageNotificationCount(page), 49, 40);
         });
-
-        text(
-            drawer,
-            'Hint',
-            '轻点按钮会回弹并播放音效；声音、动效和画质档位可在“设置”中调整。',
-            0,
-            -277,
-            620,
-            34,
-            14,
-            CuteTheme.muted,
-            'center',
-            true,
-        );
 
         if (CuteFeedback.animationEnabled()) {
             const opacity = drawer.getComponent(UIOpacity) || drawer.addComponent(UIOpacity);
@@ -2387,9 +2312,7 @@ export class MainUI extends Component {
             drawer.setPosition(new Vec3(0, -470, 0));
             drawer.setScale(new Vec3(0.98, 0.98, 1));
             tween(opacity).to(0.16, { opacity: 255 }).start();
-            tween(drawer)
-                .to(0.22, { position: new Vec3(0, -238, 0), scale: Vec3.ONE }, { easing: 'backOut' })
-                .start();
+            tween(drawer).to(0.22, { position: new Vec3(0, -205, 0), scale: Vec3.ONE }, { easing: 'backOut' }).start();
         }
     }
 
@@ -2460,222 +2383,184 @@ export class MainUI extends Component {
     private renderUtilityModal() {
         if (!this.utilityLayer) return;
         clearNode(this.utilityLayer);
-        this.utilityLayer.active = this.hatchAcceleratorOpen;
-        if (!this.hatchAcceleratorOpen) return;
-        if (!this.utilityLayer.getComponent(BlockInputEvents)) {
-            this.utilityLayer.addComponent(BlockInputEvents);
-        }
+        const active = this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
+        this.utilityLayer.active = active;
+        if (!active) return;
+        if (!this.utilityLayer.getComponent(BlockInputEvents)) this.utilityLayer.addComponent(BlockInputEvents);
 
-        const activeEgg = GameStore.eggs.find((egg) =>
-            ['incubating', 'hatching', 'unhatched'].includes(String(egg?.status || '')),
-        ) || null;
-        if (!activeEgg) {
-            this.hatchAcceleratorOpen = false;
-            this.utilityLayer.active = false;
+        const dim = panel(this.utilityLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 118), 0, false, CuteTheme.transparent, 0);
+        dim.on(Node.EventType.TOUCH_END, () => this.closeUtilityModal());
+
+        if (this.homePetPickerOpen) {
+            const card = panel(this.utilityLayer, 'HomePetPicker', 0, 0, 640, 900, new Color(255, 250, 232, 255), 38, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', '选择心仪宝宝', 0, 388, 210, CuteTheme.peach);
+            text(card, 'Hint', '当前出战宝宝优先显示；选择后点击确认才会更换家园宝宝。', 0, 342, 560, 36, 15, CuteTheme.muted, 'center', true);
+            const pets = this.filteredPetList();
+            const rows = Math.max(1, Math.ceil(pets.length / 3));
+            const area = this.createScrollArea(card, 'PickerScroll', 0, 20, 590, 600, 590, Math.max(600, rows * 132 + 10), 'vertical');
+            pets.forEach((pet,index)=>{
+                const id=Number(pet?.id||0); const col=index%3,row=Math.floor(index/3); const chosen=id===this.pendingHomePetId;
+                const item=button(area.content,`Pet_${id}`,safeName(pet?.nickname,`宝宝${index+1}`),-196+col*196,-58-row*132,182,116,()=>{this.pendingHomePetId=id;this.renderUtilityModal();},{iconPath:getPetArtPath(pet,'thumb'),iconSize:64,selected:chosen,fill:chosen?CuteTheme.honey:CuteTheme.paperWarm,fontSize:14,radius:23,subtitle:`${this.rarityName(pet)} · Lv.${Number(pet?.level||1)} · ${formatNumber(this.battleAttributesOf(pet).power)}`});
+                const teamIndex=this.teamPetIds.indexOf(id); if(teamIndex>=0)tag(item,'Team',`⚔${teamIndex+1}`,55,45,48,CuteTheme.mint);
+                if(pet?.isLocked)tag(item,'Lock','🔒',-56,45,40,CuteTheme.paperWarm);
+            });
+            button(card,'Cancel','取消',-105,-392,180,58,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:16,radius:25});
+            button(card,'Confirm','确认更换',105,-392,190,58,()=>{if(this.pendingHomePetId)this.setHomePet(this.pendingHomePetId);this.closeUtilityModal();},{icon:'♥',fill:CuteTheme.peach,fontSize:16,radius:25,disabled:!this.pendingHomePetId});
             return;
         }
 
-        const dim = panel(
-            this.utilityLayer,
-            'Dim',
-            0,
-            0,
-            DESIGN_WIDTH,
-            DESIGN_HEIGHT,
-            new Color(73, 45, 30, 110),
-            0,
-            false,
-            CuteTheme.transparent,
-            0,
-        );
-        dim.on(Node.EventType.TOUCH_END, () => this.closeHatchAccelerator());
-
-        const card = panel(
-            this.utilityLayer,
-            'AcceleratorCard',
-            0,
-            0,
-            590,
-            620,
-            new Color(255, 250, 232, 255),
-            38,
-            true,
-            CuteTheme.caramelSoft,
-            4,
-        );
-        headingTag(card, 'Title', '孵化加速', 0, 258, 160, CuteTheme.sky);
-        text(
-            card,
-            'Egg',
-            `宠物蛋 #${Number(activeEgg?.id || 0)} · 剩余 ${this.formatSeconds(Number(activeEgg?.remainingSeconds || 0))}`,
-            0,
-            214,
-            500,
-            34,
-            17,
-            CuteTheme.caramel,
-            'center',
-            true,
-        );
-        text(
-            card,
-            'Hint',
-            '选择一个加速道具立即减少孵化时间。时间减到0后即可孵化。',
-            0,
-            176,
-            500,
-            34,
-            14,
-            CuteTheme.muted,
-            'center',
-            false,
-        );
-
-        const items = this.hatchAcceleratorItems();
-        if (!items.length) {
-            text(
-                card,
-                'Empty',
-                '背包中没有孵化加速道具\n可前往商城购买“孵化沙漏”',
-                0,
-                40,
-                420,
-                100,
-                20,
-                CuteTheme.muted,
-                'center',
-                true,
-            );
-            button(card, 'GoShop', '前往商城', 0, -62, 180, 56, () => {
-                this.closeHatchAccelerator();
-                this.showPage('shop');
-            }, {
-                icon: '🛒',
-                fill: CuteTheme.honey,
-                fontSize: 15,
-                radius: 24,
+        if (this.fusionPickerSide) {
+            const side=this.fusionPickerSide;
+            const otherId=side==='A'?this.fusionParentBId:this.fusionParentAId;
+            const card=panel(this.utilityLayer,'FusionPicker',0,0,650,920,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+            headingTag(card,'Title',side==='A'?'选择父系宝宝':'选择母系宝宝',0,398,220,side==='A'?CuteTheme.mint:CuteTheme.peach);
+            text(card,'Hint','锁定、寄售、已婚或正在出战的宝宝不可用于炼妖。',0,354,570,34,15,CuteTheme.muted,'center',true);
+            const teamIds=new Set(this.teamPetIds.map(Number));
+            const pets=GameStore.pets.filter((pet)=>!pet?.isEgg);
+            const rows=Math.max(1,Math.ceil(pets.length/2));
+            const area=this.createScrollArea(card,'FusionPetScroll',0,12,604,650,604,Math.max(650,rows*144+10),'vertical');
+            pets.forEach((pet,index)=>{
+                const id=Number(pet?.id||0); const invalid=id===otherId||pet?.isLocked||pet?.tradeStatus==='listed'||pet?.tradeListingId||pet?.married||pet?.marriedPetId||teamIds.has(id);
+                const reason=id===otherId?'另一侧已选择':pet?.isLocked?'已锁定':(pet?.tradeStatus==='listed'||pet?.tradeListingId)?'寄售中':(pet?.married||pet?.marriedPetId)?'已婚':teamIds.has(id)?'出战中':'';
+                const col=index%2,row=Math.floor(index/2);
+                const item=panel(area.content,`FusionPet_${id}`,-151+col*302,-66-row*144,286,132,invalid?new Color(228,226,218,255):CuteTheme.paperWarm,23,true,invalid?CuteTheme.caramelSoft:CuteTheme.white,2);
+                image(item,'Art',getPetArtPath(pet,'thumb'),-98,18,74,74,CuteTheme.paperWarm);
+                text(item,'Name',safeName(pet?.nickname,'宝宝'),-52,40,178,28,16,CuteTheme.caramel,'left',true);
+                text(item,'Meta',`${this.rarityName(pet)}${pet?.isMutant?'·变异':''} · 成长${this.growthValue(pet).toFixed(3)}`,-52,8,180,26,13,CuteTheme.muted,'left',true);
+                text(item,'Skills',`技能${Array.isArray(pet?.skills)?pet.skills.length:0} 特殊${this.specialSkills(pet).length} · 战力${formatNumber(this.battleAttributesOf(pet).power)}`,-52,-24,190,26,12,CuteTheme.muted,'left',true);
+                button(item,'Choose',invalid?reason:'选择',74,-44,100,34,()=>{if(invalid)return;if(side==='A')this.fusionParentAId=id;else this.fusionParentBId=id;this.fusionPreview=null;this.closeUtilityModal();this.renderCurrentPage(false);},{fill:invalid?new Color(210,208,202,255):(side==='A'?CuteTheme.mint:CuteTheme.peach),fontSize:11,radius:15,disabled:invalid});
             });
-        } else {
-            items.slice(0, 5).forEach((item, index) => {
-                const y = 110 - index * 72;
-                const seconds = Number(item?.effectValue || item?.effectData?.seconds || 0);
-                const row = panel(
-                    card,
-                    `Accelerator_${item?.itemCode || index}`,
-                    0,
-                    y,
-                    520,
-                    62,
-                    index % 2 === 0 ? CuteTheme.paper : CuteTheme.sky,
-                    20,
-                    false,
-                    CuteTheme.white,
-                    2,
-                );
-                text(row, 'Icon', '⏳', -228, 0, 42, 42, 24, CuteTheme.honeyDark, 'left', true);
-                text(row, 'Name', safeName(item?.name, '孵化沙漏'), -180, 11, 220, 26, 16, CuteTheme.caramel, 'left', true);
-                text(row, 'Effect', `减少 ${this.formatSeconds(seconds)}`, -180, -14, 220, 24, 12, CuteTheme.muted, 'left', true);
-                tag(row, 'Count', `×${Number(item?.quantity || 0)}`, 105, 0, 64, CuteTheme.paperWarm);
-                button(row, 'Use', '使用', 205, 0, 78, 40, () => void this.useHatchAccelerator(activeEgg, item), {
-                    fill: CuteTheme.honey,
-                    fontSize: 13,
-                    radius: 18,
-                    disabled: this.busy.has(`hatch-accelerate:${item?.itemCode}`),
-                });
-            });
-        }
-
-        button(card, 'Close', '关闭', 0, -258, 150, 52, () => this.closeHatchAccelerator(), {
-            fill: CuteTheme.paperWarm,
-            fontSize: 15,
-            radius: 22,
-        });
-
-        if (CuteFeedback.animationEnabled()) {
-            card.setScale(new Vec3(0.90, 0.90, 1));
-            tween(card).to(0.2, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
-        }
-    }
-
-    private openHatchAccelerator() {
-        const activeEgg = GameStore.eggs.find((egg) =>
-            ['incubating', 'hatching', 'unhatched'].includes(String(egg?.status || '')),
-        );
-        if (!activeEgg) {
-            this.showToast('请先从孵化室仓库放入一枚宠物蛋');
+            button(card,'Close','关闭',0,-410,170,54,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:23});
             return;
         }
-        this.hatchAcceleratorOpen = true;
-        CuteFeedback.playDrawer();
+
+        if (this.pendingIncubation) {
+            const egg=this.pendingIncubation.egg;
+            const card=panel(this.utilityLayer,'IncubationConfirm',0,0,570,600,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+            headingTag(card,'Title','确认孵化',0,246,170,CuteTheme.honey);
+            image(card,'Egg',getEggArtPath(egg),0,118,120,150,CuteTheme.paperWarm);
+            text(card,'Name',getEggDisplayName(egg),0,32,480,42,22,CuteTheme.caramel,'center',true);
+            text(card,'Time',`预计时间：${this.formatEggDuration(egg)}`,0,-10,440,34,17,CuteTheme.muted,'center',true);
+            const occupied=new Set(GameStore.eggs.filter((item)=>['incubating','hatching'].includes(String(item?.status||''))).map((item)=>Number(item?.incubatorSlot||0)));
+            text(card,'SlotTitle','选择孵化装置',0,-70,420,34,17,CuteTheme.caramel,'center',true);
+            [1,2,3].forEach((slot,index)=>button(card,`Slot_${slot}`,`${slot}号`, -140+index*140,-120,110,48,()=>{this.pendingIncubation={egg,slot};this.renderUtilityModal();},{selected:this.pendingIncubation?.slot===slot,fill:occupied.has(slot)?new Color(212,210,204,255):this.pendingIncubation?.slot===slot?CuteTheme.honey:CuteTheme.paperWarm,fontSize:14,radius:20,disabled:occupied.has(slot)}));
+            text(card,'Warning','确认后开始计时；变异蛋不会额外延长孵化时间。',0,-178,460,34,14,CuteTheme.peachDark,'center',true);
+            button(card,'Cancel','取消',-105,-238,170,54,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:23});
+            button(card,'Confirm','开始孵化',105,-238,180,54,()=>void this.startEggIncubationNow(egg,this.pendingIncubation?.slot||0),{icon:'🥚',fill:CuteTheme.honey,fontSize:15,radius:23,disabled:!this.pendingIncubation?.slot});
+            return;
+        }
+
+        if (this.fusionConfirmOpen) {
+            const a=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentAId); const b=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentBId);
+            const card=panel(this.utilityLayer,'FusionConfirm',0,0,600,640,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+            headingTag(card,'Title','最终确认',0,270,160,CuteTheme.peach);
+            text(card,'Warning','炼妖会永久消耗以下两只宝宝，且操作不可撤销。',0,222,520,42,17,CuteTheme.peachDark,'center',true);
+            [a,b].forEach((pet,index)=>{const x=index===0?-145:145;const box=panel(card,`Parent_${index}`,x,60,250,260,CuteTheme.paperWarm,26,true,CuteTheme.white,2);image(box,'Art',getPetArtPath(pet,'thumb'),0,72,96,96,CuteTheme.paperWarm);text(box,'Name',safeName(pet?.nickname,'宝宝'),0,8,220,34,20,CuteTheme.caramel,'center',true);text(box,'Meta',`${this.rarityName(pet)} · 成长${this.growthValue(pet).toFixed(3)}
+技能${Array.isArray(pet?.skills)?pet.skills.length:0} · 特殊${this.specialSkills(pet).length}`,0,-48,220,62,14,CuteTheme.muted,'center',false);});
+            text(card,'Cost','消耗：1000金币＋合宠核心×1',0,-116,480,34,16,CuteTheme.caramel,'center',true);
+            button(card,'Cancel','返回检查',-110,-244,180,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();},{fill:CuteTheme.paperWarm,fontSize:15,radius:24});
+            button(card,'Confirm','确认炼妖',110,-244,190,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();void this.executeFusion();},{icon:'🔮',fill:CuteTheme.peach,fontSize:16,radius:24});
+            return;
+        }
+
+        const activeEgg=GameStore.eggs.find((egg)=>Number(egg?.id||0)===this.hatchAcceleratorEggId)||GameStore.eggs.find((egg)=>['incubating','hatching'].includes(String(egg?.status||'')))||null;
+        if(!activeEgg){this.closeUtilityModal();return;}
+        const card=panel(this.utilityLayer,'AcceleratorCard',0,0,590,620,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+        headingTag(card,'Title','孵化加速',0,258,160,CuteTheme.sky);
+        text(card,'Egg',`${getEggDisplayName(activeEgg)} · ${Number(activeEgg?.incubatorSlot||1)}号装置`,0,214,500,34,18,CuteTheme.caramel,'center',true);
+        text(card,'Hint',`剩余 ${this.formatSeconds(Number(activeEgg?.remainingSeconds||0))}，选择道具立即减少时间。`,0,176,500,34,15,CuteTheme.muted,'center',true);
+        const items=this.hatchAcceleratorItems();
+        if(!items.length){text(card,'Empty','背包中没有孵化加速道具',0,20,420,80,20,CuteTheme.muted,'center',true);}else items.slice(0,5).forEach((item,index)=>{const y=110-index*72;const seconds=Number(item?.effectValue||item?.effectData?.seconds||0);const row=panel(card,`Accelerator_${item?.itemCode||index}`,0,y,520,62,index%2===0?CuteTheme.paper:CuteTheme.sky,20,false,CuteTheme.white,2);text(row,'Name',safeName(item?.name,'孵化沙漏'),-220,11,250,26,16,CuteTheme.caramel,'left',true);text(row,'Effect',`减少 ${this.formatSeconds(seconds)}`,-220,-14,250,24,12,CuteTheme.muted,'left',true);tag(row,'Count',`×${Number(item?.quantity||0)}`,105,0,64,CuteTheme.paperWarm);button(row,'Use','使用',205,0,78,40,()=>void this.useHatchAccelerator(activeEgg,item),{fill:CuteTheme.honey,fontSize:13,radius:18,disabled:this.busy.has(`hatch-accelerate:${item?.itemCode}`)});});
+        button(card,'Close','关闭',0,-258,150,52,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:22});
+    }
+
+    private openHatchAccelerator(egg?: any) {
+        const activeEgg=egg||GameStore.eggs.find((item)=>['incubating','hatching'].includes(String(item?.status||'')));
+        if(!activeEgg){this.showToast('请先放入一枚宠物蛋');return;}
+        this.hatchAcceleratorEggId=Number(activeEgg?.id||0);
+        this.hatchAcceleratorOpen=true;
         this.renderUtilityModal();
     }
 
-    private closeHatchAccelerator() {
-        this.hatchAcceleratorOpen = false;
+    private closeUtilityModal() {
+        this.hatchAcceleratorOpen=false;
+        this.hatchAcceleratorEggId=0;
+        this.homePetPickerOpen=false;
+        this.fusionPickerSide=null;
+        this.pendingIncubation=null;
+        this.fusionConfirmOpen=false;
         this.renderUtilityModal();
     }
 
-    private async startEggIncubation(egg: any) {
-        const key = `hatch-start:${egg?.id}`;
-        if (!egg?.id || this.busy.has(key)) return;
-        this.busy.add(key);
-        try {
-            const result = await ApiClient.post('/hatchery/start', {
-                eggId: Number(egg.id),
-            });
-            if (result?.success === false) {
-                this.showToast(result?.message || '放入孵化装置失败');
-                return;
-            }
-            const eggs = result?.eggs || result?.data?.eggs;
-            if (Array.isArray(eggs)) {
-                GameStore.setList('eggs', { success: true, eggs });
-            } else {
-                const refreshed = await ApiClient.get('/hatchery/eggs');
-                if (refreshed?.success !== false) GameStore.setList('eggs', refreshed);
-            }
-            CuteFeedback.playSuccess();
-            this.showToast('宠物蛋已放入孵化装置');
-        } catch (error) {
-            console.error('[CuteMainUI] start incubation failed:', error);
-            this.showToast('孵化装置连接失败');
-        } finally {
-            this.busy.delete(key);
-            this.renderCurrentPage(false);
-        }
+    private closeHatchAccelerator() { this.closeUtilityModal(); }
+
+    private openHomePetPicker() {
+        this.pendingHomePetId=Number(this.homePetId||GameStore.currentPetId||0);
+        this.homePetPickerOpen=true;
+        this.renderUtilityModal();
     }
 
-    private async useHatchAccelerator(egg: any, item: any) {
-        const key = `hatch-accelerate:${item?.itemCode}`;
-        if (!egg?.id || !item?.itemCode || this.busy.has(key)) return;
+    private openFusionPicker(side:'A'|'B') {
+        this.fusionPickerSide=side;
+        this.renderUtilityModal();
+    }
+
+    private confirmFusionExecution() {
+        const a=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentAId); const b=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentBId);
+        if(!a||!b){this.showToast('请先精准选择两只宝宝');return;}
+        if(a?.isLocked||b?.isLocked){this.showToast('锁定宝宝不能炼妖');return;}
+        this.fusionConfirmOpen=true;
+        this.renderUtilityModal();
+    }
+
+    private requestIncubation(egg:any,slot:number) {
+        const active=GameStore.eggs.filter((item)=>['incubating','hatching'].includes(String(item?.status||'')));
+        if(active.length>=3){this.showToast('三台孵化装置都在使用中');return;}
+        this.pendingIncubation={egg,slot};
+        this.renderUtilityModal();
+    }
+
+    private handleEggDrop(egg:any,event:any) {
+        const hit=[...this.hatchDeviceNodes.entries()].find(([slot,node])=>!this.isHatchSlotOccupied(slot)&&this.nodeContainsTouch(node,event));
+        this.requestIncubation(egg,hit?.[0]||0);
+    }
+
+    private isHatchSlotOccupied(slot:number) {
+        return GameStore.eggs.some((egg)=>['incubating','hatching'].includes(String(egg?.status||''))&&Number(egg?.incubatorSlot||0)===slot);
+    }
+
+    private async startEggIncubationNow(egg:any,slot:number) {
+        const key=`hatch-start:${egg?.id}`;
+        if(!egg?.id||!slot||this.busy.has(key))return;
         this.busy.add(key);
-        try {
-            const result = await ApiClient.post('/hatchery/accelerate', {
-                eggId: Number(egg.id),
-                itemCode: String(item.itemCode),
-                quantity: 1,
-            });
-            if (result?.success === false) {
-                this.showToast(result?.message || '加速失败');
-                return;
-            }
-            const [inventory, eggs] = await Promise.all([
-                ApiClient.get('/inventory'),
-                ApiClient.get('/hatchery/eggs'),
-            ]);
-            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
-            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
+        try{
+            const result=await ApiClient.post('/hatchery/start',{eggId:Number(egg.id),slot});
+            if(result?.success===false){this.showToast(result?.message||'放入孵化装置失败');return;}
+            const refreshed=await ApiClient.get('/hatchery/eggs');
+            if(refreshed?.success!==false)GameStore.setList('eggs',refreshed);
+            this.closeUtilityModal();
             CuteFeedback.playSuccess();
-            this.showToast(`已使用${safeName(item?.name, '孵化加速道具')}`);
-            this.hatchAcceleratorOpen = false;
-        } catch (error) {
-            console.error('[CuteMainUI] accelerate hatch failed:', error);
-            this.showToast('加速失败，请检查后端');
-        } finally {
-            this.busy.delete(key);
-            this.renderUtilityModal();
-            this.renderCurrentPage(false);
-        }
+            void AudioDirector.playSfx('confirm');
+            this.showToast(`${getEggDisplayName(egg)}已放入${slot}号装置`);
+        }catch(error){console.error('[CuteMainUI] start incubation failed:',error);this.showToast('孵化装置连接失败');}
+        finally{this.busy.delete(key);this.renderCurrentPage(false);}
+    }
+
+    private async useHatchAccelerator(egg:any,item:any) {
+        const key=`hatch-accelerate:${item?.itemCode}`;
+        if(!egg?.id||!item?.itemCode||this.busy.has(key))return;
+        this.busy.add(key);
+        try{
+            const result=await ApiClient.post('/hatchery/accelerate',{eggId:Number(egg.id),itemCode:String(item.itemCode),quantity:1});
+            if(result?.success===false){this.showToast(result?.message||'加速失败');return;}
+            const [inventory,eggs]=await Promise.all([ApiClient.get('/inventory'),ApiClient.get('/hatchery/eggs')]);
+            if(inventory?.success!==false)GameStore.setList('inventory',inventory);
+            if(eggs?.success!==false)GameStore.setList('eggs',eggs);
+            this.showToast(`已使用${safeName(item?.name,'孵化加速道具')}`);
+            void AudioDirector.playSfx('confirm');
+            this.closeUtilityModal();
+        }catch(error){console.error('[CuteMainUI] accelerate hatch failed:',error);this.showToast('加速失败，请检查后端');}
+        finally{this.busy.delete(key);this.renderCurrentPage(false);}
     }
 
     private async useInventoryItem(item: any) {
@@ -2777,6 +2662,7 @@ export class MainUI extends Component {
         const pet = GameStore.currentPet;
         const item = this.skillBookItems().find((book) => String(book?.itemCode || '') === this.selectedSkillBookCode);
         if (!pet?.id || !item || this.busy.has('skill:learn')) return;
+        if (pet?.isLocked) { this.showToast('锁定宝宝无法打书，请先解锁'); return; }
         const skillCode = String(item?.effectData?.skillCode || item?.itemCode || '').replace(/^BOOK_/, '');
         this.busy.add('skill:learn');
         try {
@@ -2807,50 +2693,32 @@ export class MainUI extends Component {
     }
 
     private ensureFusionParents() {
-        const pets = GameStore.pets.filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed');
-        if (!pets.length) {
-            this.fusionParentAId = 0;
-            this.fusionParentBId = 0;
-            return;
-        }
-        if (!pets.some((pet) => Number(pet?.id) === this.fusionParentAId)) this.fusionParentAId = Number(pets[0]?.id || 0);
-        if (!pets.some((pet) => Number(pet?.id) === this.fusionParentBId) || this.fusionParentBId === this.fusionParentAId) {
-            this.fusionParentBId = Number(pets.find((pet) => Number(pet?.id) !== this.fusionParentAId)?.id || 0);
-        }
-    }
-
-    private cycleFusionParent(side: 'A' | 'B') {
-        const pets = GameStore.pets.filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed');
-        if (pets.length < 2) {
-            this.showToast('至少需要2只可用宝宝');
-            return;
-        }
-        const currentId = side === 'A' ? this.fusionParentAId : this.fusionParentBId;
-        const otherId = side === 'A' ? this.fusionParentBId : this.fusionParentAId;
-        let index = pets.findIndex((pet) => Number(pet?.id) === currentId);
-        for (let step = 1; step <= pets.length; step += 1) {
-            const candidate = pets[(index + step + pets.length) % pets.length];
-            if (Number(candidate?.id) !== otherId) {
-                if (side === 'A') this.fusionParentAId = Number(candidate?.id || 0);
-                else this.fusionParentBId = Number(candidate?.id || 0);
-                this.fusionPreview = null;
-                this.renderCurrentPage(false);
-                return;
-            }
-        }
+        const validIds = new Set(GameStore.pets
+            .filter((pet) => !pet?.isEgg && pet?.tradeStatus !== 'listed' && !pet?.tradeListingId)
+            .map((pet) => Number(pet?.id || 0)));
+        if (!validIds.has(this.fusionParentAId)) this.fusionParentAId = 0;
+        if (!validIds.has(this.fusionParentBId) || this.fusionParentBId === this.fusionParentAId) this.fusionParentBId = 0;
     }
 
     private fusionParentCard(parent: Node, name: string, title: string, pet: any, x: number, y: number, side: 'A' | 'B') {
-        const card = panel(parent, name, x, y, 292, 300, CuteTheme.paper, 28, true, CuteTheme.white, 3);
-        headingTag(card, 'Title', title, 0, 118, 132, side === 'A' ? CuteTheme.mint : CuteTheme.peach);
-        if (pet) image(card, 'Portrait', getPetArtPath(pet, 'thumb'), 0, 52, 92, 92, CuteTheme.paperWarm);
-        else text(card, 'PortraitFallback', '🐾', 0, 52, 90, 70, 48, CuteTheme.honeyDark, 'center', true);
-        text(card, 'Name', pet ? safeName(pet?.nickname, '宝宝') : '未选择', 0, -8, 240, 36, 22, CuteTheme.caramel, 'center', true);
-        text(card, 'Meta', pet ? `Lv.${Number(pet?.level || 1)}　${this.rarityName(pet)}　成长 ${this.growthValue(pet).toFixed(3)}` : '请先准备两只宝宝', 0, -45, 260, 30, 14, CuteTheme.muted, 'center', false);
-        text(card, 'Skills', pet ? `技能 ${Array.isArray(pet?.skills) ? pet.skills.length : 0}　特殊 ${this.specialSkills(pet).length}` : '', 0, -78, 250, 28, 14, CuteTheme.caramel, 'center', true);
-        button(card, 'Switch', '切换宝宝', 0, -120, 126, 44, () => this.cycleFusionParent(side), {
-            icon: '↻', fill: CuteTheme.paperWarm, fontSize: 13, radius: 20,
-        });
+        const card = panel(parent, name, x, y, 310, 374, CuteTheme.paper, 28, true, CuteTheme.white, 3);
+        headingTag(card, 'Title', title, 0, 157, 132, side === 'A' ? CuteTheme.mint : CuteTheme.peach);
+        if (pet) image(card, 'Portrait', getPetArtPath(pet, 'thumb'), -98, 84, 82, 82, pet?.isMutant ? CuteTheme.peach : CuteTheme.paperWarm);
+        else text(card, 'PortraitFallback', '🐾', -98, 84, 82, 70, 46, CuteTheme.honeyDark, 'center', true);
+        text(card, 'Name', pet ? safeName(pet?.nickname, '宝宝') : '未选择', -40, 112, 170, 34, 20, CuteTheme.caramel, 'left', true);
+        text(card, 'Species', pet ? safeName(pet?.species, getPetSpeciesMeta(pet).name) : '请点击选择', -40, 82, 190, 26, 14, CuteTheme.caramel, 'left', true);
+        text(card, 'Meta', pet ? `Lv.${Number(pet?.level||1)} · ${this.rarityName(pet)}${pet?.isMutant?' · 变异':''}` : '不会自动切换父母', -40, 54, 190, 26, 13, CuteTheme.muted, 'left', true);
+        if (pet) {
+            const apt=this.aptitudesOf(pet);
+            text(card,'Growth',`成长 ${this.growthValue(pet).toFixed(3)}　品质 ${Number(pet?.quality||100)}`,-138,21,276,28,15,CuteTheme.caramel,'left',true);
+            text(card,'Apt',`体 ${apt.hp}　攻 ${apt.attack}　防 ${apt.defense}
+法 ${apt.magic}　速 ${apt.speed}`,-138,-23,276,50,13,CuteTheme.muted,'left',true);
+            const skills=(Array.isArray(pet?.skills)?pet.skills:[]).map((skill:any)=>this.skillName(skill)).join('、');
+            text(card,'SkillCount',`技能 ${Array.isArray(pet?.skills)?pet.skills.length:0}　特殊 ${this.specialSkills(pet).length}`,-138,-62,276,26,13,CuteTheme.peachDark,'left',true);
+            text(card,'Skills',skills||'完整技能：暂无技能',-138,-108,276,64,12,CuteTheme.muted,'left',false);
+            if(pet?.isLocked)tag(card,'Locked','🔒 已锁定',70,-145,104,CuteTheme.paperWarm);
+        }
+        button(card, 'Select', pet ? '重新选择' : '选择宝宝', 0, -164, 142, 44, () => this.openFusionPicker(side), { icon: '🔍', fill: side === 'A' ? CuteTheme.mint : CuteTheme.peach, fontSize: 13, radius: 20 });
     }
 
     private async previewFusion() {
@@ -2917,35 +2785,26 @@ export class MainUI extends Component {
     }
 
     private applyTeamResult(result: any) {
-        if (!result || result?.success === false) return;
-        const pets = Array.isArray(result?.pets)
-            ? result.pets
-            : Array.isArray(result?.data?.pets)
-                ? result.data.pets
-                : [];
-        const ids = Array.isArray(result?.petIds)
-            ? result.petIds
-            : Array.isArray(result?.team?.petIds)
-                ? result.team.petIds
-                : pets.map((pet: any) => pet?.id);
-        this.teamPetIds = ids.map((id: any) => Number(id || 0)).filter((id: number) => id > 0).slice(0, 3);
-        const byId = new Map(GameStore.pets.map((pet) => [Number(pet?.id || 0), pet]));
-        this.teamPets = this.teamPetIds
-            .map((id) => pets.find((pet: any) => Number(pet?.id || 0) === id) || byId.get(id))
-            .filter(Boolean);
+        if(!result||result?.success===false)return;
+        const team=result?.team||result?.data?.team||result?.data||result;
+        const pets=Array.isArray(result?.pets)?result.pets:Array.isArray(team?.pets)?team.pets:[];
+        const ids=Array.isArray(result?.petIds)?result.petIds:Array.isArray(team?.petIds)?team.petIds:pets.map((pet:any)=>pet?.id);
+        this.teamPetIds=ids.map((id:any)=>Number(id||0)).filter((id:number)=>id>0).slice(0,5);
+        this.selectedFormationCode=String(result?.formationCode||team?.formationCode||this.selectedFormationCode||'dragon');
+        const rawSlots=Array.isArray(result?.slotAssignments)?result.slotAssignments:Array.isArray(team?.slotAssignments)?team.slotAssignments:[];
+        this.teamSlotAssignments=rawSlots.map((id:any)=>Number(id||0)).filter((id:number)=>id>0).slice(0,5);
+        if(this.teamSlotAssignments.length!==5)this.teamSlotAssignments=[...this.teamPetIds];
+        const byId=new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
+        this.teamPets=this.teamSlotAssignments.map((id)=>pets.find((pet:any)=>Number(pet?.id||0)===id)||byId.get(id)).filter(Boolean);
     }
 
     private adventureTeamSlot(parent: Node, name: string, pet: any, x: number, y: number, index: number) {
-        const slot = panel(parent, name, x, y, 164, 142, pet ? new Color(255, 250, 232, 255) : new Color(242, 235, 218, 255), 24, false, pet ? CuteTheme.honey : CuteTheme.caramelSoft, 2);
-        tag(slot, 'Index', `${index}号位`, 0, 50, 82, pet ? CuteTheme.mint : CuteTheme.paperWarm);
-        if (!pet) {
-            text(slot, 'EmptyIcon', '＋', 0, 4, 60, 60, 36, CuteTheme.muted, 'center', true);
-            text(slot, 'EmptyText', '空位', 0, -43, 100, 28, 15, CuteTheme.muted, 'center', true);
-            return;
-        }
-        image(slot, 'PetIcon', getPetArtPath(pet, 'thumb'), -53, 4, 50, 50, CuteTheme.paperWarm);
-        text(slot, 'PetName', safeName(pet?.nickname, '宝宝'), -22, 15, 104, 30, 15, CuteTheme.caramel, 'left', true);
-        text(slot, 'PetMeta', `Lv.${Number(pet?.level || 1)}\n战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -22, -28, 105, 52, 13, CuteTheme.muted, 'left', true);
+        const slot=panel(parent,name,x,y,116,126,pet?new Color(255,250,232,255):new Color(242,235,218,255),20,false,pet?CuteTheme.honey:CuteTheme.caramelSoft,2);
+        tag(slot,'Index',`${index}号`,0,48,62,pet?CuteTheme.mint:CuteTheme.paperWarm);
+        if(!pet){text(slot,'Empty','＋',0,0,50,50,30,CuteTheme.muted,'center',true);return;}
+        image(slot,'PetIcon',getPetArtPath(pet,'thumb'),0,12,58,58,CuteTheme.paperWarm);
+        text(slot,'Name',safeName(pet?.nickname,'宝宝'),0,-28,106,24,12,CuteTheme.caramel,'center',true);
+        text(slot,'Power',`${formatNumber(this.battleAttributesOf(pet).power)}`,0,-50,100,22,11,CuteTheme.muted,'center',true);
     }
 
     private teamPower() {
@@ -2955,36 +2814,27 @@ export class MainUI extends Component {
     private toggleTeamPet(petId: number) {
         if (!petId) return;
         if (this.teamPetIds.includes(petId)) {
-            this.teamPetIds = this.teamPetIds.filter((id) => id !== petId);
-        } else if (this.teamPetIds.length < 3) {
+            this.teamPetIds=this.teamPetIds.filter((id)=>id!==petId);
+            this.teamSlotAssignments=this.teamSlotAssignments.map((id)=>Number(id)===petId?0:Number(id||0));
+        } else if(this.teamPetIds.length<5) {
             this.teamPetIds.push(petId);
-        } else {
-            this.showToast('出战编队最多3只宝宝');
-        }
-        const byId = new Map(GameStore.pets.map((pet) => [Number(pet?.id || 0), pet]));
-        this.teamPets = this.teamPetIds.map((id) => byId.get(id)).filter(Boolean);
+            this.normalizeTeamAssignments();
+            const empty=this.teamSlotAssignments.findIndex((id)=>!Number(id));
+            if(empty>=0)this.teamSlotAssignments[empty]=petId;
+        } else this.showToast('五宠编队最多5只宝宝');
+        this.refreshTeamPetsFromSlots();
         this.renderCurrentPage(false);
     }
 
     private async saveTeam() {
-        if (!this.teamPetIds.length || this.busy.has('team:save')) return;
+        if (this.teamPetIds.length !== 5 || this.teamSlotAssignments.filter(Boolean).length !== 5 || this.busy.has('team:save')) { this.showToast('请完整选择5只宝宝'); return; }
         this.busy.add('team:save');
         try {
-            const result = await ApiClient.post('/team/set', { petIds: this.teamPetIds });
-            if (result?.success === false) {
-                this.showToast(result?.message || '编队保存失败');
-                return;
-            }
-            this.applyTeamResult(result);
-            this.teamEditing = false;
-            this.showToast('出战编队已保存');
-        } catch (error) {
-            console.error('[CuteMainUI] save team failed:', error);
-            this.showToast('编队保存失败，请检查后端');
-        } finally {
-            this.busy.delete('team:save');
-            this.renderCurrentPage(false);
-        }
+            const result=await ApiClient.post('/team/set',{petIds:this.teamPetIds,formationCode:this.selectedFormationCode,slotAssignments:[...this.teamSlotAssignments],tactics:{focusPriority:'lowestHp',guardTarget:'healer',shieldThreshold:60,cleansePriority:['control','healBlock','dot'],ultimatePolicy:'ready'}});
+            if(result?.success===false){this.showToast(result?.message||'编队保存失败');return;}
+            this.applyTeamResult(result);this.teamEditing=false;this.teamEditSnapshot=null;this.showToast('五宠阵法编队已保存');void AudioDirector.playSfx('confirm');
+        }catch(error){console.error('[CuteMainUI] save team failed:',error);this.showToast('编队保存失败，请检查后端');}
+        finally{this.busy.delete('team:save');this.renderCurrentPage(false);}
     }
 
     private ensureSelectedFriend() {
@@ -3011,36 +2861,17 @@ export class MainUI extends Component {
     }
 
     private async startAdventureBattle(mode: 'tower' | 'pve' | 'friend') {
-        const key = `battle:${mode}`;
-        if (this.busy.has(key)) return;
-        if (!this.teamPetIds.length) {
-            this.showToast('请先设置出战编队');
-            return;
-        }
-        this.lastBattleMode = mode;
-        this.busy.add(key);
-        this.setLoading(true, mode === 'tower' ? '正在挑战守关怪物…' : mode === 'friend' ? '正在前往好友庭院…' : '正在进入训练场…');
-        try {
-            const result = mode === 'tower'
-                ? await ApiClient.post('/tower/challenge-team', {})
-                : mode === 'friend'
-                    ? await ApiClient.post('/battle/team-friend', { friendUserId: this.selectedFriendUserId || undefined })
-                    : await ApiClient.post('/battle/team-pve', {});
-            if (result?.success === false) {
-                this.showToast(result?.message || '战斗发起失败');
-                return;
-            }
-            this.battleResult = result;
-            this.battleTitle = mode === 'tower' ? '爬塔战报' : mode === 'friend' ? '好友切磋战报' : '日常试炼战报';
-            await this.refreshAfterBattle();
-        } catch (error) {
-            console.error('[CuteMainUI] battle failed:', error);
-            this.showToast('战斗失败，请检查后端');
-        } finally {
-            this.busy.delete(key);
-            this.setLoading(false);
-            this.refreshAllVisuals();
-        }
+        if(this.teamPetIds.length!==5){this.showToast('五宠战斗需要完整5只宝宝');return;}
+        if(!this.battleLayer)return;
+        this.lastBattleMode=mode;
+        this.battleResult=null;
+        showFivePetBattle(this.battleLayer,{
+            mode:mode==='friend'?'arena':mode==='tower'?'tower':'pve',
+            title:mode==='tower'?'爬塔首领战':mode==='friend'?'竞技切磋':'区域冒险',
+            formationCode:this.selectedFormationCode,
+            onClose:()=>{this.showPage('adventure');void this.refreshAfterBattle();},
+            onComplete:()=>{void this.refreshAfterBattle();},
+        });
     }
 
     private async refreshAfterBattle() {
@@ -3371,7 +3202,16 @@ export class MainUI extends Component {
     private attachmentSummary(mail: any) {
         const attachments = Array.isArray(mail?.attachments) ? mail.attachments : [];
         if (!attachments.length) return mail?.claimed ? '已阅读' : '无附件';
-        return attachments.map((item: any) => item?.type === 'gold' ? `金币×${item?.quantity}` : item?.type === 'diamond' ? `钻石×${item?.quantity}` : `${safeName(item?.itemCode, '道具')}×${item?.quantity}`).join(' · ');
+        return attachments.map((item: any) => item?.type === 'gold' ? `金币×${item?.quantity}` : item?.type === 'diamond' ? `钻石×${item?.quantity}` : `${this.itemDisplayName(item?.itemCode)}×${item?.quantity}`).join(' · ');
+    }
+
+    private itemDisplayName(itemCode: any) {
+        const code = String(itemCode || '').toLowerCase();
+        const known: Record<string, string> = {
+            pet_capacity_ticket: '宝宝扩容券', season_token: '赛季徽记',
+            hatch_accelerator: '孵化沙漏', fusion_stone: '炼妖石',
+        };
+        return known[code] || safeName(itemCode, '道具');
     }
 
     private rewardSummary(reward: any) {
@@ -3653,7 +3493,6 @@ export class MainUI extends Component {
         if (!pets.some((pet) => Number(pet?.id) === this.inventoryTargetPetId)) {
             this.inventoryTargetPetId = Number(GameStore.currentPet?.id || pets[0]?.id || 0);
         }
-        this.petCompareIds = this.petCompareIds.filter((id) => pets.some((pet) => Number(pet?.id) === id));
     }
 
     private homePet() {
@@ -3698,15 +3537,16 @@ export class MainUI extends Component {
     }
 
     private filteredPetList() {
+        const teamOrder = new Map(this.teamPetIds.map((id, index) => [Number(id), index]));
         const list = GameStore.pets.filter((pet) => !pet?.isEgg).filter((pet) => {
             if (this.petFilter.rarity && Number(pet?.rarity || 1) !== this.petFilter.rarity) return false;
             const element = String(getPetSpeciesMeta(pet)?.element || '未知');
             return this.petFilter.element === 'all' || element === this.petFilter.element;
         });
         return list.sort((a, b) => {
-            if (this.petFilter.sort === 'level') return Number(b?.level || 1) - Number(a?.level || 1);
-            if (this.petFilter.sort === 'growth') return this.growthValue(b) - this.growthValue(a);
-            if (this.petFilter.sort === 'skills') return (Array.isArray(b?.skills) ? b.skills.length : 0) - (Array.isArray(a?.skills) ? a.skills.length : 0);
+            const ta = teamOrder.has(Number(a?.id)) ? Number(teamOrder.get(Number(a?.id))) : 99;
+            const tb = teamOrder.has(Number(b?.id)) ? Number(teamOrder.get(Number(b?.id))) : 99;
+            if (ta !== tb) return ta - tb;
             return this.battleAttributesOf(b).power - this.battleAttributesOf(a).power;
         });
     }
@@ -3718,7 +3558,7 @@ export class MainUI extends Component {
     }
 
     private cyclePetElementFilter() {
-        const elements = ['all', ...Array.from(new Set(GameStore.pets.filter((pet) => !pet?.isEgg).map((pet) => String(getPetSpeciesMeta(pet)?.element || '未知'))))];
+        const elements: string[] = ['all', ...Array.from(new Set<string>(GameStore.pets.filter((pet) => !pet?.isEgg).map((pet) => String(getPetSpeciesMeta(pet)?.element || '未知'))))];
         const current = elements.indexOf(this.petFilter.element);
         this.petFilter.element = elements[(current + 1 + elements.length) % elements.length];
         savePetFilter(this.petFilter);
@@ -3736,46 +3576,230 @@ export class MainUI extends Component {
         return this.petFilter.sort === 'level' ? '等级' : this.petFilter.sort === 'growth' ? '成长' : this.petFilter.sort === 'skills' ? '技能数' : '战力';
     }
 
-    private togglePetCompare(id: number) {
-        if (!id) return;
-        if (this.petCompareIds.includes(id)) this.petCompareIds = this.petCompareIds.filter((value) => value !== id);
-        else if (this.petCompareIds.length < 2) this.petCompareIds.push(id);
-        else {
-            this.petCompareIds = [this.petCompareIds[1], id];
-            this.showToast('对比已替换为最近选择的两只宝宝');
-        }
+    private async togglePetLock(pet: any) {
+        const petId=Number(pet?.id||0);
+        if(!petId||this.busy.has(`pet-lock:${petId}`))return;
+        this.busy.add(`pet-lock:${petId}`);
+        try{
+            const result=await ApiClient.post('/pet/lock',{petId,locked:!Boolean(pet?.isLocked)});
+            if(result?.success===false){this.showToast(result?.message||'锁定状态修改失败');return;}
+            const updated=result?.pet||result?.data||{...pet,isLocked:!Boolean(pet?.isLocked)};
+            GameStore.updatePet(updated);
+            this.showToast(updated?.isLocked?'宝宝已锁定':'宝宝已解锁');
+            void AudioDirector.playSfx('confirm');
+        }catch(error){console.error('[CuteMainUI] pet lock failed',error);this.showToast('锁定状态修改失败');}
+        finally{this.busy.delete(`pet-lock:${petId}`);this.renderCurrentPage(false);}
+    }
+
+    private formatEggDuration(egg:any) {
+        const seconds=Math.max(0,Number(egg?.hatchDurationSeconds||0));
+        if(seconds<3600)return `${Math.max(1,Math.ceil(seconds/60))}分钟`;
+        const hours=Math.ceil(seconds/3600);
+        return `${hours}小时`;
+    }
+
+    private nodeContainsTouch(node:Node,event:any) {
+        try{
+            const location=event?.getUILocation?.()||event?.getLocation?.();
+            const transform=node?.getComponent(UITransform);
+            if(!location||!transform)return false;
+            const point=new Vec2(Number(location.x||0),Number(location.y||0));
+            if(transform.getBoundingBoxToWorld().contains(point))return true;
+            const world=node.worldPosition;
+            const scale=node.worldScale;
+            const centerX=Number(world.x||0)+DESIGN_WIDTH/2;
+            const centerY=Number(world.y||0)+DESIGN_HEIGHT/2;
+            return Math.abs(point.x-centerX)<=transform.width*Math.abs(Number(scale.x||1))/2
+                && Math.abs(point.y-centerY)<=transform.height*Math.abs(Number(scale.y||1))/2;
+        }catch{return false;}
+    }
+
+    private formationEditorPositions(code:string):Array<[number,number]> {
+        const map:Record<string,Array<[number,number]>>={
+            dragon:[[0,52],[-188,10],[188,10],[-96,-55],[96,-55]],
+            turtle:[[-160,50],[160,50],[0,8],[-150,-58],[150,-58]],
+            crane:[[0,58],[-170,8],[170,8],[-155,-58],[155,-58]],
+            tiger:[[-135,52],[135,52],[0,4],[-178,-58],[178,-58]],
+            phoenix:[[0,58],[-178,14],[178,14],[-105,-58],[105,-58]],
+        };
+        return map[String(code)]||map.dragon;
+    }
+
+    private formationSlotRole(code:string,index:number) {
+        const roles:Record<string,string[]>={
+            dragon:['肉盾','物伤','物伤','法伤','治疗'],
+            turtle:['肉盾','肉盾','辅助','输出','治疗'],
+            crane:['先手','控制','输出','辅助','治疗'],
+            tiger:['爆发','爆发','破甲','辅助','治疗'],
+            phoenix:['法伤','法伤','控制','辅助','治疗'],
+        };
+        return (roles[String(code)]||roles.dragon)[index]||`${index+1}号位`;
+    }
+
+    private petRoleLabel(value:any) {
+        const key=String(value||'').trim().toLowerCase();
+        const labels:Record<string,string>={
+            tank:'肉盾', healer:'治疗', cleanse:'净化', support:'辅助', control:'控制',
+            physical:'物伤', physical_damage:'物伤', magic:'法伤', magic_damage:'法伤',
+            burst:'爆发', defense:'防御', speed:'先手', balanced:'综合', hybrid:'综合',
+        };
+        return labels[key]||String(value||'综合');
+    }
+
+    private formationSlotBonus(code:string,index:number) {
+        const bonuses:Record<string,string[]>={
+            dragon:['减伤+12%','物攻+10%','暴击+8%','法攻+10%','治疗+12%'],
+            turtle:['减伤+15%','防御+12%','抗控+10%','伤害+6%','治疗+10%'],
+            crane:['速度+12%','命中+10%','伤害+8%','抗控+8%','治疗+8%'],
+            tiger:['暴击+12%','伤害+10%','破防+10%','速度+6%','治疗+6%'],
+            phoenix:['法攻+12%','暴击+10%','命中+8%','抗控+8%','治疗+10%'],
+        };
+        return (bonuses[String(code)]||bonuses.dragon)[index]||'属性加成';
+    }
+
+    private beginTeamEditing() {
+        this.normalizeTeamAssignments();
+        this.teamEditSnapshot = {
+            petIds: [...this.teamPetIds],
+            slots: [...this.teamSlotAssignments],
+            formationCode: this.selectedFormationCode,
+        };
+        this.teamEditing = true;
         this.renderCurrentPage(false);
     }
 
-    private renderPetComparison(root: Node, petA: any, petB: any) {
-        const sheet = panel(root, 'CompareSheet', 0, -95, 692, 755, new Color(255, 252, 239, 255), 34, true, CuteTheme.caramelSoft, 3);
-        headingTag(sheet, 'Title', '宝宝属性对比', 0, 326, 210, CuteTheme.lilac);
-        button(sheet, 'CloseCompare', '返回详情', 250, 326, 122, 44, () => { this.petCompareIds = []; this.petCompareMode = false; this.renderCurrentPage(false); }, { icon: '↩', fill: CuteTheme.paperWarm, fontSize: 12, radius: 19 });
-        const cardA = panel(sheet, 'PetA', -170, 195, 310, 235, new Color(246, 253, 238, 255), 28, false, CuteTheme.mintDark, 2);
-        const cardB = panel(sheet, 'PetB', 170, 195, 310, 235, new Color(255, 242, 240, 255), 28, false, CuteTheme.peachDark, 2);
-        [petA, petB].forEach((pet, index) => {
-            const card = index === 0 ? cardA : cardB;
-            image(card, 'Art', getPetArtPath(pet, 'thumb'), -92, 30, 108, 108, CuteTheme.paperWarm);
-            text(card, 'Name', safeName(pet?.nickname, '宝宝'), -28, 66, 176, 36, 22, CuteTheme.caramel, 'left', true);
-            text(card, 'Meta', `${safeName(pet?.species, getPetSpeciesMeta(pet).name)} · ${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)}`, -28, 27, 210, 30, 13, CuteTheme.muted, 'left', true);
-            text(card, 'Info', `成长 ${this.growthValue(pet).toFixed(3)}\n技能 ${Array.isArray(pet?.skills) ? pet.skills.length : 0}　特殊 ${this.specialSkills(pet).length}\n战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -120, -55, 240, 90, 15, CuteTheme.caramel, 'left', true);
-        });
-        const attrA = this.battleAttributesOf(petA);
-        const attrB = this.battleAttributesOf(petB);
-        const rows = [
-            ['生命', attrA.hp, attrB.hp], ['物攻', attrA.attack, attrB.attack], ['法攻', attrA.magic, attrB.magic], ['防御', attrA.defense, attrB.defense],
-            ['速度', attrA.speed, attrB.speed], ['成长', this.growthValue(petA), this.growthValue(petB)], ['技能数', Array.isArray(petA?.skills) ? petA.skills.length : 0, Array.isArray(petB?.skills) ? petB.skills.length : 0], ['特殊技能', this.specialSkills(petA).length, this.specialSkills(petB).length],
-        ] as Array<[string, number, number]>;
-        const table = panel(sheet, 'Table', 0, -120, 610, 365, new Color(249, 247, 232, 255), 28, false, CuteTheme.caramelSoft, 2);
-        text(table, 'HeaderA', safeName(petA?.nickname, '宝宝A'), -175, 148, 180, 30, 16, CuteTheme.mintDark, 'center', true);
-        text(table, 'HeaderB', safeName(petB?.nickname, '宝宝B'), 175, 148, 180, 30, 16, CuteTheme.peachDark, 'center', true);
-        rows.forEach(([name, a, b], index) => {
-            const y = 108 - index * 39;
-            text(table, `Name_${index}`, name, 0, y, 140, 28, 14, CuteTheme.muted, 'center', true);
-            text(table, `A_${index}`, String(typeof a === 'number' && !Number.isInteger(a) ? a.toFixed(3) : a), -175, y, 130, 28, 16, a >= b ? CuteTheme.mintDark : CuteTheme.caramel, 'center', true);
-            text(table, `Arrow_${index}`, a === b ? '=' : a > b ? '>' : '<', 0, y, 40, 28, 15, a === b ? CuteTheme.muted : CuteTheme.honeyDark, 'center', true);
-            text(table, `B_${index}`, String(typeof b === 'number' && !Number.isInteger(b) ? b.toFixed(3) : b), 175, y, 130, 28, 16, b >= a ? CuteTheme.peachDark : CuteTheme.caramel, 'center', true);
-        });
+    private cancelTeamEditing() {
+        if (this.teamEditSnapshot) {
+            this.teamPetIds = [...this.teamEditSnapshot.petIds];
+            this.teamSlotAssignments = [...this.teamEditSnapshot.slots];
+            this.selectedFormationCode = this.teamEditSnapshot.formationCode;
+            this.refreshTeamPetsFromSlots();
+        }
+        this.teamEditSnapshot = null;
+        this.teamEditing = false;
+        this.clearFormationDropHighlight();
+        this.renderCurrentPage(false);
+    }
+
+    private highlightFormationDropTarget(event:any) {
+        const highlighted=this.formationSlotAtEvent(event);
+        for (const [index,node] of this.formationSlotNodes.entries()) {
+            const hit=index===highlighted;
+            node.setScale(hit ? new Vec3(1.08,1.08,1) : Vec3.ONE);
+        }
+        return highlighted;
+    }
+
+    private clearFormationDropHighlight() {
+        for (const node of this.formationSlotNodes.values()) {
+            if (node?.isValid) node.setScale(Vec3.ONE);
+        }
+    }
+
+    private beginTeamDragFromEvent(event:any) {
+        const directSlot=this.formationSlotAtEvent(event);
+        if(directSlot>=0){this.teamDragSourceSlot=directSlot;this.teamDragPetId=0;return;}
+        let target=event?.target as Node|null;
+        while(target){
+            const slotByTarget=[...this.formationSlotNodes.entries()].find(([,node])=>node===target);
+            if(slotByTarget){this.teamDragSourceSlot=slotByTarget[0];this.teamDragPetId=0;return;}
+            const petByTarget=[...this.formationCandidateNodes.entries()].find(([,node])=>node===target);
+            if(petByTarget){this.teamDragPetId=petByTarget[0];this.teamDragSourceSlot=-1;return;}
+            target=target.parent;
+        }
+        const slot=[...this.formationSlotNodes.entries()].find(([,node])=>this.nodeContainsTouch(node,event));
+        if(slot){this.teamDragSourceSlot=slot[0];this.teamDragPetId=0;return;}
+        const candidate=[...this.formationCandidateNodes.entries()].find(([,node])=>this.nodeContainsTouch(node,event));
+        if(candidate){this.teamDragPetId=candidate[0];this.teamDragSourceSlot=-1;}
+    }
+
+    private finishTeamDrag(event:any) {
+        if (!this.teamEditing) return;
+        const petId=this.teamDragPetId;
+        const source=this.teamDragSourceSlot;
+        this.teamDragPetId=0;
+        this.teamDragSourceSlot=-1;
+        this.clearFormationDropHighlight();
+        if (source>=0) {
+            this.handleTeamSlotDrop(source,event);
+            return;
+        }
+        if (petId>0) {
+            const pet=GameStore.pets.find((item)=>Number(item?.id||0)===petId);
+            if (pet) this.handleTeamPetDrop(pet,event);
+        }
+    }
+
+    private cancelTeamDrag() {
+        this.teamDragPetId=0;
+        this.teamDragSourceSlot=-1;
+        this.clearFormationDropHighlight();
+    }
+
+    private normalizeTeamAssignments() {
+        this.teamPetIds=[...new Set(this.teamPetIds.map(Number).filter((id)=>id>0))].slice(0,5);
+        const valid=new Set(this.teamPetIds);
+        const slots=Array.from({length:5},(_,index)=>Number(this.teamSlotAssignments[index]||0));
+        const seen=new Set<number>();
+        for(let i=0;i<slots.length;i+=1){
+            const id=slots[i];
+            if(!valid.has(id)||seen.has(id)){slots[i]=0;continue;}
+            seen.add(id);
+        }
+        for(const id of this.teamPetIds){
+            if(seen.has(id))continue;
+            const empty=slots.findIndex((value)=>!value);
+            if(empty>=0){slots[empty]=id;seen.add(id);}
+        }
+        this.teamSlotAssignments=slots;
+        this.refreshTeamPetsFromSlots();
+    }
+
+    private refreshTeamPetsFromSlots() {
+        const byId=new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
+        this.teamPets=this.teamSlotAssignments.map((id)=>byId.get(Number(id||0))).filter(Boolean);
+    }
+
+    private handleTeamPetDrop(pet:any,event:any) {
+        const id=Number(pet?.id||0); if(!id)return;
+        const target=this.formationSlotAtEvent(event);
+        if(target<0){this.toggleTeamPet(id);return;}
+        if(!this.teamPetIds.includes(id)){
+            if(this.teamPetIds.length>=5){
+                const replaced=Number(this.teamSlotAssignments[target]||0);
+                if(replaced)this.teamPetIds=this.teamPetIds.filter((value)=>Number(value)!==replaced);
+            }
+            this.teamPetIds.push(id);
+        }
+        this.normalizeTeamAssignments();
+        const source=this.teamSlotAssignments.findIndex((value)=>Number(value)===id);
+        const replaced=Number(this.teamSlotAssignments[target]||0);
+        this.teamSlotAssignments[target]=id;
+        if(source>=0&&source!==target)this.teamSlotAssignments[source]=replaced;
+        this.refreshTeamPetsFromSlots();
+        void AudioDirector.playSfx('confirm');
+        this.renderCurrentPage(false);
+    }
+
+    private handleTeamSlotDrop(source:number,event:any) {
+        const target=this.formationSlotAtEvent(event,source);
+        if(target<0)return;
+        const next=[...this.teamSlotAssignments];
+        [next[source],next[target]]=[next[target],next[source]];
+        this.teamSlotAssignments=next;
+        this.refreshTeamPetsFromSlots();
+        void AudioDirector.playSfx('confirm');
+        this.renderCurrentPage(false);
+    }
+
+    private formationSlotAtEvent(event:any,exclude=-1) {
+        const location=event?.getUILocation?.()||event?.getLocation?.();
+        if(!location)return -1;
+        const point=new Vec2(Number(location.x||0),Number(location.y||0));
+        const positions=this.formationEditorPositions(this.selectedFormationCode);
+        return positions.findIndex(([x,y],index)=>index!==exclude
+            && Math.abs(point.x-(DESIGN_WIDTH/2+x))<=58
+            && Math.abs(point.y-(565+y))<=54);
     }
 
     private titleForPage(page: PageName) {
@@ -3797,6 +3821,8 @@ export class MainUI extends Component {
             profile: '玩家手账',
             settings: '游戏设置',
             benefits: '福利成长',
+            formation: '五宠阵法',
+            guild: '萌宠公会',
         };
         return titles[page];
     }
@@ -3815,6 +3841,8 @@ export class MainUI extends Component {
             profile: '📒',
             settings: '⚙',
             benefits: '🎀',
+            formation: '🐉',
+            guild: '🏰',
         };
         return icons[page] || '🐾';
     }
@@ -3833,6 +3861,8 @@ export class MainUI extends Component {
             profile: '玩家头像、等级、成就、容量和赛季记录会整理成一本个人手账。',
             settings: '可调整声音、点击反馈、动效与画质档位。',
             benefits: '签到、每日任务、成长成就、月卡与赛季战令会集中在福利中心。',
+            formation: '五只宝宝根据阵型站位获得不同职责和阵法大招。',
+            guild: '轻量异步公会，包含签到、捐献、任务、首领、远征和互助。',
         };
         return summaries[page] || '该页面将在后续萌系界面批次中完整接入。';
     }

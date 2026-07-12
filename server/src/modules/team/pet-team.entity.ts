@@ -22,7 +22,16 @@ export class PetTeam {
   @Column({ default: 'default' })
   name: string;
 
-  @Column({ default: '2.2.0' })
+  @Column({ default: 'dragon' })
+  formationCode: string;
+
+  @Column({ type: 'simple-json', nullable: true })
+  slotAssignments: number[];
+
+  @Column({ type: 'simple-json', nullable: true })
+  tactics: Record<string, any>;
+
+  @Column({ default: '10.0.0' })
   version: string;
 
   @CreateDateColumn()

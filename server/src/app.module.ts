@@ -35,6 +35,8 @@ import { BackendModule } from './modules/backend/backend.module';
 import { GameConfigModule } from './modules/game-config/game-config.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { DevModule } from './modules/dev/dev.module';
+import { FormationModule } from './modules/formation/formation.module';
+import { GuildModule } from './modules/guild/guild.module';
 
 @Module({
   imports: [
@@ -72,6 +74,8 @@ import { DevModule } from './modules/dev/dev.module';
     BackendModule,
     GameConfigModule,
     MaintenanceModule,
+    FormationModule,
+    GuildModule,
     DevModule,
   ],
   controllers: [AppController],

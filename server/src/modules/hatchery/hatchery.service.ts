@@ -15,9 +15,14 @@ export class HatcheryService {
 
   async getEggs(userId = DEFAULT_USER_ID) {
     const eggs = await this.eggService.getUserEggViews(userId, true);
-    const activeEgg = eggs.find((egg: any) =>
+    const activeEggs = eggs.filter((egg: any) =>
       ['incubating', 'hatching'].includes(String(egg?.status || '')),
-    ) || null;
+    ).sort((a: any, b: any) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
+    const activeEgg = activeEggs[0] || null;
+    const incubators = [1, 2, 3].map((slot) => ({
+      slot,
+      egg: activeEggs.find((egg: any) => Number(egg?.incubatorSlot || 0) === slot) || null,
+    }));
     const warehouse = eggs.filter(
       (egg: any) => String(egg?.status || '') === 'stored',
     );
@@ -25,10 +30,14 @@ export class HatcheryService {
       success: true,
       eggs,
       activeEgg,
+      activeEggs,
+      incubators,
       warehouse,
       data: {
         eggs,
         activeEgg,
+        activeEggs,
+        incubators,
         warehouse,
       },
     };
@@ -53,7 +62,7 @@ export class HatcheryService {
     };
   }
 
-  async startIncubation(userId: number, eggId: number) {
+  async startIncubation(userId: number, eggId: number, slot = 0) {
     if (!eggId) {
       return {
         success: false,
@@ -61,13 +70,16 @@ export class HatcheryService {
       };
     }
 
-    const existing = await this.eggService.getActiveEgg(userId);
-    if (existing) {
+    const activeEggs = await this.eggService.getActiveEggs(userId);
+    if (activeEggs.length >= 3) {
       return {
         success: false,
-        message: 'Incubator is already occupied',
-        activeEgg: this.eggService.toEggView(existing),
+        message: 'All three incubators are occupied',
+        activeEggs: activeEggs.map((egg) => this.eggService.toEggView(egg)),
       };
+    }
+    if (slot && activeEggs.some((egg) => Number(egg.incubatorSlot || 0) === Number(slot))) {
+      return { success: false, message: `Incubator slot ${slot} is occupied` };
     }
 
     const egg = await this.eggService.getEggById(eggId);
@@ -85,7 +97,7 @@ export class HatcheryService {
       };
     }
 
-    const started = await this.eggService.startIncubation(eggId, userId);
+    const started = await this.eggService.startIncubation(eggId, userId, slot);
     if (!started) {
       return {
         success: false,
@@ -96,7 +108,8 @@ export class HatcheryService {
     const eggs = await this.eggService.getUserEggViews(userId, true);
     return {
       success: true,
-      message: 'Egg placed into incubator',
+      message: `Egg placed into incubator ${Number(started.incubatorSlot || slot || 1)}`,
+      incubatorSlot: Number(started.incubatorSlot || slot || 1),
       egg: this.eggService.toEggView(started),
       eggs,
       data: {
@@ -308,6 +321,9 @@ export class HatcheryService {
       );
       pet.fatherId = Number(egg.parentAId || 0);
       pet.motherId = Number(egg.parentBId || 0);
+      pet.gender = ['male', 'female'].includes(String(egg.gender || ''))
+        ? egg.gender
+        : pet.gender;
       pet.hatchTime = new Date();
       await this.petService.savePet(pet);
 

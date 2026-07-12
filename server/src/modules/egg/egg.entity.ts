@@ -35,6 +35,9 @@ export class Egg {
   @Column({ default: false })
   isMutant: boolean;
 
+  @Column({ default: 'unknown' })
+  gender: string;
+
   @Column({ default: 3 })
   skillSlotCount: number;
 
@@ -106,6 +109,9 @@ export class Egg {
 
   @Column({ type: 'timestamp', nullable: true })
   hatchReadyAt: Date;
+
+  @Column({ default: 0 })
+  incubatorSlot: number;
 
   @Column({ default: 0 })
   hatchedPetId: number;

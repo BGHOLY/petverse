@@ -451,6 +451,8 @@ export class InventoryService {
     while (pet.exp >= pet.nextExp) {
       pet.exp -= pet.nextExp;
       pet.level = Number(pet.level || 1) + 1;
+      pet.unspentStatPoints = Number(pet.unspentStatPoints || 0) + 5;
+      pet.statPointsVersion = '10.0.0';
       pet.hp = Math.round(Number(pet.hp || 100) * 1.06);
       pet.attack = Math.round(
         Number(pet.attack || 20) * 1.04,

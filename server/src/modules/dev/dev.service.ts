@@ -4,6 +4,8 @@ import { AchievementService } from '../achievement/achievement.service';
 import { EconomyService } from '../economy/economy.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { FriendService } from '../friend/friend.service';
+import { FormationService } from '../formation/formation.service';
+import { GuildService } from '../guild/guild.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ItemService } from '../item/item.service';
 import { MailService } from '../mail/mail.service';
@@ -33,6 +35,8 @@ export class DevService {
     private readonly mailService: MailService,
     private readonly seasonService: SeasonService,
     private readonly petCapacityService: PetCapacityService,
+    private readonly formationService: FormationService,
+    private readonly guildService: GuildService,
   ) {}
 
   async seedAll() {
@@ -118,11 +122,15 @@ export class DevService {
       await this.seasonService.getMySeason(userId);
     const petCapacity =
       await this.petCapacityService.getStatus(userId);
+    const formations = await this.formationService.getOverview(userId);
+    const formationWallet = formations.wallet;
+    const guildJoin = await this.guildService.joinDefault(userId);
+    const guild = await this.guildService.getMyGuild(userId);
 
     return {
       success: true,
-      message: 'PetVerse backend V2.3 final data seeded',
-      version: '2.3.0',
+      message: 'PetVerse backend V10 data seeded',
+      version: '10.0.0',
       user: {
         ...user,
         gold: wallet.gold,
@@ -143,6 +151,10 @@ export class DevService {
       welcomeMail,
       season,
       petCapacity,
+      formationWallet,
+      formations,
+      guildJoin,
+      guild,
     };
   }
 }

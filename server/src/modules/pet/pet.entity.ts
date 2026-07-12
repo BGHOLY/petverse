@@ -77,6 +77,31 @@ export class Pet {
   @Column({ default: 100 })
   nextExp: number;
 
+  // V10 自由属性点：每升1级获得5点，老宝宝按等级补发。
+  @Column({ default: 0 })
+  unspentStatPoints: number;
+
+  @Column({ default: 0 })
+  constitutionPoints: number;
+
+  @Column({ default: 0 })
+  strengthPoints: number;
+
+  @Column({ default: 0 })
+  spiritPoints: number;
+
+  @Column({ default: 0 })
+  endurancePoints: number;
+
+  @Column({ default: 0 })
+  speedStatPoints: number;
+
+  @Column({ default: '' })
+  freeStatResetWeek: string;
+
+  @Column({ default: '10.0.0' })
+  statPointsVersion: string;
+
   // 兼容旧战斗与前端字段。新最终属性由资质、成长和等级计算。
   @Column({ default: 100 })
   hp: number;

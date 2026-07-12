@@ -24,6 +24,7 @@ export interface CreateEggData {
   species?: string;
   speciesCode?: string;
   isMutant?: boolean;
+  gender?: string;
   skillSlotCount?: number;
   aptitudes?: {
     hp: number;
@@ -73,6 +74,9 @@ export class EggService {
     const aptitudes = data.aptitudes || this.generateSpeciesAptitudes(speciesConfig, Boolean(data.isMutant));
     const growthRange = getGrowthRange(speciesConfig, Boolean(data.isMutant));
     const growth = Number(data.growth || this.randomFloat(growthRange[0], growthRange[1], 3));
+    const gender = ['male', 'female'].includes(String(data.gender || ''))
+      ? String(data.gender)
+      : this.seededGender(randomSeed);
     const generatedOffspringData = data.offspringData ||
       (!data.parentAId && !data.parentBId
         ? {
@@ -82,6 +86,7 @@ export class EggService {
             species: speciesConfig.name,
             speciesCode: speciesConfig.speciesCode,
             isMutant: Boolean(data.isMutant),
+            gender,
             rarity,
             quality: this.clampQuality(data.quality ?? 100),
             skillSlotCount: this.clampSkillSlotCount(data.skillSlotCount || 3),
@@ -107,6 +112,7 @@ export class EggService {
       species: speciesConfig.name,
       speciesCode: speciesConfig.speciesCode,
       isMutant: Boolean(data.isMutant),
+      gender,
       skillSlotCount: this.clampSkillSlotCount(data.skillSlotCount || 3),
       hpAptitude: Number(aptitudes.hp || 1200),
       attackAptitude: Number(aptitudes.attack || 1200),
@@ -141,6 +147,7 @@ export class EggService {
       status: 'stored',
       hatchDurationSeconds,
       hatchReadyAt: null,
+      incubatorSlot: 0,
       hatchedPetId: 0,
     });
 
@@ -150,6 +157,7 @@ export class EggService {
   async getUserEggs(userId: number, includeHatched = true) {
     await this.migrateLegacyEggs(userId);
     await this.repairLegacyItemEggSpecies(userId);
+    await this.repairIncubatorSlots(userId);
     const eggs = await this.eggRepository.find({
       where: { ownerId: userId },
       order: {
@@ -176,19 +184,29 @@ export class EggService {
     return egg ? this.toEggView(egg) : null;
   }
 
-  async getActiveEgg(userId: number) {
-    return this.eggRepository.findOne({
+  async getActiveEggs(userId: number) {
+    return this.eggRepository.find({
       where: {
         ownerId: userId,
         status: In(['incubating', 'hatching']),
       },
-      order: { id: 'ASC' },
+      order: { incubatorSlot: 'ASC', id: 'ASC' },
     });
   }
 
-  async startIncubation(eggId: number, ownerId: number) {
-    const active = await this.getActiveEgg(ownerId);
-    if (active) return null;
+  async getActiveEgg(userId: number, slot?: number) {
+    const active = await this.getActiveEggs(userId);
+    if (slot) return active.find((egg) => Number(egg.incubatorSlot || 0) === Number(slot)) || null;
+    return active[0] || null;
+  }
+
+  async startIncubation(eggId: number, ownerId: number, requestedSlot = 0) {
+    const active = await this.getActiveEggs(ownerId);
+    const occupied = new Set(active.map((egg) => Number(egg.incubatorSlot || 0)).filter((slot) => slot >= 1 && slot <= 3));
+    const slot = requestedSlot >= 1 && requestedSlot <= 3
+      ? Math.floor(requestedSlot)
+      : [1, 2, 3].find((candidate) => !occupied.has(candidate)) || 0;
+    if (!slot || occupied.has(slot)) return null;
 
     const egg = await this.eggRepository.findOne({
       where: { id: eggId, ownerId, status: 'stored' },
@@ -196,6 +214,7 @@ export class EggService {
     if (!egg) return null;
 
     egg.status = 'incubating';
+    egg.incubatorSlot = slot;
     egg.hatchReadyAt = new Date(
       Date.now() + Math.max(0, Number(egg.hatchDurationSeconds || 0)) * 1000,
     );
@@ -259,6 +278,7 @@ export class EggService {
       },
       {
         status: 'hatched',
+        incubatorSlot: 0,
         hatchedPetId: petId,
       },
     );
@@ -276,8 +296,12 @@ export class EggService {
     const remainingSeconds = this.getRemainingSeconds(egg);
     const incubating = egg.status === 'incubating' || egg.status === 'hatching';
 
+    const appearance = this.eggAppearance(egg.speciesCode, egg.rarityPotential, egg.isMutant);
     return {
       ...egg,
+      eggName: `${egg.isMutant ? '变异·' : ''}${egg.species || '未知'}蛋`,
+      rarityName: this.rarityName(egg.rarityPotential),
+      appearance,
       deviceState: egg.status === 'stored'
         ? 'warehouse'
         : incubating
@@ -285,6 +309,7 @@ export class EggService {
             ? 'ready'
             : 'incubating'
           : egg.status,
+      incubatorSlot: Number(egg.incubatorSlot || 0),
       canStart: egg.status === 'stored',
       canAccelerate: egg.status === 'incubating' && remainingSeconds > 0,
       canHatch: egg.status === 'incubating' && remainingSeconds <= 0,
@@ -314,7 +339,7 @@ export class EggService {
   private async migrateLegacyEggs(userId: number) {
     await this.eggRepository.update(
       { ownerId: userId, status: 'unhatched' },
-      { status: 'stored', hatchReadyAt: null },
+      { status: 'stored', hatchReadyAt: null, incubatorSlot: 0 },
     );
   }
 
@@ -387,16 +412,72 @@ export class EggService {
     return Math.round(value * factor) / factor;
   }
 
+  private eggAppearance(speciesCode: string, rarity: number, isMutant: boolean) {
+    const patterns: Record<string, { base: string; pattern: string; effect: string }> = {
+      PET001: { base: 'cream', pattern: 'fire-spots', effect: 'embers' },
+      PET002: { base: 'earth', pattern: 'green-waves', effect: 'crystal-glow' },
+      PET003: { base: 'white-blue', pattern: 'wind-ears', effect: 'wind-ring' },
+      PET004: { base: 'lavender', pattern: 'moon-stars', effect: 'moon-dust' },
+      PET005: { base: 'gold', pattern: 'lightning-cracks', effect: 'electric-arc' },
+      PET006: { base: 'aqua', pattern: 'wave-shell', effect: 'water-ring' },
+      PET007: { base: 'dark-purple', pattern: 'silver-blades', effect: 'shadow-flame' },
+      PET008: { base: 'light-brown', pattern: 'vine-leaves', effect: 'leaf-particles' },
+      PET009: { base: 'blue-violet', pattern: 'star-scales', effect: 'star-orbit' },
+      PET010: { base: 'ice-white', pattern: 'feather-crystal', effect: 'frost-mist' },
+    };
+    return {
+      speciesCode,
+      ...(patterns[speciesCode] || patterns.PET004),
+      rarity: this.clampRarity(rarity),
+      rarityName: this.rarityName(rarity),
+      mutant: Boolean(isMutant),
+      glow: isMutant ? 'mutant-breathing-glow' : '',
+      iconPath: `egg-art/${speciesCode}`,
+    };
+  }
+
+  private rarityName(value: number) {
+    return ['未知', '普通', '优秀', '稀有', '史诗', '传说', '神话'][this.clampRarity(value)] || '普通';
+  }
+
+  private seededGender(seed: string) {
+    let hash = 0;
+    for (const char of String(seed || 'egg')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    return hash % 2 === 0 ? 'male' : 'female';
+  }
+
+  private async repairIncubatorSlots(userId: number) {
+    const active = await this.eggRepository.find({
+      where: { ownerId: userId, status: In(['incubating', 'hatching']) },
+      order: { id: 'ASC' },
+    });
+    const used = new Set<number>();
+    for (const egg of active) {
+      let slot = Number(egg.incubatorSlot || 0);
+      if (slot < 1 || slot > 3 || used.has(slot)) {
+        slot = [1, 2, 3].find((candidate) => !used.has(candidate)) || 0;
+      }
+      if (!slot) {
+        egg.status = 'stored';
+        egg.incubatorSlot = 0;
+        egg.hatchReadyAt = null;
+      } else {
+        egg.incubatorSlot = slot;
+        used.add(slot);
+      }
+      await this.eggRepository.save(egg);
+    }
+  }
+
   private getDefaultHatchDurationSeconds(rarity: number) {
     const durations: Record<number, number> = {
-      1: 30,
-      2: 45,
-      3: 60,
-      4: 90,
-      5: 120,
-      6: 180,
+      1: 60 * 60,
+      2: 2 * 60 * 60,
+      3: 4 * 60 * 60,
+      4: 8 * 60 * 60,
+      5: 12 * 60 * 60,
+      6: 24 * 60 * 60,
     };
-
     return durations[this.clampRarity(rarity)];
   }
 

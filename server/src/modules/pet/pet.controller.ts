@@ -152,6 +152,32 @@ export class PetController {
     return this.petService.hatchStarterEgg(DEFAULT_USER_ID);
   }
 
+  @Post('stats/allocate')
+  allocateStats(@Body() body: any) {
+    return this.petService.allocateStatPoints(
+      DEFAULT_USER_ID,
+      Number(body?.petId || 0),
+      body?.points || body || {},
+    );
+  }
+
+  @Post('stats/recommend')
+  recommendStats(@Body() body: any) {
+    return this.petService.applyRecommendedStatPoints(
+      DEFAULT_USER_ID,
+      Number(body?.petId || 0),
+      String(body?.template || 'auto'),
+    );
+  }
+
+  @Post('stats/reset')
+  resetStats(@Body() body: any) {
+    return this.petService.resetStatPoints(
+      DEFAULT_USER_ID,
+      Number(body?.petId || 0),
+    );
+  }
+
   @Get(':id')
   async getPetDetail(@Param('id') id: string) {
     const petId = Number(id);

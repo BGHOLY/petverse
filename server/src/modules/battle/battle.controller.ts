@@ -1,11 +1,15 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 
 import { DEFAULT_USER_ID } from '../game-data';
 import { BattleService } from './battle.service';
+import { BattleV10Service } from './battle-v10.service';
 
 @Controller('battle')
 export class BattleController {
-  constructor(private readonly battleService: BattleService) {}
+  constructor(
+    private readonly battleService: BattleService,
+    private readonly battleV10Service: BattleV10Service,
+  ) {}
 
   @Post('pve')
   pve(@Body() body: any) {
@@ -44,5 +48,29 @@ export class BattleController {
       DEFAULT_USER_ID,
       Number(body?.friendUserId || body?.targetUserId || 0) || undefined,
     );
+  }
+
+  @Post('v10/start')
+  startFivePetBattle(@Body() body: any) {
+    return this.battleV10Service.startPve(DEFAULT_USER_ID, body || {});
+  }
+
+  @Post('v10/command')
+  commandFivePetBattle(@Body() body: any) {
+    return this.battleV10Service.command(
+      DEFAULT_USER_ID,
+      Number(body?.sessionId || 0),
+      body?.directive || body || {},
+    );
+  }
+
+  @Get('v10/session/:id')
+  getFivePetSession(@Param('id') id: string) {
+    return this.battleV10Service.getSession(DEFAULT_USER_ID, Number(id || 0));
+  }
+
+  @Post('v10/arena')
+  arenaFivePetBattle(@Body() body: any) {
+    return this.battleV10Service.arena(DEFAULT_USER_ID, body || {});
   }
 }

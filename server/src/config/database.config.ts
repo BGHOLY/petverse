@@ -28,6 +28,17 @@ import { SeasonPlayer } from '../modules/season/season-player.entity';
 import { RankingSnapshot } from '../modules/ranking/ranking-snapshot.entity';
 import { TradeListing } from '../modules/trade/trade-listing.entity';
 import { TradeRecord } from '../modules/trade/trade-record.entity';
+import { UserFormation } from '../modules/formation/user-formation.entity';
+import { FormationWallet } from '../modules/formation/formation-wallet.entity';
+import { FormationUpgradeLog } from '../modules/formation/formation-upgrade-log.entity';
+import { BattleSessionV10 } from '../modules/battle/battle-session.entity';
+import { Guild } from '../modules/guild/guild.entity';
+import { GuildMember } from '../modules/guild/guild-member.entity';
+import { GuildTask } from '../modules/guild/guild-task.entity';
+import { GuildBossRecord } from '../modules/guild/guild-boss-record.entity';
+import { GuildDonation } from '../modules/guild/guild-donation.entity';
+import { GuildExpedition } from '../modules/guild/guild-expedition.entity';
+import { GuildHelpRequest } from '../modules/guild/guild-help.entity';
 
 dotenv.config();
 
@@ -67,6 +78,17 @@ export const databaseConfig: TypeOrmModuleOptions = {
     RankingSnapshot,
     TradeListing,
     TradeRecord,
+    UserFormation,
+    FormationWallet,
+    FormationUpgradeLog,
+    BattleSessionV10,
+    Guild,
+    GuildMember,
+    GuildTask,
+    GuildBossRecord,
+    GuildDonation,
+    GuildExpedition,
+    GuildHelpRequest,
   ],
   synchronize: true,
 };

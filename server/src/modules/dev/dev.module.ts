@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { AchievementModule } from '../achievement/achievement.module';
 import { EconomyModule } from '../economy/economy.module';
 import { FriendModule } from '../friend/friend.module';
+import { FormationModule } from '../formation/formation.module';
+import { GuildModule } from '../guild/guild.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ItemModule } from '../item/item.module';
 import { MailModule } from '../mail/mail.module';
@@ -33,6 +35,8 @@ import { DevService } from './dev.service';
     MailModule,
     SeasonModule,
     PetCapacityModule,
+    FormationModule,
+    GuildModule,
   ],
   controllers: [DevController],
   providers: [DevService],
