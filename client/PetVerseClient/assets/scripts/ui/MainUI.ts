@@ -9,7 +9,6 @@ import {
     ScrollView,
     UIOpacity,
     UITransform,
-    Vec2,
     Vec3,
     tween,
 } from 'cc';
@@ -39,6 +38,9 @@ import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
 import { getPetArtPath, getPetSpeciesMeta } from './pet/PetArtRegistry';
 import { createPetArtSprite } from './pet/PetArtView';
+import { showBattlePlayback } from './advanced/BattlePlayback';
+import { loadHomePetId, loadPetFilter, saveHomePetId, savePetFilter } from './advanced/PetExperienceState';
+import { showPetReveal } from './advanced/RevealOverlay';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -87,6 +89,7 @@ export class MainUI extends Component {
     private drawerLayer: Node | null = null;
     private modalLayer: Node | null = null;
     private battleLayer: Node | null = null;
+    private revealLayer: Node | null = null;
     private utilityLayer: Node | null = null;
     private guideLayer: Node | null = null;
 
@@ -107,6 +110,13 @@ export class MainUI extends Component {
     private battleTitle = '';
     private eggSyncRunning = false;
     private hatchAcceleratorOpen = false;
+    private homePetId = loadHomePetId();
+    private inventoryTargetPetId = 0;
+    private petFilter = loadPetFilter();
+    private petCompareMode = false;
+    private petCompareIds: number[] = [];
+    private pageHistory: PageName[] = [];
+    private lastBattleMode: 'tower' | 'pve' | 'friend' = 'tower';
 
     private friendMode: 'friends' | 'requests' | 'discover' = 'friends';
     private incomingFriendRequests: any[] = [];
@@ -222,15 +232,35 @@ export class MainUI extends Component {
 
     public showPage(page: PageName) {
         const changed = this.currentPage !== page;
+        if (changed && this.currentPage !== 'more') {
+            this.pageHistory.push(this.currentPage);
+            if (this.pageHistory.length > 12) this.pageHistory.shift();
+        }
         this.currentPage = page;
         this.drawerOpen = false;
         this.detailSkill = null;
         this.hatchAcceleratorOpen = false;
         if (changed) CuteFeedback.playPage();
         this.renderCurrentPage(true);
+        this.renderTopBar();
         this.renderBottomNav();
         this.renderDrawer();
         if (!EDITOR) void this.refreshPageData(page);
+    }
+
+    private goBackPage() {
+        const previous = this.pageHistory.pop();
+        const target = previous && previous !== this.currentPage
+            ? previous
+            : this.mainTabForPage(this.currentPage) as PageName;
+        this.currentPage = target === 'more' ? 'home' : target;
+        this.drawerOpen = false;
+        this.detailSkill = null;
+        CuteFeedback.playPage();
+        this.renderTopBar();
+        this.renderBottomNav();
+        this.renderCurrentPage(true);
+        if (!EDITOR) void this.refreshPageData(this.currentPage);
     }
 
     public refreshCurrentPage() {
@@ -296,6 +326,7 @@ export class MainUI extends Component {
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
             this.ensureTradePet();
+            this.ensureExperienceSelections();
             await this.syncEggItemsToHatchery();
         } catch (error) {
             console.error('[CuteMainUI] bootstrap failed:', error);
@@ -537,6 +568,11 @@ export class MainUI extends Component {
         root.addChild(this.battleLayer);
         setRect(this.battleLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
+        this.revealLayer = new Node('CuteRevealLayer');
+        root.addChild(this.revealLayer);
+        setRect(this.revealLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+        this.revealLayer.active = false;
+
         this.guideLayer = new Node('CuteGuideLayer');
         root.addChild(this.guideLayer);
         setRect(this.guideLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
@@ -593,7 +629,13 @@ export class MainUI extends Component {
         text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -20, 98, 28, 16, CuteTheme.honeyDark, 'left', true);
         text(this.topBar, 'Paw', '🐾', -135, -18, 34, 28, 18, CuteTheme.mintDark, 'center', true);
 
-        cloudSign(this.topBar, 'SceneTitle', this.titleForPage(this.currentPage), 5, 3, 190, 66);
+        const secondary = !['home', 'pet', 'inventory', 'adventure', 'more'].includes(this.currentPage);
+        if (secondary) {
+            button(this.topBar, 'BackPage', '', -92, 3, 48, 48, () => this.goBackPage(), {
+                icon: '‹', fill: CuteTheme.paperWarm, fontSize: 18, radius: 21,
+            });
+        }
+        cloudSign(this.topBar, 'SceneTitle', this.titleForPage(this.currentPage), secondary ? 25 : 5, 3, secondary ? 150 : 190, 66);
 
         capsule(
             this.topBar,
@@ -736,7 +778,7 @@ export class MainUI extends Component {
     private renderHome() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        const pet = GameStore.currentPet || {};
+        const pet = this.homePet();
 
         const scene = panel(root, 'HomeScene', 0, 8, 692, 920, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
         image(scene, 'RoomArt', 'pet-art/home_empty_room', 72, 28, 526, 824, CuteTheme.mint);
@@ -791,11 +833,14 @@ export class MainUI extends Component {
         const namePlate = panel(scene, 'NamePlate', 72, -356, 480, 96, new Color(255, 252, 239, 242), 28, true, CuteTheme.white, 3);
         text(namePlate, 'Name', safeName(pet?.nickname, '暂无宝宝'), -214, 18, 220, 36, 25, CuteTheme.caramel, 'left', true);
         text(namePlate, 'Meta', `Lv.${Number(pet?.level || 1)}　${safeName(pet?.species, getPetSpeciesMeta(pet).name)}　${this.rarityName(pet)}`, -214, -20, 280, 30, 15, CuteTheme.muted, 'left', true);
-        button(namePlate, 'PetDetail', '查看宝宝', 170, 0, 128, 52, () => this.showPage('pet'), {
-            icon: '🐾',
-            fill: CuteTheme.honey,
-            fontSize: 15,
-            radius: 22,
+        button(namePlate, 'ChangeHomePet', '更换心仪', 76, 0, 112, 52, () => this.cycleHomePet(), {
+            icon: '♥', fill: CuteTheme.peach, fontSize: 13, radius: 22,
+        });
+        button(namePlate, 'PetDetail', '查看宝宝', 190, 0, 104, 52, () => {
+            if (pet?.id) GameStore.selectPet(Number(pet.id));
+            this.showPage('pet');
+        }, {
+            icon: '🐾', fill: CuteTheme.honey, fontSize: 13, radius: 22,
         });
 
         text(scene, 'HomeHint', '点击宝宝进入详情，培养、打书与炼妖均在宝宝功能中完成。', 72, -421, 500, 30, 14, CuteTheme.muted, 'center', false);
@@ -854,116 +899,142 @@ export class MainUI extends Component {
     private renderPetDetail() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        const pet = GameStore.currentPet || {};
-        const pets = GameStore.pets.filter((item) => !item?.isEgg);
+        this.ensureExperienceSelections();
+        const allPets = GameStore.pets.filter((item) => !item?.isEgg);
+        const pets = this.filteredPetList();
+        const selected = GameStore.currentPet || allPets[0] || {};
 
-        const selectorStep = 174;
+        const selectorStep = 178;
         const selectorWidth = Math.max(680, pets.length * selectorStep + 24);
-        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 402, 680, 132, selectorWidth, 132, 'horizontal');
+        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 400, 680, 132, selectorWidth, 132, 'horizontal');
         pets.forEach((item, index) => {
-            button(
+            const id = Number(item?.id || 0);
+            const compareSelected = this.petCompareIds.includes(id);
+            const card = button(
                 selector.content,
-                `PetTab_${item?.id || index}`,
+                `PetTab_${id || index}`,
                 safeName(item?.nickname, `宝宝${index + 1}`),
-                86 + index * selectorStep,
+                88 + index * selectorStep,
                 0,
-                164,
+                168,
                 112,
                 () => {
-                    GameStore.selectPet(Number(item?.id || 0));
-                    this.renderCurrentPage(false);
+                    if (this.petCompareMode) this.togglePetCompare(id);
+                    else {
+                        GameStore.selectPet(id);
+                        this.renderCurrentPage(false);
+                    }
                 },
                 {
                     iconPath: getPetArtPath(item, 'thumb'),
                     iconSize: 66,
-                    selected: Number(item?.id) === Number(GameStore.currentPetId),
-                    fill: Number(item?.id) === Number(GameStore.currentPetId) ? CuteTheme.honey : (index % 2 === 0 ? CuteTheme.paperWarm : CuteTheme.paper),
+                    selected: this.petCompareMode ? compareSelected : id === Number(GameStore.currentPetId),
+                    fill: compareSelected ? CuteTheme.lilac : id === Number(GameStore.currentPetId) ? CuteTheme.honey : CuteTheme.paperWarm,
                     fontSize: 15,
                     radius: 24,
                     subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)}`,
                 },
             );
+            const teamIndex = this.teamPetIds.indexOf(id);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `⚔${teamIndex + 1}`, 55, 42, 52, CuteTheme.mint);
+            if (id === this.homePetId) tag(card, 'HomeBadge', '♥心仪', -42, 42, 68, CuteTheme.peach);
         });
-        const selectedIndex = Math.max(0, pets.findIndex((item) => Number(item?.id) === Number(GameStore.currentPetId)));
-        const targetOffset = Math.max(0, Math.min(selectorWidth - 680, selectedIndex * selectorStep - 210));
-        if (targetOffset > 0) selector.scroll.scrollToOffset(new Vec2(targetOffset, 0), 0, false);
-        if (pets.length > 4) this.scrollHint(root, 'PetSelectorHint', '← 左右滑动查看更多宝宝 · 卡片显示稀有度与等级 →', 0, 326, 420);
+        if (!pets.length) text(selector.content, 'NoPets', '当前筛选下没有宝宝', 330, 0, 420, 60, 20, CuteTheme.muted, 'center', true);
 
-        const book = panel(root, 'PetBook', 0, -72, 692, 770, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
-        panel(book, 'Spine', -329, 0, 18, 730, new Color(190, 126, 70, 255), 8, false, CuteTheme.woodDark, 2);
-        for (let index = 0; index < 9; index += 1) {
-            text(book, `Ring${index}`, '○', -329, 320 - index * 72, 24, 24, 22, CuteTheme.honeyDark, 'center', true);
+        const toolbar = panel(root, 'PetToolbar', 0, 318, 680, 56, new Color(255, 252, 239, 250), 22, false, CuteTheme.caramelSoft, 2);
+        button(toolbar, 'RarityFilter', this.petFilter.rarity ? `稀有度:${this.rarityName({ rarity: this.petFilter.rarity })}` : '稀有度:全部', -230, 0, 150, 42, () => this.cyclePetRarityFilter(), { icon: '◆', fill: CuteTheme.paperWarm, fontSize: 12, radius: 18 });
+        button(toolbar, 'ElementFilter', `属性:${this.petFilter.element === 'all' ? '全部' : this.petFilter.element}`, -66, 0, 146, 42, () => this.cyclePetElementFilter(), { icon: '✦', fill: CuteTheme.mint, fontSize: 12, radius: 18 });
+        button(toolbar, 'Sort', `排序:${this.petSortLabel()}`, 92, 0, 142, 42, () => this.cyclePetSort(), { icon: '⇅', fill: CuteTheme.sky, fontSize: 12, radius: 18 });
+        button(toolbar, 'Compare', this.petCompareMode ? `对比 ${this.petCompareIds.length}/2` : '宝宝对比', 244, 0, 130, 42, () => {
+            this.petCompareMode = !this.petCompareMode;
+            if (!this.petCompareMode) this.petCompareIds = [];
+            this.renderCurrentPage(false);
+        }, { icon: '≍', fill: this.petCompareMode ? CuteTheme.honey : CuteTheme.lilac, fontSize: 12, radius: 18, selected: this.petCompareMode });
+
+        if (this.petCompareIds.length === 2) {
+            const petA = allPets.find((item) => Number(item?.id) === this.petCompareIds[0]);
+            const petB = allPets.find((item) => Number(item?.id) === this.petCompareIds[1]);
+            if (petA && petB) {
+                this.renderPetComparison(root, petA, petB);
+                return;
+            }
         }
 
-        const left = panel(book, 'BattleProfile', -171, 0, 320, 720, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
-        image(left, 'PetPortrait', getPetArtPath(pet, 'portrait'), 0, 210, 286, 270, CuteTheme.mint);
-        text(left, 'Name', safeName(pet?.nickname, '未命名宝宝'), -140, 58, 190, 42, 28, CuteTheme.caramel, 'left', true);
-        text(left, 'Gender', this.genderText(pet), 75, 58, 34, 34, 22, this.genderText(pet) === '♀' ? CuteTheme.peachDark : CuteTheme.mintDark, 'center', true);
-        tag(left, 'Rarity', this.rarityName(pet), 125, 58, 92, CuteTheme.lilac);
-        text(left, 'Meta', `${safeName(pet?.species, getPetSpeciesMeta(pet).name)}　Lv.${Number(pet?.level || 1)}　${pet?.isMutant ? '变异' : '普通'}`, -140, 18, 270, 30, 15, CuteTheme.muted, 'left', true);
+        const book = panel(root, 'PetBook', 0, -95, 692, 755, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
+        panel(book, 'Spine', -329, 0, 18, 716, new Color(190, 126, 70, 255), 8, false, CuteTheme.woodDark, 2);
+        const left = panel(book, 'BattleProfile', -171, 0, 320, 704, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
+        image(left, 'PetPortrait', getPetArtPath(selected, 'portrait'), 0, 204, 286, 260, CuteTheme.mint);
+        text(left, 'Name', safeName(selected?.nickname, '未命名宝宝'), -140, 65, 180, 42, 27, CuteTheme.caramel, 'left', true);
+        tag(left, 'Rarity', this.rarityName(selected), 122, 65, 92, CuteTheme.lilac);
+        const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
+        text(left, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)}　Lv.${Number(selected?.level || 1)}　${selected?.isMutant ? '变异' : '普通'}${teamIndex >= 0 ? `　⚔出战${teamIndex + 1}` : ''}`, -140, 24, 280, 30, 14, CuteTheme.muted, 'left', true);
+        button(left, 'SetHome', Number(selected?.id || 0) === this.homePetId ? '心仪宝宝' : '设为心仪', -82, -20, 132, 42, () => this.setHomePet(Number(selected?.id || 0)), { icon: '♥', fill: Number(selected?.id || 0) === this.homePetId ? CuteTheme.peach : CuteTheme.paperWarm, fontSize: 12, radius: 18, selected: Number(selected?.id || 0) === this.homePetId });
+        button(left, 'ToggleCompare', '加入对比', 84, -20, 132, 42, () => { this.petCompareMode = true; this.togglePetCompare(Number(selected?.id || 0)); }, { icon: '≍', fill: CuteTheme.sky, fontSize: 12, radius: 18 });
 
-        headingTag(left, 'StatsTitle', '详细属性', 0, -42, 132, CuteTheme.paperWarm);
-        const attr = this.battleAttributesOf(pet);
+        headingTag(left, 'StatsTitle', '详细属性', 0, -70, 132, CuteTheme.paperWarm);
+        const attr = this.battleAttributesOf(selected);
         const statRows = [
             ['生命', attr.hp, '❤'], ['物攻', attr.attack, '⚔'], ['法攻', attr.magic, '✦'], ['防御', attr.defense, '◆'],
-            ['速度', attr.speed, '➤'], ['战力', attr.power, '★'], ['成长', this.growthValue(pet).toFixed(3), '🌱'], ['代数', Number(pet?.generation || 1), '◇'],
+            ['速度', attr.speed, '➤'], ['战力', attr.power, '★'], ['成长', this.growthValue(selected).toFixed(3), '🌱'], ['代数', Number(selected?.generation || 1), '◇'],
         ] as Array<[string, string | number, string]>;
         statRows.forEach(([title, value, icon], index) => {
             const col = index % 2;
             const row = Math.floor(index / 2);
-            this.battleStat(left, `Battle_${title}`, icon, title, value, -76 + col * 152, -100 - row * 66);
+            this.battleStat(left, `Battle_${title}`, icon, title, value, -76 + col * 152, -126 - row * 62);
         });
-        text(left, 'BreedInfo', `生育力 ${Number(pet?.fertility || 100)}/100　繁育 ${Number(pet?.breedCount || 0)}/${Number(pet?.maxBreedCount || 20)}`, 0, -326, 280, 30, 14, CuteTheme.muted, 'center', true);
+        text(left, 'BreedInfo', `生育力 ${Number(selected?.fertility || 100)}/100　繁育 ${Number(selected?.breedCount || 0)}/${Number(selected?.breedLimit || selected?.maxBreedCount || 20)}`, 0, -326, 280, 30, 13, CuteTheme.muted, 'center', true);
 
-        const aptitudePanel = panel(book, 'AptitudePanel', 170, 180, 322, 330, new Color(247, 255, 240, 255), 28, false, CuteTheme.mintDark, 2);
-        headingTag(aptitudePanel, 'Title', '资质', 0, 128, 116, CuteTheme.mint);
-        text(aptitudePanel, 'Hint', '资质影响升级后的属性成长', 0, 96, 280, 26, 12, CuteTheme.muted, 'center', false);
-        const apt = this.aptitudesOf(pet);
-        const aptRows = [
-            ['体力资质', apt.hp, '❤'], ['攻击资质', apt.attack, '⚔'], ['防御资质', apt.defense, '◆'], ['法力资质', apt.magic, '✦'], ['速度资质', apt.speed, '➤'],
-        ] as Array<[string, number, string]>;
-        aptRows.forEach(([title, value, icon], index) => this.aptitudeRow(aptitudePanel, `Apt_${index}`, icon, title, value, 66 - index * 47));
-        text(aptitudePanel, 'Growth', `成长：${this.growthValue(pet).toFixed(3)}　品质：${Number(pet?.quality || 100)}`, 0, -132, 284, 28, 14, CuteTheme.caramel, 'center', true);
+        const aptitudePanel = panel(book, 'AptitudePanel', 170, 176, 322, 322, new Color(247, 255, 240, 255), 28, false, CuteTheme.mintDark, 2);
+        headingTag(aptitudePanel, 'Title', '资质', 0, 124, 116, CuteTheme.mint);
+        text(aptitudePanel, 'Hint', '资质影响升级后的属性成长', 0, 94, 280, 24, 12, CuteTheme.muted, 'center', false);
+        const apt = this.aptitudesOf(selected);
+        const aptRows = [['体力资质', apt.hp, '❤'], ['攻击资质', apt.attack, '⚔'], ['防御资质', apt.defense, '◆'], ['法力资质', apt.magic, '✦'], ['速度资质', apt.speed, '➤']] as Array<[string, number, string]>;
+        aptRows.forEach(([title, value, icon], index) => this.aptitudeRow(aptitudePanel, `Apt_${index}`, icon, title, value, 64 - index * 45));
+        text(aptitudePanel, 'Growth', `成长 ${this.growthValue(selected).toFixed(3)}　品质 ${Number(selected?.quality || 100)}`, 0, -128, 284, 28, 14, CuteTheme.caramel, 'center', true);
 
-        const skillPanel = panel(book, 'SkillPanel', 170, -194, 322, 372, new Color(255, 244, 240, 255), 28, false, CuteTheme.peachDark, 2);
-        headingTag(skillPanel, 'Title', '技能', 0, 148, 116, CuteTheme.peach);
-        text(skillPanel, 'Hint', '点击技能图标查看完整描述', 0, 116, 276, 26, 12, CuteTheme.muted, 'center', false);
-        const skills = Array.isArray(pet?.skills) ? pet.skills : [];
-        const skillRows = Math.ceil(skills.length / 2);
-        const skillScroll = this.createScrollArea(skillPanel, 'PetSkillScroll', 0, 8, 294, 205, 294, Math.max(205, skillRows * 72 + 8), 'vertical');
-        if (!skills.length) {
-            text(skillScroll.content, 'Empty', '暂无技能', 0, -88, 220, 50, 20, CuteTheme.muted, 'center', true);
-        } else {
-            skills.forEach((skill: any, index: number) => {
-                const col = index % 2;
-                const row = Math.floor(index / 2);
-                this.skillIconButton(skillScroll.content, `Skill_${index}`, skill, -74 + col * 148, -36 - row * 72, 136, 62);
-            });
-        }
-        button(skillPanel, 'LearnSkill', '打技能', -76, -148, 138, 52, () => this.showPage('skills'), { icon: '📕', fill: CuteTheme.honey, fontSize: 15, radius: 22 });
-        button(skillPanel, 'Fusion', '炼妖', 76, -148, 138, 52, () => this.showPage('fusion'), { icon: '🔮', fill: CuteTheme.lilac, fontSize: 15, radius: 22 });
+        const skillPanel = panel(book, 'SkillPanel', 170, -190, 322, 360, new Color(255, 244, 240, 255), 28, false, CuteTheme.peachDark, 2);
+        headingTag(skillPanel, 'Title', '技能', 0, 142, 116, CuteTheme.peach);
+        text(skillPanel, 'Hint', '点击技能查看完整效果、概率与目标', 0, 112, 276, 24, 12, CuteTheme.muted, 'center', false);
+        const skills = Array.isArray(selected?.skills) ? selected.skills : [];
+        const skillScroll = this.createScrollArea(skillPanel, 'PetSkillScroll', 0, 12, 294, 192, 294, Math.max(192, Math.ceil(skills.length / 2) * 72 + 8), 'vertical');
+        skills.forEach((skill: any, index: number) => this.skillIconButton(skillScroll.content, `Skill_${index}`, skill, -74 + (index % 2) * 148, -36 - Math.floor(index / 2) * 72, 136, 62));
+        if (!skills.length) text(skillScroll.content, 'Empty', '暂无技能', 0, -82, 220, 50, 20, CuteTheme.muted, 'center', true);
+        button(skillPanel, 'LearnSkill', '打技能', -76, -142, 138, 50, () => this.showPage('skills'), { icon: '📕', fill: CuteTheme.honey, fontSize: 14, radius: 22 });
+        button(skillPanel, 'Fusion', '炼妖', 76, -142, 138, 50, () => this.showPage('fusion'), { icon: '🔮', fill: CuteTheme.lilac, fontSize: 14, radius: 22 });
     }
 
     private renderInventory() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
+        this.ensureExperienceSelections();
         const eggItems = GameStore.inventory.filter((item) => this.isEggItem(item));
         const items = GameStore.inventory.filter((item) => !this.isEggItem(item));
+        const targetPet = this.inventoryTargetPet();
 
         const bag = panel(root, 'Bag', 0, 0, 692, 905, new Color(255, 244, 220, 255), 40, true, CuteTheme.caramelSoft, 4);
         headingTag(bag, 'BagTag', `背包物品 ${items.length}`, -225, 390, 176, CuteTheme.mint);
-        text(bag, 'EggNotice', eggItems.length
-            ? `检测到 ${eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0)} 个宠物蛋，正在转入孵化室…`
-            : '宠物蛋统一存放在孵化室，不占用普通背包格。', -305, 345, 480, 34, 14, CuteTheme.muted, 'left', true);
-        button(bag, 'HatcheryShortcut', '孵化室', 255, 370, 120, 52, () => this.showPage('hatchery'), { icon: '🥚', fill: CuteTheme.honey, fontSize: 14, radius: 22 });
+        text(bag, 'EggNotice', eggItems.length ? `检测到 ${eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0)} 个宠物蛋，正在转入孵化室…` : '宠物蛋统一存放在孵化室，不占普通背包格。', -305, 348, 470, 32, 13, CuteTheme.muted, 'left', true);
+        button(bag, 'HatcheryShortcut', '孵化室', 255, 370, 120, 50, () => this.showPage('hatchery'), { icon: '🥚', fill: CuteTheme.honey, fontSize: 13, radius: 22 });
+
+        const target = panel(bag, 'UseTarget', 0, 282, 640, 92, new Color(246, 253, 237, 255), 24, false, CuteTheme.mintDark, 2);
+        text(target, 'Title', '道具使用对象', -286, 22, 150, 30, 16, CuteTheme.caramel, 'left', true);
+        if (targetPet) {
+            image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -82, 0, 66, 66, CuteTheme.paperWarm);
+            text(target, 'PetName', safeName(targetPet?.nickname, '宝宝'), -36, 18, 205, 30, 17, CuteTheme.caramel, 'left', true);
+            text(target, 'Meta', `${safeName(targetPet?.species, getPetSpeciesMeta(targetPet).name)}　Lv.${Number(targetPet?.level || 1)}　${this.rarityName(targetPet)}`, -36, -18, 240, 26, 13, CuteTheme.muted, 'left', true);
+            button(target, 'Prev', '', 190, 0, 48, 48, () => this.cycleInventoryTarget(-1), { icon: '‹', fill: CuteTheme.paperWarm, radius: 20 });
+            button(target, 'Next', '更换', 258, 0, 88, 48, () => this.cycleInventoryTarget(1), { icon: '›', fill: CuteTheme.honey, fontSize: 12, radius: 20 });
+        } else {
+            text(target, 'NoPet', '暂无可使用道具的宝宝', 0, 0, 430, 42, 18, CuteTheme.peachDark, 'center', true);
+        }
 
         if (!items.length) {
-            text(bag, 'Empty', '背包空空的\n宠物蛋请前往孵化室查看', 0, 0, 420, 130, 24, CuteTheme.muted, 'center', true);
+            text(bag, 'Empty', '背包空空的\n宠物蛋请前往孵化室查看', 0, -70, 420, 130, 24, CuteTheme.muted, 'center', true);
             return;
         }
 
         const rows = Math.ceil(items.length / 2);
-        const area = this.createScrollArea(bag, 'InventoryScroll', 0, 6, 654, 648, 654, rows * 145 + 16, 'vertical');
+        const area = this.createScrollArea(bag, 'InventoryScroll', 0, -74, 654, 590, 654, rows * 145 + 16, 'vertical');
         items.forEach((item, index) => {
             const col = index % 2;
             const rowIndex = Math.floor(index / 2);
@@ -979,11 +1050,10 @@ export class MainUI extends Component {
             button(card, 'Action', skillBook ? '去打书' : usable ? '使用' : '材料', 98, -38, 96, 42, () => {
                 if (skillBook) { this.selectedSkillBookCode = String(item?.itemCode || ''); this.showPage('skills'); }
                 else if (usable) void this.useInventoryItem(item);
-            }, { fill: skillBook ? CuteTheme.honey : usable ? CuteTheme.green : new Color(222, 216, 202, 255), textColor: usable ? CuteTheme.white : CuteTheme.caramel, fontSize: 14, radius: 18, disabled: !skillBook && !usable });
+            }, { fill: skillBook ? CuteTheme.honey : usable ? CuteTheme.green : new Color(222, 216, 202, 255), textColor: usable ? CuteTheme.white : CuteTheme.caramel, fontSize: 14, radius: 18, disabled: !skillBook && !usable || usable && !targetPet });
         });
-        if (items.length > 8) this.scrollHint(bag, 'InventoryHint', '上下滑动查看全部物品', 0, -405, 260);
+        this.scrollHint(bag, 'InventoryHint', targetPet ? `使用类道具将对「${safeName(targetPet?.nickname, '宝宝')}」生效 · 上下滑动查看全部物品` : '请先拥有宝宝再使用培养道具', 0, -405, 560);
     }
-
 
     private renderShop() {
         if (!this.pageRoot) return;
@@ -1205,6 +1275,8 @@ export class MainUI extends Component {
         panel(device, 'Base', 0, -118, 420, 66, new Color(203, 151, 86, 255), 26, true, CuteTheme.woodDark, 3);
         if (!activeEgg) {
             text(device, 'EmptyIcon', '🥚', 0, 45, 140, 140, 72, CuteTheme.honeyDark, 'center', true);
+            const emptyEggNode = device.getChildByName('EmptyIcon');
+            if (emptyEggNode) tween(emptyEggNode).repeatForever(tween(emptyEggNode).to(1.2, { scale: new Vec3(1.04, 0.97, 1) }, { easing: 'sineInOut' }).to(1.2, { scale: Vec3.ONE }, { easing: 'sineInOut' })).start();
             text(device, 'EmptyText', '装置空闲', 0, -22, 280, 38, 22, CuteTheme.caramel, 'center', true);
             text(device, 'EmptyHint', '请在下方孵化室仓库选择一枚蛋放入', 0, -62, 360, 30, 14, CuteTheme.muted, 'center', false);
             tag(device, 'DeviceState', '等待放入', 0, -122, 126, CuteTheme.mint);
@@ -1213,6 +1285,8 @@ export class MainUI extends Component {
             const total = Math.max(1, Number(activeEgg?.hatchDurationSeconds || remaining || 1));
             const ready = Boolean(activeEgg?.canHatch) || remaining <= 0;
             image(device, 'EggPreview', getPetArtPath(activeEgg, 'thumb'), -70, 40, 138, 138, CuteTheme.paperWarm);
+            const activeEggNode = device.getChildByName('EggPreview');
+            if (activeEggNode) tween(activeEggNode).repeatForever(tween(activeEggNode).by(0.16, { angle: 3 }).by(0.16, { angle: -6 }).by(0.16, { angle: 3 }).delay(1.2)).start();
             text(device, 'EggName', `宠物蛋 #${Number(activeEgg?.id || 0)}`, 20, 73, 250, 38, 22, CuteTheme.caramel, 'left', true);
             text(device, 'EggMeta', `${safeName(activeEgg?.species, '随机物种')} · 潜力 ${Number(activeEgg?.rarityPotential || 1)}`, 20, 34, 260, 30, 14, CuteTheme.muted, 'left', true);
             progress(device, 'IncubationProgress', 130, -8, 230, 18, ready ? 1 : 1 - remaining / total, ready ? CuteTheme.green : CuteTheme.honey);
@@ -2612,7 +2686,7 @@ export class MainUI extends Component {
             const result = await ApiClient.post('/inventory/use', {
                 itemCode: String(item.itemCode),
                 quantity: 1,
-                petId: Number(GameStore.currentPet?.id || 0) || undefined,
+                petId: Number(this.inventoryTargetPet()?.id || 0) || undefined,
             });
             if (result?.success === false) {
                 this.showToast(result?.message || '道具使用失败');
@@ -2626,7 +2700,7 @@ export class MainUI extends Component {
                 const refreshed = await ApiClient.get('/inventory');
                 if (refreshed?.success !== false) GameStore.setList('inventory', refreshed);
             }
-            this.showToast(`${safeName(item?.name, '道具')}使用成功`);
+            this.showToast(`${safeName(item?.name, '道具')}已对${safeName(this.inventoryTargetPet()?.nickname, '宝宝')}生效`);
         } catch (error) {
             console.error('[CuteMainUI] use item failed:', error);
             this.showToast('道具使用失败，请检查后端');
@@ -2674,7 +2748,15 @@ export class MainUI extends Component {
             if (eggs?.success !== false) GameStore.setList('eggs', eggs);
             if (pets?.success !== false) GameStore.setPets(pets);
             CuteFeedback.playHatch();
-            this.showToast('孵化成功，新宝宝已加入宝宝列表');
+            const newPet = result?.pet || result?.data?.pet || null;
+            if (newPet && this.revealLayer) {
+                showPetReveal(this.revealLayer, 'hatch', newPet, () => {
+                    GameStore.selectPet(Number(newPet?.id || 0));
+                    this.showPage('pet');
+                });
+            } else {
+                this.showToast('孵化成功，新宝宝已加入宝宝列表');
+            }
         } finally {
             this.busy.delete(key);
             this.renderCurrentPage(false);
@@ -2816,7 +2898,15 @@ export class MainUI extends Component {
             this.fusionParentAId = 0;
             this.fusionParentBId = 0;
             this.ensureFusionParents();
-            this.showToast('炼妖成功，新宝宝已生成');
+            const fusedPet = result?.pet || result?.resultPet || result?.data?.pet || result?.offspring || null;
+            if (fusedPet && this.revealLayer) {
+                showPetReveal(this.revealLayer, 'fusion', fusedPet, () => {
+                    GameStore.selectPet(Number(fusedPet?.id || 0));
+                    this.showPage('pet');
+                });
+            } else {
+                this.showToast('炼妖成功，新宝宝已生成');
+            }
         } catch (error) {
             console.error('[CuteMainUI] fusion failed:', error);
             this.showToast('炼妖失败，请检查后端');
@@ -2927,6 +3017,7 @@ export class MainUI extends Component {
             this.showToast('请先设置出战编队');
             return;
         }
+        this.lastBattleMode = mode;
         this.busy.add(key);
         this.setLoading(true, mode === 'tower' ? '正在挑战守关怪物…' : mode === 'friend' ? '正在前往好友庭院…' : '正在进入训练场…');
         try {
@@ -2969,52 +3060,25 @@ export class MainUI extends Component {
 
     private renderBattleResultModal() {
         if (!this.battleLayer) return;
-        clearNode(this.battleLayer);
-        this.battleLayer.active = Boolean(this.battleResult);
-        if (!this.battleResult) return;
-        if (!this.battleLayer.getComponent(BlockInputEvents)) this.battleLayer.addComponent(BlockInputEvents);
-
-        const result = this.battleResult;
-        const won = String(result?.result || '').toLowerCase() === 'win';
-        const dim = panel(this.battleLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 128), 0, false, CuteTheme.transparent, 0);
-        dim.on(Node.EventType.TOUCH_END, () => this.closeBattleResult());
-        const card = panel(this.battleLayer, 'BattleResult', 0, 5, 620, 920, CuteTheme.paper, 40, true, won ? CuteTheme.honey : CuteTheme.peachDark, 4);
-        headingTag(card, 'Title', this.battleTitle || '战斗结果', 0, 398, 210, won ? CuteTheme.paperWarm : CuteTheme.peach);
-        text(card, 'ResultIcon', won ? '🏆' : '💦', 0, 305, 110, 100, 64, won ? CuteTheme.honeyDark : CuteTheme.caramelSoft, 'center', true);
-        text(card, 'ResultText', won ? '挑战胜利' : '挑战失败', 0, 245, 360, 54, 32, won ? CuteTheme.honeyDark : CuteTheme.peachDark, 'center', true);
-
-        const reward = result?.reward || {};
-        const season = result?.seasonResult || result?.seasonSync || {};
-        const summary = panel(card, 'Summary', 0, 150, 550, 110, new Color(255, 249, 224, 255), 24, false, CuteTheme.caramelSoft, 2);
-        text(summary, 'Winner', `胜方：${safeName(result?.winner, won ? '我方队伍' : '对方队伍')}`, -240, 30, 470, 28, 16, CuteTheme.caramel, 'left', true);
-        text(summary, 'Reward', reward?.gold || reward?.diamond || reward?.exp
-            ? `奖励：金币${formatNumber(reward?.gold || 0)}　钻石${formatNumber(reward?.diamond || 0)}　经验${formatNumber(reward?.exp || reward?.expEach || 0)}`
-            : '本场为切磋或训练，不额外消耗宝宝。', -240, -8, 480, 28, 14, CuteTheme.muted, 'left', true);
-        const seasonText = season?.player?.points !== undefined
-            ? `赛季积分 ${Number(season.player.points || 0)}　评分 ${Number(season.player.rating || 0)}`
-            : season?.ratingAfter !== undefined
-                ? `赛季评分 ${Number(season.ratingAfter || 0)}（${Number(season.ratingDelta || 0) >= 0 ? '+' : ''}${Number(season.ratingDelta || 0)}）`
-                : '';
-        if (seasonText) text(summary, 'Season', seasonText, -240, -42, 480, 26, 13, CuteTheme.peachDark, 'left', true);
-
-        headingTag(card, 'LogTitle', '战斗记录', -205, 72, 142, CuteTheme.mint);
-        const logs = Array.isArray(result?.battleLog) ? result.battleLog : [];
-        const logText = logs.length ? logs.slice(0, 11).map((line: any, index: number) => `${index + 1}. ${String(line)}`).join('\n') : '服务器未返回战斗记录。';
-        const logCard = panel(card, 'LogCard', 0, -135, 550, 365, new Color(248, 246, 231, 255), 22, false, CuteTheme.caramelSoft, 2);
-        text(logCard, 'Logs', logText, -250, 0, 500, 330, 13, CuteTheme.caramel, 'left', false);
-        if (logs.length > 11) text(card, 'MoreLogs', `仅显示前11条，共${logs.length}条`, 0, -335, 360, 26, 12, CuteTheme.muted, 'center', true);
-
-        button(card, 'CloseResult', won ? '继续冒险' : '调整后再战', 0, -400, 220, 60, () => this.closeBattleResult(), {
-            icon: won ? '🧭' : '↩', fill: won ? CuteTheme.honey : CuteTheme.mint, fontSize: 17, radius: 27,
+        if (!this.battleResult) {
+            clearNode(this.battleLayer);
+            this.battleLayer.active = false;
+            return;
+        }
+        if (this.battleLayer.children.length > 0) return;
+        showBattlePlayback(this.battleLayer, {
+            title: this.battleTitle || '萌宠对战',
+            result: this.battleResult,
+            playerTeam: this.teamPets,
+            onClose: () => this.closeBattleResult(),
+            onReplay: () => void this.startAdventureBattle(this.lastBattleMode),
         });
-        card.setScale(new Vec3(0.92, 0.92, 1));
-        tween(card).to(0.2, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     }
 
     private closeBattleResult() {
         this.battleResult = null;
         this.battleTitle = '';
-        this.renderBattleResultModal();
+        if (this.battleLayer) { clearNode(this.battleLayer); this.battleLayer.active = false; }
         this.renderCurrentPage(false);
     }
 
@@ -3573,6 +3637,145 @@ export class MainUI extends Component {
             pending: '待处理', accepted: '已通过', rejected: '已拒绝', cancelled: '已撤回', expired: '已过期', active: '进行中', sold: '已售出', claimed: '已领取', completed: '已完成', none: '无',
         };
         return labels[String(status || '').toLowerCase()] || safeName(status, '未知');
+    }
+
+    private ensureExperienceSelections() {
+        const pets = GameStore.pets.filter((pet) => !pet?.isEgg);
+        if (!pets.length) {
+            this.inventoryTargetPetId = 0;
+            this.homePetId = 0;
+            return;
+        }
+        if (!pets.some((pet) => Number(pet?.id) === this.homePetId)) {
+            this.homePetId = Number(GameStore.currentPet?.id || pets[0]?.id || 0);
+            saveHomePetId(this.homePetId);
+        }
+        if (!pets.some((pet) => Number(pet?.id) === this.inventoryTargetPetId)) {
+            this.inventoryTargetPetId = Number(GameStore.currentPet?.id || pets[0]?.id || 0);
+        }
+        this.petCompareIds = this.petCompareIds.filter((id) => pets.some((pet) => Number(pet?.id) === id));
+    }
+
+    private homePet() {
+        this.ensureExperienceSelections();
+        return GameStore.pets.find((pet) => !pet?.isEgg && Number(pet?.id) === this.homePetId)
+            || GameStore.currentPet
+            || GameStore.pets.find((pet) => !pet?.isEgg)
+            || {};
+    }
+
+    private setHomePet(id: number) {
+        if (!id) return;
+        this.homePetId = id;
+        saveHomePetId(id);
+        this.showToast('已设为家园心仪宝宝');
+        this.renderCurrentPage(false);
+    }
+
+    private cycleHomePet() {
+        const pets = GameStore.pets.filter((pet) => !pet?.isEgg);
+        if (!pets.length) return;
+        const current = pets.findIndex((pet) => Number(pet?.id) === this.homePetId);
+        const next = pets[(current + 1 + pets.length) % pets.length];
+        this.homePetId = Number(next?.id || 0);
+        saveHomePetId(this.homePetId);
+        this.renderCurrentPage(false);
+    }
+
+    private inventoryTargetPet() {
+        this.ensureExperienceSelections();
+        return GameStore.pets.find((pet) => !pet?.isEgg && Number(pet?.id) === this.inventoryTargetPetId) || null;
+    }
+
+    private cycleInventoryTarget(direction: number) {
+        const pets = GameStore.pets.filter((pet) => !pet?.isEgg && String(pet?.tradeStatus || '') !== 'listed');
+        if (!pets.length) return;
+        const current = pets.findIndex((pet) => Number(pet?.id) === this.inventoryTargetPetId);
+        const next = pets[(current + direction + pets.length) % pets.length];
+        this.inventoryTargetPetId = Number(next?.id || 0);
+        GameStore.selectPet(this.inventoryTargetPetId);
+        this.renderCurrentPage(false);
+    }
+
+    private filteredPetList() {
+        const list = GameStore.pets.filter((pet) => !pet?.isEgg).filter((pet) => {
+            if (this.petFilter.rarity && Number(pet?.rarity || 1) !== this.petFilter.rarity) return false;
+            const element = String(getPetSpeciesMeta(pet)?.element || '未知');
+            return this.petFilter.element === 'all' || element === this.petFilter.element;
+        });
+        return list.sort((a, b) => {
+            if (this.petFilter.sort === 'level') return Number(b?.level || 1) - Number(a?.level || 1);
+            if (this.petFilter.sort === 'growth') return this.growthValue(b) - this.growthValue(a);
+            if (this.petFilter.sort === 'skills') return (Array.isArray(b?.skills) ? b.skills.length : 0) - (Array.isArray(a?.skills) ? a.skills.length : 0);
+            return this.battleAttributesOf(b).power - this.battleAttributesOf(a).power;
+        });
+    }
+
+    private cyclePetRarityFilter() {
+        this.petFilter.rarity = (this.petFilter.rarity + 1) % 7;
+        savePetFilter(this.petFilter);
+        this.renderCurrentPage(false);
+    }
+
+    private cyclePetElementFilter() {
+        const elements = ['all', ...Array.from(new Set(GameStore.pets.filter((pet) => !pet?.isEgg).map((pet) => String(getPetSpeciesMeta(pet)?.element || '未知'))))];
+        const current = elements.indexOf(this.petFilter.element);
+        this.petFilter.element = elements[(current + 1 + elements.length) % elements.length];
+        savePetFilter(this.petFilter);
+        this.renderCurrentPage(false);
+    }
+
+    private cyclePetSort() {
+        const values = ['power', 'level', 'growth', 'skills'] as Array<'power' | 'level' | 'growth' | 'skills'>;
+        this.petFilter.sort = values[(values.indexOf(this.petFilter.sort) + 1) % values.length];
+        savePetFilter(this.petFilter);
+        this.renderCurrentPage(false);
+    }
+
+    private petSortLabel() {
+        return this.petFilter.sort === 'level' ? '等级' : this.petFilter.sort === 'growth' ? '成长' : this.petFilter.sort === 'skills' ? '技能数' : '战力';
+    }
+
+    private togglePetCompare(id: number) {
+        if (!id) return;
+        if (this.petCompareIds.includes(id)) this.petCompareIds = this.petCompareIds.filter((value) => value !== id);
+        else if (this.petCompareIds.length < 2) this.petCompareIds.push(id);
+        else {
+            this.petCompareIds = [this.petCompareIds[1], id];
+            this.showToast('对比已替换为最近选择的两只宝宝');
+        }
+        this.renderCurrentPage(false);
+    }
+
+    private renderPetComparison(root: Node, petA: any, petB: any) {
+        const sheet = panel(root, 'CompareSheet', 0, -95, 692, 755, new Color(255, 252, 239, 255), 34, true, CuteTheme.caramelSoft, 3);
+        headingTag(sheet, 'Title', '宝宝属性对比', 0, 326, 210, CuteTheme.lilac);
+        button(sheet, 'CloseCompare', '返回详情', 250, 326, 122, 44, () => { this.petCompareIds = []; this.petCompareMode = false; this.renderCurrentPage(false); }, { icon: '↩', fill: CuteTheme.paperWarm, fontSize: 12, radius: 19 });
+        const cardA = panel(sheet, 'PetA', -170, 195, 310, 235, new Color(246, 253, 238, 255), 28, false, CuteTheme.mintDark, 2);
+        const cardB = panel(sheet, 'PetB', 170, 195, 310, 235, new Color(255, 242, 240, 255), 28, false, CuteTheme.peachDark, 2);
+        [petA, petB].forEach((pet, index) => {
+            const card = index === 0 ? cardA : cardB;
+            image(card, 'Art', getPetArtPath(pet, 'thumb'), -92, 30, 108, 108, CuteTheme.paperWarm);
+            text(card, 'Name', safeName(pet?.nickname, '宝宝'), -28, 66, 176, 36, 22, CuteTheme.caramel, 'left', true);
+            text(card, 'Meta', `${safeName(pet?.species, getPetSpeciesMeta(pet).name)} · ${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)}`, -28, 27, 210, 30, 13, CuteTheme.muted, 'left', true);
+            text(card, 'Info', `成长 ${this.growthValue(pet).toFixed(3)}\n技能 ${Array.isArray(pet?.skills) ? pet.skills.length : 0}　特殊 ${this.specialSkills(pet).length}\n战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -120, -55, 240, 90, 15, CuteTheme.caramel, 'left', true);
+        });
+        const attrA = this.battleAttributesOf(petA);
+        const attrB = this.battleAttributesOf(petB);
+        const rows = [
+            ['生命', attrA.hp, attrB.hp], ['物攻', attrA.attack, attrB.attack], ['法攻', attrA.magic, attrB.magic], ['防御', attrA.defense, attrB.defense],
+            ['速度', attrA.speed, attrB.speed], ['成长', this.growthValue(petA), this.growthValue(petB)], ['技能数', Array.isArray(petA?.skills) ? petA.skills.length : 0, Array.isArray(petB?.skills) ? petB.skills.length : 0], ['特殊技能', this.specialSkills(petA).length, this.specialSkills(petB).length],
+        ] as Array<[string, number, number]>;
+        const table = panel(sheet, 'Table', 0, -120, 610, 365, new Color(249, 247, 232, 255), 28, false, CuteTheme.caramelSoft, 2);
+        text(table, 'HeaderA', safeName(petA?.nickname, '宝宝A'), -175, 148, 180, 30, 16, CuteTheme.mintDark, 'center', true);
+        text(table, 'HeaderB', safeName(petB?.nickname, '宝宝B'), 175, 148, 180, 30, 16, CuteTheme.peachDark, 'center', true);
+        rows.forEach(([name, a, b], index) => {
+            const y = 108 - index * 39;
+            text(table, `Name_${index}`, name, 0, y, 140, 28, 14, CuteTheme.muted, 'center', true);
+            text(table, `A_${index}`, String(typeof a === 'number' && !Number.isInteger(a) ? a.toFixed(3) : a), -175, y, 130, 28, 16, a >= b ? CuteTheme.mintDark : CuteTheme.caramel, 'center', true);
+            text(table, `Arrow_${index}`, a === b ? '=' : a > b ? '>' : '<', 0, y, 40, 28, 15, a === b ? CuteTheme.muted : CuteTheme.honeyDark, 'center', true);
+            text(table, `B_${index}`, String(typeof b === 'number' && !Number.isInteger(b) ? b.toFixed(3) : b), 175, y, 130, 28, 16, b >= a ? CuteTheme.peachDark : CuteTheme.caramel, 'center', true);
+        });
     }
 
     private titleForPage(page: PageName) {
