@@ -265,22 +265,23 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    panel(parent, 'Shelf', 0, 0, 720, 126, HandPaintedTheme.wood, 0, true, HandPaintedTheme.woodDark, 3);
-    panel(parent, 'ShelfTop', 0, 55, 720, 14, new Color(226, 174, 105, 255), 4, false, HandPaintedTheme.woodDark, 2);
+    panel(parent, 'Shelf', 0, 0, 720, 130, new Color(142, 91, 53, 255), 0, true, new Color(88, 54, 32, 255), 4);
+    panel(parent, 'ShelfInner', 0, -3, 704, 112, new Color(224, 176, 112, 255), 20, false, new Color(255, 215, 145, 255), 3);
+    panel(parent, 'ShelfTop', 0, 57, 720, 14, new Color(248, 204, 125, 255), 4, false, HandPaintedTheme.woodDark, 2);
 
     MAIN_TABS.forEach((item, index) => {
         const selected = item.key === active;
-        const tab = button(parent, `Tab_${item.key}`, item.title, -286 + index * 143, 0, 126, 98, () => onNavigate(item.key), {
-            fill: selected ? HandPaintedTheme.paper : new Color(214, 164, 105, 255),
-            textColor: selected ? HandPaintedTheme.leaf : HandPaintedTheme.ink,
+        const tab = button(parent, `Tab_${item.key}`, item.title, -286 + index * 143, selected ? 6 : -2, selected ? 132 : 122, selected ? 110 : 92, () => onNavigate(item.key), {
+            fill: selected ? new Color(255, 207, 81, 255) : new Color(205, 146, 87, 255),
+            textColor: selected ? new Color(63, 119, 72, 255) : new Color(79, 50, 31, 255),
             selected,
-            fontSize: 16,
-            radius: 22,
-            border: selected ? HandPaintedTheme.honey : HandPaintedTheme.woodDark,
+            fontSize: selected ? 17 : 15,
+            radius: selected ? 28 : 20,
+            border: selected ? new Color(255, 235, 151, 255) : HandPaintedTheme.woodDark,
         });
         const titleNode = tab.getChildByName('Face')?.getChildByName('Title');
-        if (titleNode) setRect(titleNode, 0, -27, 108, 28);
-        drawUiIcon(tab, 'NavIcon', item.icon, 0, 18, 34, selected ? HandPaintedTheme.leaf : HandPaintedTheme.ink);
+        if (titleNode) setRect(titleNode, 0, selected ? -30 : -25, 108, 28);
+        drawUiIcon(tab, 'NavIcon', item.icon, 0, selected ? 20 : 16, selected ? 38 : 32, selected ? new Color(63, 119, 72, 255) : HandPaintedTheme.ink);
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 44, 34);
     });
 }

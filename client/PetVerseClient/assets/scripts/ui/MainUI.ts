@@ -51,7 +51,7 @@ import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
 import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
 import { drawUiIcon, renderBottomNavigation } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
-import { HomeActivity, renderHomePage } from './v2/pages/HomePage';
+import { HomeActivity, HomeShortcut, renderHomePage } from './v2/pages/HomePage';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -608,20 +608,17 @@ export class MainUI extends Component {
     }
 
     private buildBackground(root: Node) {
-        const background = panel(root, 'Background', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, CuteTheme.cream, 0, false, CuteTheme.cream, 0);
+        const background = panel(root, 'Background', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(86, 56, 35, 255), 0, false, CuteTheme.woodDark, 0);
+        panel(background, 'OuterWoodFrame', 0, 0, 710, 1270, new Color(192, 132, 76, 255), 18, false, new Color(111, 70, 40, 255), 5);
+        panel(background, 'InnerPaper', 0, -4, 690, 1240, new Color(255, 247, 223, 255), 15, false, new Color(245, 212, 157, 255), 3);
 
         const topWood = panel(background, 'TopWood', 0, 575, DESIGN_WIDTH, 130, new Color(222, 171, 111, 255), 0, false, CuteTheme.woodDark, 0);
         for (let i = 0; i < 8; i += 1) {
             panel(topWood, `WoodLine${i}`, -315 + i * 90, 0, 4, 130, new Color(170, 112, 64, 38), 0, false, CuteTheme.transparent, 0);
         }
 
-        panel(background, 'MintPaper', -210, 80, 350, 890, new Color(229, 244, 218, 205), 110, false, CuteTheme.transparent, 0);
-        panel(background, 'PeachPaper', 235, -50, 320, 780, new Color(255, 226, 211, 180), 110, false, CuteTheme.transparent, 0);
-
-        for (let i = 0; i < 12; i += 1) {
-            const x = -325 + (i % 4) * 220;
-            const y = 430 - Math.floor(i / 4) * 380;
-            text(background, `BgFlower${i}`, i % 2 === 0 ? '✿' : '✦', x, y, 36, 36, 20, i % 2 === 0 ? CuteTheme.white : CuteTheme.honey, 'center', true);
+        for (let i = 0; i < 7; i += 1) {
+            panel(background, `PaperRule${i}`, 0, 435 - i * 145, 670, 2, new Color(193, 137, 80, 24), 0, false, CuteTheme.transparent, 0);
         }
     }
 
@@ -640,9 +637,10 @@ export class MainUI extends Component {
         if (!this.topBar) return;
         clearNode(this.topBar);
 
-        panel(this.topBar, 'CloudBack', 0, -2, 700, 118, new Color(255, 250, 234, 250), 34, true, CuteTheme.white, 3);
+        panel(this.topBar, 'TopBarWood', 0, -2, 710, 122, new Color(187, 126, 69, 255), 26, true, new Color(105, 65, 37, 255), 4);
+        panel(this.topBar, 'CloudBack', 0, 0, 696, 106, new Color(255, 246, 216, 255), 24, false, new Color(247, 211, 151, 255), 3);
 
-        image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -300, 1, 82, 82, CuteTheme.paperWarm);
+        image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -300, 1, 88, 88, CuteTheme.paperWarm);
         text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -244, 20, 176, 32, 22, CuteTheme.caramel, 'left', true);
         text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -13, 76, 24, 14, CuteTheme.honeyDark, 'left', true);
         text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -170, -13, 60, 24, 12, CuteTheme.mintDark, 'left', true);
@@ -792,6 +790,11 @@ export class MainUI extends Component {
                 this.benefitMode = modes[activity];
                 this.showPage('benefits');
             },
+            onShortcut: (shortcut: HomeShortcut) => {
+                if (shortcut === 'adventure') this.showPage('adventure');
+                else if (shortcut === 'hatchery') this.showPage('hatchery');
+                else this.showPage('formation');
+            },
         });
     }
 
@@ -932,68 +935,61 @@ export class MainUI extends Component {
         const pets = this.filteredPetList();
         const selected = GameStore.currentPet || allPets[0] || {};
 
-        const selectorStep = 164;
-        const selectorWidth = Math.max(680, pets.length * selectorStep + 18);
-        const selector = this.createScrollArea(root, 'PetSelectorScroll', 0, 418, 680, 116, selectorWidth, 116, 'horizontal');
+        const book = panel(root, 'PetResearchBook', 0, 0, 706, 904, new Color(255, 246, 218, 255), 24, true, new Color(153, 94, 49, 255), 4);
+        headingTag(book, 'PetListTitle', `我的宠物 ${pets.length}/${allPets.length}`, -287, 408, 124, CuteTheme.honey);
+        const selectorStep = 112;
+        const selectorHeight = Math.max(710, pets.length * selectorStep + 12);
+        const selector = this.createScrollArea(book, 'PetSelectorScroll', -288, 24, 122, 714, 122, selectorHeight, 'vertical');
         pets.forEach((item, index) => {
             const id = Number(item?.id || 0);
-            const card = button(selector.content, `PetTab_${id || index}`, safeName(item?.nickname, `宝宝${index + 1}`), 80 + index * selectorStep, 0, 154, 102, () => {
-                this.capturePetSelectorOffset(selector.scroll);
+            const selectedCard = id === Number(GameStore.currentPetId);
+            const card = button(selector.content, `PetTab_${id || index}`, '', 0, -51 - index * selectorStep, 110, 100, () => {
                 GameStore.selectPet(id);
                 this.petDetailTab = 'attributes';
                 this.petAttributeView = 'overview';
                 this.renderCurrentPage(false);
             }, {
-                iconPath: getPetArtPath(item, 'thumb'), iconSize: 62,
-                selected: id === Number(GameStore.currentPetId),
-                fill: id === Number(GameStore.currentPetId) ? CuteTheme.honey : CuteTheme.paperWarm,
-                fontSize: 14, radius: 22,
-                subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)} · ${formatNumber(this.battleAttributesOf(item).power)}`,
+                selected: selectedCard,
+                fill: selectedCard ? new Color(255, 205, 76, 255) : new Color(255, 250, 230, 255),
+                fontSize: 12, radius: 18,
+                border: selectedCard ? new Color(195, 119, 42, 255) : new Color(221, 181, 124, 255),
             });
+            image(card, 'PetThumb', getPetArtPath(item, 'thumb'), 0, 14, 64, 64, selectedCard ? CuteTheme.honey : CuteTheme.paperWarm);
+            text(card, 'PetName', safeName(item?.nickname, `宝宝${index + 1}`), 0, -32, 102, 22, 12, CuteTheme.caramel, 'center', true);
             const teamIndex = this.teamPetIds.indexOf(id);
-            if (teamIndex >= 0) tag(card, 'TeamBadge', `编队${teamIndex + 1}`, 46, 38, 60, CuteTheme.mint);
-            if (item?.isLocked) tag(card, 'LockBadge', '锁定', -48, 38, 54, CuteTheme.paperWarm);
-            if (item?.isMutant) tag(card, 'MutantBadge', '变异', 48, -38, 54, CuteTheme.peach);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `编${teamIndex + 1}`, 34, 36, 42, CuteTheme.mint);
+            if (item?.isLocked) tag(card, 'LockBadge', '锁', -36, 36, 38, CuteTheme.paperWarm);
         });
-        const selectedIndex = Math.max(0, pets.findIndex((pet) => Number(pet?.id) === Number(selected?.id)));
-        const maxOffset = Math.max(0, selectorWidth - 680);
-        const selectedLeft = selectedIndex * selectorStep;
-        const selectedRight = selectedLeft + 154;
-        let targetOffset = Math.max(0, Math.min(maxOffset, this.petSelectorOffset));
-        if (selectedLeft < targetOffset) targetOffset = selectedLeft;
-        else if (selectedRight > targetOffset + 680) targetOffset = selectedRight - 680;
-        this.restorePetSelectorOffset(selector, Math.max(0, Math.min(maxOffset, targetOffset)));
 
-        const book = panel(root, 'PetResearchBook', 0, -42, 692, 808, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
-        const profile = panel(book, 'Profile', -214, 72, 244, 620, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
-        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 176, 216, 226, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
-        button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 80, 252, 64, 42, () => void this.togglePetLock(selected), {
+        const profile = panel(book, 'Profile', -143, 42, 168, 720, new Color(255, 250, 229, 255), 22, false, new Color(209, 154, 94, 255), 2);
+        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 152, 204, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 52, 290, 54, 38, () => void this.togglePetLock(selected), {
             fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
             fontSize: 12, radius: 18,
         });
-        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 44, 214, 38, 24, CuteTheme.caramel, 'center', true);
-        text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 9, 214, 28, 15, CuteTheme.muted, 'center', true);
-        tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -42 : 0, -30, 108, CuteTheme.lilac);
-        if (selected?.isMutant) tag(profile, 'Mutant', '变异', 62, -30, 90, CuteTheme.peach);
+        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 67, 154, 38, 22, CuteTheme.caramel, 'center', true);
+        text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 32, 154, 28, 13, CuteTheme.muted, 'center', true);
+        tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -40 : 0, -30, selected?.isMutant ? 74 : 108, CuteTheme.lilac);
+        if (selected?.isMutant) tag(profile, 'Mutant', '变异', 42, -30, 66, CuteTheme.peach);
         const attrs = this.battleAttributesOf(selected);
-        text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -72, 205, 38, 20, CuteTheme.honeyDark, 'center', true);
+        text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -70, 154, 38, 18, CuteTheme.honeyDark, 'center', true);
         const role = (selected?.speciesConfig?.roleTags || [getPetSpeciesMeta(selected).role || '综合']).slice(0, 2).map((value:any)=>this.petRoleLabel(value)).join(' / ');
         const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
-        const identity = panel(profile, 'Identity', 0, -150, 210, 106, new Color(250, 244, 226, 255), 20, false, CuteTheme.white, 1);
-        text(identity, 'Role', `◆ 定位：${role}`, -94, 30, 188, 26, 14, CuteTheme.caramel, 'left', true);
-        text(identity, 'Marriage', `♥ 婚姻：${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'}　蛋 ${Number(selected?.breedCount || 0)}`, -94, 0, 188, 26, 14, CuteTheme.caramel, 'left', true);
-        text(identity, 'Team', `编队：${teamIndex >= 0 ? `${teamIndex + 1}号位 · ${this.formationName(this.selectedFormationCode)}` : '未编队'}`, -94, -30, 188, 26, 14, CuteTheme.caramel, 'left', true);
-        button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -232, 184, 48, () => this.setHomePet(Number(selected?.id || 0)), {
+        const identity = panel(profile, 'Identity', 0, -150, 154, 112, new Color(248, 239, 211, 255), 18, false, CuteTheme.white, 1);
+        text(identity, 'Role', `◆ ${role}`, -68, 31, 136, 26, 12, CuteTheme.caramel, 'left', true);
+        text(identity, 'Marriage', `♥ ${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'} · 蛋${Number(selected?.breedCount || 0)}`, -68, 0, 136, 26, 12, CuteTheme.caramel, 'left', true);
+        text(identity, 'Team', `编队 ${teamIndex >= 0 ? `${teamIndex + 1}号位` : '未上阵'}`, -68, -31, 136, 26, 12, CuteTheme.caramel, 'left', true);
+        button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -238, 144, 46, () => this.setHomePet(Number(selected?.id || 0)), {
             fill: CuteTheme.peach, fontSize: 14, radius: 20,
         });
-        button(profile, 'StatPoints', '属性加点', -52, -278, 98, 38, () => {
+        button(profile, 'StatPoints', '加点', -39, -290, 70, 38, () => {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'stats'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'stats', fill: CuteTheme.sky, fontSize: 12, radius: 16 });
-        button(profile, 'Lineage', '血脉', 62, -278, 98, 38, () => {
+        button(profile, 'Lineage', '血脉', 39, -290, 70, 38, () => {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
-        const data = panel(book, 'ResearchData', 116, 72, 420, 620, new Color(249, 252, 240, 255), 28, false, CuteTheme.mintDark, 2);
+        const data = panel(book, 'ResearchData', 143, 42, 390, 720, new Color(249, 247, 227, 255), 22, false, new Color(192, 130, 67, 255), 2);
         const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
         tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -144 + index * 96, 274, 88, 42, () => {
             this.petDetailTab = key;
@@ -1069,7 +1065,7 @@ export class MainUI extends Component {
             });
         }
 
-        const toolbar=panel(book,'Toolbar',0,-320,650,62,new Color(255,252,239,255),22,false,CuteTheme.caramelSoft,2);
+        const toolbar=panel(book,'Toolbar',0,-403,660,62,new Color(255,248,220,255),20,false,new Color(177,112,57,255),2);
         button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
         tag(toolbar,'Sort','编队优先 · 战力降序',205,0,180,CuteTheme.sky);
