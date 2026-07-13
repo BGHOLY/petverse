@@ -1546,17 +1546,23 @@ export class MainUI extends Component {
         },{icon:region?.nestUnlocked?'🥚':region?.unlocked?'🧭':'🔒',selected:String(region?.code)===this.selectedRegionCode,fill:region?.unlocked?CuteTheme.paperWarm:new Color(218,216,210,255),fontSize:12,radius:21,disabled:!region?.unlocked,subtitle:region?.unlocked?`探索 ${Number(region?.exploration||0)}%`:'尚未解锁'}));
 
         const region=regions.find((item:any)=>String(item?.code)===this.selectedRegionCode)||regions.find((item:any)=>item?.unlocked)||regions[0];
-        const detail=panel(parent,'RegionDetail',0,-47,604,205,new Color(248,252,238,255),26,false,CuteTheme.mintDark,2);
-        text(detail,'Chapter',`${safeName(region?.chapter,'主线')} · ${safeName(region?.name,'区域')}`, -270,72,360,32,20,CuteTheme.caramel,'left',true);
-        tag(detail,'Element',`${safeName(region?.element,'生态')}系生态`,222,72,100,CuteTheme.mint);
-        text(detail,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),-270,39,540,30,14,CuteTheme.muted,'left',true);
-        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-270,9,130,26,15,CuteTheme.caramel,'left',true);
-        progress(detail,'ExploreProgress',-65,9,280,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
-        text(detail,'Species',`可发现：${safeName(region?.speciesName,'目标物种')} / ${safeName(region?.companionSpecies,'伴生物种')}　推荐战力 ${formatNumber(region?.recommendedPower||0)}`,-270,-22,540,28,14,CuteTheme.caramel,'left',true);
+        const detail=panel(parent,'RegionDetail',0,-37,604,225,new Color(248,252,238,255),26,false,CuteTheme.mintDark,2);
+        text(detail,'Chapter',`${safeName(region?.chapter,'主线')} · ${safeName(region?.name,'区域')}${region?.bossCleared?' · 已通关':''}`, -270,86,410,32,19,CuteTheme.caramel,'left',true);
+        tag(detail,'Element',`${safeName(region?.element,'生态')}系生态`,222,86,100,region?.bossCleared?CuteTheme.honey:CuteTheme.mint);
+        text(detail,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),-270,55,540,28,13,CuteTheme.muted,'left',true);
+        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-270,26,130,26,14,CuteTheme.caramel,'left',true);
+        progress(detail,'ExploreProgress',-65,26,280,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
+        const discoverable=Array.isArray(region?.discoverablePets)?region.discoverablePets.join(' / '):`${safeName(region?.speciesName,'目标物种')} / ${safeName(region?.companionSpecies,'伴生物种')}`;
+        text(detail,'Species',`可发现：${discoverable}　推荐战力 ${formatNumber(region?.recommendedPower||0)}`,-270,-1,540,24,13,CuteTheme.caramel,'left',true);
+        const lastEvent=region?.lastEvent;
+        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · +${Number(lastEvent?.explorationGain||0)}% · 金币 ${formatNumber(lastEvent?.reward?.gold||0)}`:'下一次推进将触发区域探索事件',-270,-27,540,24,12,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
+        const firstReward=(Array.isArray(region?.firstRewards)?region.firstRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
+        const completionReward=(Array.isArray(region?.completionRewards)?region.completionRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
+        text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`}　完成：${completionReward||'待同步'}`,-270,-51,540,24,11,CuteTheme.peachDark,'left',true);
         const attempts=world?.attempts||{};
-        text(detail,'Attempt',`巢穴奖励次数 ${Number(attempts?.remaining||0)}　累计 ${Number(attempts?.stored||0)}/6　战败不扣次数`,-270,-51,540,26,13,CuteTheme.peachDark,'left',true);
-        button(detail,'Explore',Number(region?.exploration||0)>=100?'探索完成':'推进探索',-112,-78,196,48,()=>void this.startRegionBattle('explore',region),{icon:'🧭',fill:CuteTheme.mint,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||Number(region?.exploration||0)>=100});
-        button(detail,'Nest',region?.nestUnlocked?'挑战首领巢穴':'探索100%开放',118,-78,220,48,()=>void this.startRegionBattle('nest',region),{icon:'🥚',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
+        text(detail,'Attempt',`巢穴次数 ${Number(attempts?.remaining||0)} · 累计 ${Number(attempts?.stored||0)}/6 · 战败不扣`,-270,-73,300,22,11,CuteTheme.muted,'left',true);
+        button(detail,'Explore',Number(region?.exploration||0)>=100?'探索完成':'推进探索',-112,-92,196,42,()=>void this.startRegionBattle('explore',region),{icon:'🧭',fill:CuteTheme.mint,fontSize:14,radius:19,disabled:this.teamPetIds.length!==5||Number(region?.exploration||0)>=100});
+        button(detail,'Nest',region?.nestUnlocked?(region?.bossCleared?'再次挑战巢穴':'挑战首领巢穴'):'探索100%开放',118,-92,220,42,()=>void this.startRegionBattle('nest',region),{icon:'🥚',fill:CuteTheme.honey,fontSize:14,radius:19,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
         const pity=world?.pity||{};
         text(parent,'Pity',`保底：史诗 ${Number(pity?.epic?.remaining||10)}蛋内　传说 ${Number(pity?.legendary?.remaining||40)}蛋内　变异 ${Number(pity?.mutation?.remaining||80)}能量内`,0,-188,588,26,13,CuteTheme.peachDark,'center',true);
     }
@@ -1584,6 +1590,7 @@ export class MainUI extends Component {
             const result=await ApiClient.post(kind==='nest'?'/exploration/settle-nest':'/exploration/settle-explore',{regionCode:String(region?.code||''),sessionId:Number(session.id)});
             this.applyWorldExploration(result);
             if(result?.egg){const eggs=await ApiClient.get('/hatchery/eggs');if(eggs?.success!==false)GameStore.setList('eggs',eggs);}
+            const profile=await ApiClient.get('/user/profile');if(profile?.success!==false)GameStore.setProfile(profile);
             this.showToast(result?.message||'世界主线进度已更新');
             if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
             this.renderCurrentPage(false);
