@@ -93,6 +93,10 @@ assert('scroll offsets persist across rendering', mainUi.includes('captureScroll
 assert('request failures have explicit handling', mainUi.includes('success === false') && mainUi.includes('showToast'));
 assert('write operations use request ids', mainUi.includes('requestId('));
 assert('secondary destructive actions use confirmation', mainUi.includes('openSecondaryConfirmation'));
+assert('adventure map keeps a dedicated region page state', mainUi.includes('private adventureRegionOpen = false'));
+assert('adventure region nodes open their matching region page', mainUi.includes('this.selectedRegionCode=String(item.code);this.adventureRegionOpen=true'));
+assert('adventure region page preserves real explore and nest battles', mainUi.includes("this.startRegionBattle('explore',region)") && mainUi.includes("this.startRegionBattle('nest',region)"));
+assert('adventure side cards route to crisis and tower pages', mainUi.includes("this.adventureMode='pve'") && mainUi.includes("this.adventureMode='tower'"));
 for (const legacyPanel of [
     'FriendPanel', 'HatcheryPanel', 'MarriagePanel', 'PetPanel', 'ProfilePanel',
     'RankingPanel', 'ShopPanel', 'SkillPanel', 'TowerPanel',

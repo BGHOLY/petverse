@@ -104,6 +104,7 @@ export class MainUI extends Component {
     private adventureMode: 'world' | 'tower' | 'pve' | 'friend' = 'world';
     private worldExploration: any = null;
     private selectedRegionCode = 'moon-forest';
+    private adventureRegionOpen = false;
     private teamPetIds: number[] = [];
     private teamPets: any[] = [];
     private teamEditing = false;
@@ -278,6 +279,7 @@ export class MainUI extends Component {
         const changed = this.currentPage !== page;
         if (changed) this.router.navigate(page);
         this.currentPage = this.router.current;
+        if (changed && page === 'adventure') this.adventureRegionOpen = false;
         this.detailSkill = null;
         this.inventoryDetailItem = null;
         this.hatchAcceleratorOpen = false;
@@ -296,6 +298,13 @@ export class MainUI extends Component {
     }
 
     private goBackPage() {
+        if (this.currentPage === 'adventure' && (this.adventureRegionOpen || this.adventureMode !== 'world')) {
+            this.adventureRegionOpen = false;
+            this.adventureMode = 'world';
+            CuteFeedback.playPage();
+            this.renderCurrentPage(true);
+            return;
+        }
         this.currentPage = this.router.back(mainTabForPage(this.currentPage));
         this.detailSkill = null;
         CuteFeedback.playPage();
@@ -1545,74 +1554,116 @@ export class MainUI extends Component {
     private renderAdventure() {
         if (!this.pageRoot) return;
         const root=this.pageRoot;
-        const page=panel(root,'AdventurePage',0,0,692,905,new Color(239,247,221,255),40,true,CuteTheme.caramelSoft,4);
+        const frame=panel(root,'AdventurePage',0,0,692,905,new Color(151,105,62,255),32,true,new Color(104,70,42,255),4);
+        const page=panel(frame,'AdventurePaper',0,-2,654,865,new Color(255,249,231,255),24,false,new Color(220,188,145,255),3);
         if(this.teamEditing){this.renderTeamEditor(page);return;}
-        const teamCard=panel(page,'TeamCard',0,292,650,220,CuteTheme.paper,28,false,CuteTheme.caramelSoft,2);
-        headingTag(teamCard,'TeamTitle','五宠出战编队',-225,84,180,CuteTheme.paperWarm);
-        text(teamCard,'Power',`总战力 ${formatNumber(this.teamPower())}`,275,84,180,30,15,CuteTheme.caramel,'right',true);
-        for(let index=0;index<5;index+=1)this.adventureTeamSlot(teamCard,`TeamSlot${index}`,this.teamPets[index]||null,-252+index*126,-12,index+1);
-        text(teamCard,'Formation',`当前阵法：${this.formationName(this.selectedFormationCode)}`, -225,-91,250,30,14,CuteTheme.caramel,'left',true);
-        button(teamCard,'FormationBtn','阵法设置',100,-88,126,44,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:13,radius:19});
-        button(teamCard,'EditTeam',this.teamEditing?'取消编辑':'调整编队',245,-88,126,44,()=>this.teamEditing?this.cancelTeamEditing():this.beginTeamEditing(),{icon:this.teamEditing?'↩':'✎',fill:this.teamEditing?CuteTheme.peach:CuteTheme.mint,fontSize:13,radius:19});
-        const modes=[
-            {key:'world' as const,title:'世界主线',icon:'🗺',fill:CuteTheme.honey},
-            {key:'pve' as const,title:'区域危机',icon:'⚔',fill:CuteTheme.mint},
-            {key:'tower' as const,title:'无尽遗迹',icon:'🏯',fill:CuteTheme.paperWarm},
-            {key:'friend' as const,title:'好友协作',icon:'🤝',fill:CuteTheme.peach},
-        ];
-        modes.forEach((mode,index)=>button(page,`Mode_${mode.key}`,mode.title,-240+index*160,112,148,64,()=>{this.adventureMode=mode.key;this.renderCurrentPage(false);},{icon:mode.icon,selected:this.adventureMode===mode.key,fill:mode.fill,textColor:this.adventureMode===mode.key?CuteTheme.white:CuteTheme.caramel,fontSize:13,radius:24}));
-        const content=panel(page,'ModeContent',0,-170,640,440,CuteTheme.paper,30,false,CuteTheme.caramelSoft,2);
+        const header=panel(page,'AdventureHeader',0,376,620,92,new Color(248,239,207,255),18,true,CuteTheme.caramelSoft,3);
+        const titleBoard=panel(header,'TitleBoard',-214,0,184,68,new Color(255,249,228,255),16,false,CuteTheme.white,2);
+        drawUiIcon(titleBoard,'Compass','adventure',-62,0,38,CuteTheme.caramel);
+        text(titleBoard,'Title','冒险大陆',30,8,112,32,22,CuteTheme.caramel,'center',true);
+        text(titleBoard,'Sub','沿着足迹发现新伙伴',30,-18,130,18,9,CuteTheme.muted,'center');
+        text(header,'TeamMeta',`五宠战力 ${formatNumber(this.teamPower())}\n${this.formationName(this.selectedFormationCode)} · ${this.teamPetIds.length}/5`, -34,0,180,52,12,CuteTheme.caramel,'center',true);
+        button(header,'FormationBtn','阵法',112,20,88,34,()=>this.showPage('formation'),{fill:CuteTheme.lilac,fontSize:11,radius:13});
+        button(header,'EditTeam','编队',112,-20,88,34,()=>this.beginTeamEditing(),{fill:CuteTheme.mint,fontSize:11,radius:13});
+        button(header,'FriendMode','协作',222,0,100,52,()=>{this.adventureRegionOpen=false;this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.peach,fontSize:12,radius:16});
+
         if(this.adventureMode==='world'){
-            this.renderWorldExploration(content);
-        } else if(this.adventureMode==='tower'){
-            headingTag(content,'Title','高难首领与爬塔',0,170,210,CuteTheme.paperWarm);
-            text(content,'Info','五宠同时上场；首次挑战不可跳过。肉盾、治疗、物伤、法伤和辅助站位会受到阵法加成。\n每回合可选择：集火、守护、套盾、净化；阵法大招前置冷却2～3回合。',0,70,560,110,17,CuteTheme.caramel,'center',false);
-            text(content,'Power',`当前战力 ${formatNumber(this.teamPower())}　推荐 ${formatNumber(Number(GameStore.tower?.recommendedPower||4200))}`,0,-28,500,36,16,CuteTheme.muted,'center',true);
-            button(content,'Start','挑战BOSS',0,-126,250,70,()=>void this.startAdventureBattle('tower'),{icon:'👑',fill:CuteTheme.honey,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
-        } else if(this.adventureMode==='pve'){
-            headingTag(content,'Title','每日区域危机',0,170,200,CuteTheme.mint);
-            text(content,'Info','每日1次主题危机，敌方阵容与区域效果轮换。\n使用集火、守护、套盾和净化应对机制；失败不消耗主线体力。',0,72,550,100,17,CuteTheme.caramel,'center',false);
-            button(content,'Start','挑战今日危机',0,-126,260,70,()=>void this.startAdventureBattle('pve'),{icon:'⚔',fill:CuteTheme.mint,fontSize:19,radius:29,disabled:this.teamPetIds.length!==5});
-        } else {
-            headingTag(content,'Title','好友协作首领',0,170,200,CuteTheme.peach);
-            text(content,'Info','当前版本以好友阵容镜像进行全自动协作演练。\n正式赛季将按双方五宠、阵法和贡献结算协作首领奖励。',0,65,560,120,17,CuteTheme.caramel,'center',false);
-            button(content,'Start','开始协作演练',0,-126,240,70,()=>void this.startAdventureBattle('friend'),{icon:'▶',fill:CuteTheme.peach,fontSize:18,radius:29,disabled:this.teamPetIds.length!==5});
+            this.renderWorldExploration(page);
+            return;
         }
+
+        const content=panel(page,'ModeContent',0,-70,620,690,new Color(255,252,239,255),22,false,CuteTheme.caramelSoft,2);
+        button(content,'BackToMap','返回大陆地图',-230,292,138,40,()=>{this.adventureMode='world';this.adventureRegionOpen=false;this.renderCurrentPage(false);},{fill:CuteTheme.paperWarm,fontSize:11,radius:15});
+        if(this.adventureMode==='tower')this.renderTowerMode(content);
+        else if(this.adventureMode==='pve')this.renderPveMode(content);
+        else this.renderFriendMode(content);
     }
 
     private renderWorldExploration(parent:Node) {
         const world=this.worldExploration;
         const regions=Array.isArray(world?.regions)?world.regions:[];
-        headingTag(parent,'WorldTitle',safeName(world?.title,'PetVerse生态大陆'),0,188,230,CuteTheme.honey);
-        text(parent,'WorldLoop','区域探索 → 发现物种 → 100%开放巢穴 → 获得独立物种蛋',0,154,586,28,13,CuteTheme.caramel,'center',true);
-        if(!regions.length){text(parent,'WorldLoading','正在同步世界主线进度…',0,15,520,80,19,CuteTheme.muted,'center',true);return;}
-
-        const strip=this.createScrollArea(parent,'RegionStrip',0,101,600,82,Math.max(600,regions.length*132+8),82,'horizontal');
-        regions.forEach((region:any,index:number)=>button(strip.content,`Region_${region?.code||index}`,safeName(region?.name,'未知地区'),66+index*132,0,122,72,()=>{
-            if(!region?.unlocked){this.showToast('先击败前一区域的巢穴首领');return;}
-            this.selectedRegionCode=String(region.code);this.renderCurrentPage(false);
-        },{icon:region?.nestUnlocked?'🥚':region?.unlocked?'🧭':'🔒',selected:String(region?.code)===this.selectedRegionCode,fill:region?.unlocked?CuteTheme.paperWarm:new Color(218,216,210,255),fontSize:12,radius:21,disabled:!region?.unlocked,subtitle:region?.unlocked?`探索 ${Number(region?.exploration||0)}%`:'尚未解锁'}));
-
+        if(!regions.length){text(parent,'WorldLoading','正在同步世界主线进度…',0,-20,520,80,19,CuteTheme.muted,'center',true);return;}
         const region=regions.find((item:any)=>String(item?.code)===this.selectedRegionCode)||regions.find((item:any)=>item?.unlocked)||regions[0];
-        const detail=panel(parent,'RegionDetail',0,-37,604,225,new Color(248,252,238,255),26,false,CuteTheme.mintDark,2);
-        text(detail,'Chapter',`${safeName(region?.chapter,'主线')} · ${safeName(region?.name,'区域')}${region?.bossCleared?' · 已通关':''}`, -270,86,410,32,19,CuteTheme.caramel,'left',true);
-        tag(detail,'Element',`${safeName(region?.element,'生态')}系生态`,222,86,100,region?.bossCleared?CuteTheme.honey:CuteTheme.mint);
-        text(detail,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),-270,55,540,28,13,CuteTheme.muted,'left',true);
-        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-270,26,130,26,14,CuteTheme.caramel,'left',true);
-        progress(detail,'ExploreProgress',-65,26,280,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
+        if(this.adventureRegionOpen){this.renderAdventureRegionPage(parent,region,world);return;}
+
+        const map=panel(parent,'WorldMap',-91,-31,430,694,new Color(199,225,217,255),24,true,new Color(126,154,123,255),3);
+        headingTag(map,'WorldTitle',safeName(world?.title,'PetVerse生态大陆'),0,316,224,CuteTheme.paperWarm);
+        text(map,'WorldLoop','沿着足迹探索生态大陆',0,282,340,24,11,CuteTheme.caramel,'center',true);
+        const canvas=panel(map,'MapCanvas',0,-4,400,548,new Color(205,230,222,255),26,false,CuteTheme.white,2);
+        panel(canvas,'NorthLand',-58,112,242,238,new Color(190,218,154,255),86,false,CuteTheme.mintDark,2);
+        panel(canvas,'EastLand',72,-68,204,250,new Color(216,221,166,255),80,false,CuteTheme.honey,2);
+        panel(canvas,'SouthLand',-70,-174,214,180,new Color(178,213,166,255),70,false,CuteTheme.mintDark,2);
+        panel(canvas,'Mountain',92,112,112,130,new Color(218,226,223,255),42,false,CuteTheme.sky,2);
+        text(canvas,'MapMarks','▲  ▲\n  ▲',92,124,100,80,24,new Color(125,151,151,255),'center',true);
+        const positions=[[-92,190],[62,94],[-78,-10],[68,-108],[-66,-205],[82,-230]];
+        for(let index=0;index<Math.min(regions.length-1,positions.length-1);index+=1){
+            const [x1,y1]=positions[index];const [x2,y2]=positions[index+1];
+            const dx=x2-x1;const dy=y2-y1;const route=panel(canvas,`Route_${index}`,(x1+x2)/2,(y1+y2)/2,Math.sqrt(dx*dx+dy*dy),7,new Color(235,211,161,255),4,false,CuteTheme.white,1);
+            route.angle=Math.atan2(dy,dx)*180/Math.PI;
+        }
+        regions.slice(0,positions.length).forEach((item:any,index:number)=>{
+            const [x,y]=positions[index];
+            button(canvas,`Region_${item?.code||index}`,`${index+1}. ${safeName(item?.name,'未知地区')}`,x,y,138,64,()=>{
+                if(!item?.unlocked){this.showToast('先击败前一区域的巢穴首领');return;}
+                this.selectedRegionCode=String(item.code);this.adventureRegionOpen=true;this.renderCurrentPage(false);
+            },{selected:String(item?.code)===this.selectedRegionCode,fill:item?.unlocked?(item?.bossCleared?CuteTheme.honey:CuteTheme.paperWarm):new Color(210,210,202,255),fontSize:11,radius:17,disabled:!item?.unlocked,subtitle:item?.unlocked?`探索 ${Number(item?.exploration||0)}%`:'尚未解锁'});
+        });
+        const cleared=regions.filter((item:any)=>item?.bossCleared).length;
+        const average=Math.round(regions.reduce((sum:number,item:any)=>sum+Number(item?.exploration||0),0)/Math.max(1,regions.length));
+        const footer=panel(map,'StoryProgress',0,-316,394,62,new Color(255,248,222,255),16,true,CuteTheme.caramelSoft,2);
+        text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-176,13,235,22,11,CuteTheme.caramel,'left',true);
+        progress(footer,'Progress',-60,-13,232,12,average/100,CuteTheme.mintDark);
+        button(footer,'Continue','前往',144,0,82,38,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:11,radius:14,disabled:!region?.unlocked});
+
+        const daily=panel(parent,'DailyCrisis',230,142,174,294,new Color(248,215,214,255),20,true,CuteTheme.peachDark,3);
+        headingTag(daily,'Title','每日区域危机',0,120,146,CuteTheme.peach);
+        drawUiIcon(daily,'BossIcon','adventure',0,48,72,new Color(126,70,78,255));
+        text(daily,'Info','今日主题：生态侵袭\n失败不消耗主线体力',0,-18,142,54,11,CuteTheme.caramel,'center',false);
+        text(daily,'Reward','奖励：金币 · 经验 · 材料',0,-62,150,26,10,CuteTheme.peachDark,'center',true);
+        button(daily,'Challenge','前往挑战',0,-108,132,42,()=>{this.adventureMode='pve';this.renderCurrentPage(false);},{fill:CuteTheme.peach,fontSize:12,radius:16});
+
+        const tower=panel(parent,'EcologyTower',230,-157,174,270,new Color(236,239,211,255),20,true,CuteTheme.mintDark,3);
+        headingTag(tower,'Title','生态之塔',0,108,130,CuteTheme.mint);
+        text(tower,'TowerArt','△\n▥\n▥',0,42,80,102,27,CuteTheme.caramel,'center',true);
+        const floor=Number(GameStore.tower?.currentFloor||GameStore.tower?.record?.currentFloor||1);
+        text(tower,'Floor',`当前第 ${floor} 层`,0,-29,140,28,12,CuteTheme.caramel,'center',true);
+        text(tower,'Power',`队伍战力 ${formatNumber(this.teamPower())}`,0,-56,142,24,10,CuteTheme.muted,'center',true);
+        button(tower,'Challenge','继续挑战',0,-99,132,42,()=>{this.adventureMode='tower';this.renderCurrentPage(false);},{fill:CuteTheme.honey,fontSize:12,radius:16});
+        button(parent,'FriendShortcut','好友协作',230,-350,160,48,()=>{this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:12,radius:16});
+    }
+
+    private renderAdventureRegionPage(parent:Node,region:any,world:any) {
+        const page=panel(parent,'RegionPage',0,-32,620,694,new Color(255,252,239,255),22,false,CuteTheme.caramelSoft,2);
+        button(page,'BackToWorld','返回大陆地图',-230,305,140,40,()=>{this.adventureRegionOpen=false;this.renderCurrentPage(false);},{fill:CuteTheme.paperWarm,fontSize:11,radius:15});
+        tag(page,'Chapter',safeName(region?.chapter,'世界主线'),205,305,150,region?.bossCleared?CuteTheme.honey:CuteTheme.mint);
+        const scene=panel(page,'RegionScene',0,166,574,220,region?.bossCleared?new Color(232,231,187,255):new Color(206,232,207,255),28,true,CuteTheme.mintDark,3);
+        panel(scene,'LandscapeBack',-118,10,250,132,new Color(179,215,169,255),58,false,CuteTheme.white,1);
+        panel(scene,'LandscapeFront',116,-8,260,118,new Color(197,221,164,255),54,false,CuteTheme.white,1);
+        text(scene,'Landmark','▲　♧　▲',0,28,420,72,36,new Color(101,139,101,255),'center',true);
+        text(scene,'RegionName',safeName(region?.name,'未知地区'),0,-61,420,42,27,CuteTheme.caramel,'center',true);
+        text(scene,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),0,-91,500,26,12,CuteTheme.muted,'center',true);
+
+        const detail=panel(page,'RegionDetail',0,-55,574,198,new Color(247,246,224,255),20,false,CuteTheme.caramelSoft,2);
+        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-244,72,120,26,13,CuteTheme.caramel,'left',true);
+        progress(detail,'ExploreProgress',20,72,360,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
         const discoverable=Array.isArray(region?.discoverablePets)?region.discoverablePets.join(' / '):`${safeName(region?.speciesName,'目标物种')} / ${safeName(region?.companionSpecies,'伴生物种')}`;
-        text(detail,'Species',`可发现：${discoverable}　推荐战力 ${formatNumber(region?.recommendedPower||0)}`,-270,-1,540,24,13,CuteTheme.caramel,'left',true);
+        text(detail,'Species',`可发现：${discoverable}`,-244,38,490,26,12,CuteTheme.caramel,'left',true);
+        text(detail,'Power',`推荐战力 ${formatNumber(region?.recommendedPower||0)} · ${safeName(region?.element,'生态')}系生态`,-244,10,490,24,12,CuteTheme.muted,'left',true);
         const lastEvent=region?.lastEvent;
-        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · +${Number(lastEvent?.explorationGain||0)}% · 金币 ${formatNumber(lastEvent?.reward?.gold||0)}`:'下一次推进将触发区域探索事件',-270,-27,540,24,12,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
+        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · 探索 +${Number(lastEvent?.explorationGain||0)}%`:'下一次推进将触发区域探索事件',-244,-18,490,24,11,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
         const firstReward=(Array.isArray(region?.firstRewards)?region.firstRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
         const completionReward=(Array.isArray(region?.completionRewards)?region.completionRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
-        text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`}　完成：${completionReward||'待同步'}`,-270,-51,540,24,11,CuteTheme.peachDark,'left',true);
+        text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`} · 完成：${completionReward||'待同步'}`,-244,-46,490,24,10,CuteTheme.peachDark,'left',true);
         const attempts=world?.attempts||{};
-        text(detail,'Attempt',`巢穴次数 ${Number(attempts?.remaining||0)} · 累计 ${Number(attempts?.stored||0)}/6 · 战败不扣`,-270,-73,300,22,11,CuteTheme.muted,'left',true);
-        button(detail,'Explore',Number(region?.exploration||0)>=100?'探索完成':'推进探索',-112,-92,196,42,()=>void this.startRegionBattle('explore',region),{icon:'🧭',fill:CuteTheme.mint,fontSize:14,radius:19,disabled:this.teamPetIds.length!==5||Number(region?.exploration||0)>=100});
-        button(detail,'Nest',region?.nestUnlocked?(region?.bossCleared?'再次挑战巢穴':'挑战首领巢穴'):'探索100%开放',118,-92,220,42,()=>void this.startRegionBattle('nest',region),{icon:'🥚',fill:CuteTheme.honey,fontSize:14,radius:19,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
-        const pity=world?.pity||{};
-        text(parent,'Pity',`保底：史诗 ${Number(pity?.epic?.remaining||10)}蛋内　传说 ${Number(pity?.legendary?.remaining||40)}蛋内　变异 ${Number(pity?.mutation?.remaining||80)}能量内`,0,-188,588,26,13,CuteTheme.peachDark,'center',true);
+        text(detail,'Attempt',`首领巢穴次数 ${Number(attempts?.remaining||0)} · 累计 ${Number(attempts?.stored||0)}/6 · 战败不扣`,-244,-73,490,22,10,CuteTheme.muted,'left',true);
+
+        const actions=panel(page,'RegionActions',0,-261,574,174,new Color(245,234,207,255),20,true,CuteTheme.caramelSoft,2);
+        const exploration=Number(region?.exploration||0);
+        text(actions,'ExploreTitle',exploration>=100?'区域探索已完成':'推进区域探索',-142,54,240,30,16,CuteTheme.caramel,'center',true);
+        text(actions,'NestTitle',region?.nestUnlocked?'首领巢穴已开放':'探索达到100%后开放',142,54,240,30,16,CuteTheme.caramel,'center',true);
+        button(actions,'Explore',exploration>=100?'探索完成':'开始探索',-142,-8,220,64,()=>void this.startRegionBattle('explore',region),{fill:CuteTheme.mint,fontSize:17,radius:24,disabled:this.teamPetIds.length!==5||exploration>=100});
+        button(actions,'Nest',region?.nestUnlocked?(region?.bossCleared?'再次挑战':'挑战首领'):'尚未开放',142,-8,220,64,()=>void this.startRegionBattle('nest',region),{fill:CuteTheme.honey,fontSize:17,radius:24,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
+        text(actions,'TeamHint',this.teamPetIds.length===5?`出战：${this.formationName(this.selectedFormationCode)} · 战力 ${formatNumber(this.teamPower())}`:'需要先配置完整五宠编队',0,-65,480,24,11,this.teamPetIds.length===5?CuteTheme.mintDark:CuteTheme.peachDark,'center',true);
     }
 
     private async startRegionBattle(kind:'explore'|'nest',region:any) {
