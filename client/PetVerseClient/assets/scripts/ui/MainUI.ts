@@ -47,29 +47,13 @@ import AudioDirector from './v10/AudioDirector';
 import { showFivePetBattle } from './v10/BattleSceneV10';
 import { getEggArtPath, getEggDisplayName, getEggMeta, RARITY_NAMES as EGG_RARITY_NAMES } from './v10/EggArtRegistry';
 import { renderFormationPanel, renderGuildPanel } from './v10/V10Panels';
+import { AppRouter } from './v2/AppRouter';
+import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
+import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
+import { renderBottomNavigation } from './v2/HandPaintedUi';
+import { renderMorePage } from './v2/MorePage';
 
 const { ccclass, executeInEditMode, property } = _decorator;
-
-type PageName =
-    | 'home'
-    | 'pet'
-    | 'inventory'
-    | 'adventure'
-    | 'more'
-    | 'shop'
-    | 'hatchery'
-    | 'skills'
-    | 'fusion'
-    | 'friends'
-    | 'ranking'
-    | 'marriage'
-    | 'mail'
-    | 'trade'
-    | 'profile'
-    | 'settings'
-    | 'benefits'
-    | 'formation'
-    | 'guild';
 
 type AptitudeView = {
     hp: number;
@@ -90,6 +74,7 @@ export class MainUI extends Component {
     private canvas: Node | null = null;
     private root: Node | null = null;
     private topBar: Node | null = null;
+    private pageHost: Node | null = null;
     private pageRoot: Node | null = null;
     private bottomNav: Node | null = null;
     private toastLayer: Node | null = null;
@@ -102,7 +87,6 @@ export class MainUI extends Component {
     private guideLayer: Node | null = null;
 
     private currentPage: PageName = 'home';
-    private drawerOpen = false;
     private detailSkill: any | null = null;
     private selectedSkillBookCode = '';
     private lockedSkillCodes = new Set<string>();
@@ -130,7 +114,7 @@ export class MainUI extends Component {
     private homePetId = loadHomePetId();
     private inventoryTargetPetId = 0;
     private petFilter = loadPetFilter();
-    private pageHistory: PageName[] = [];
+    private readonly router = new AppRouter('home');
     private lastBattleMode: 'tower' | 'pve' | 'friend' = 'tower';
     private formationOverview: any = null;
     private guildOverview: any = null;
@@ -273,12 +257,8 @@ export class MainUI extends Component {
 
     public showPage(page: PageName) {
         const changed = this.currentPage !== page;
-        if (changed && this.currentPage !== 'more') {
-            this.pageHistory.push(this.currentPage);
-            if (this.pageHistory.length > 12) this.pageHistory.shift();
-        }
-        this.currentPage = page;
-        this.drawerOpen = false;
+        if (changed) this.router.navigate(page);
+        this.currentPage = this.router.current;
         this.detailSkill = null;
         this.hatchAcceleratorOpen = false;
         this.hatchAcceleratorEggId = 0;
@@ -291,17 +271,11 @@ export class MainUI extends Component {
         this.renderCurrentPage(true);
         this.renderTopBar();
         this.renderBottomNav();
-        this.renderDrawer();
         if (!EDITOR) void this.refreshPageData(page);
     }
 
     private goBackPage() {
-        const previous = this.pageHistory.pop();
-        const target = previous && previous !== this.currentPage
-            ? previous
-            : this.mainTabForPage(this.currentPage) as PageName;
-        this.currentPage = target === 'more' ? 'home' : target;
-        this.drawerOpen = false;
+        this.currentPage = this.router.back(mainTabForPage(this.currentPage));
         this.detailSkill = null;
         CuteFeedback.playPage();
         this.renderTopBar();
@@ -589,67 +563,25 @@ export class MainUI extends Component {
     }
 
     private buildShell() {
-        this.canvas = find('Canvas') || this.node.parent || this.node;
+        const canvas = find('Canvas') || this.node.parent || this.node;
+        this.canvas = canvas;
+        const shell = resolveAppShell(canvas);
+        this.root = shell.root;
+        this.topBar = shell.topBar;
+        this.pageHost = shell.pageRoot;
+        this.pageRoot = resolvePageContainer(shell.pageRoot, this.currentPage);
+        this.bottomNav = shell.bottomNavigation;
+        this.drawerLayer = shell.drawerLayer;
+        this.modalLayer = shell.modalLayer;
+        this.utilityLayer = shell.utilityLayer;
+        this.battleLayer = shell.battleLayer;
+        this.revealLayer = shell.revealLayer;
+        this.guideLayer = shell.guideLayer;
+        this.toastLayer = shell.toastLayer;
+        this.loadingLayer = shell.loadingLayer;
 
-        let root = this.canvas.getChildByName('PetVerseUIRoot');
-        if (!root) {
-            root = new Node('PetVerseUIRoot');
-            this.canvas.addChild(root);
-        }
-
-        this.root = root;
-        clearNode(root);
-        setRect(root, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-        if (!root.getComponent(BlockInputEvents)) root.addComponent(BlockInputEvents);
-
-        this.buildBackground(root);
-
-        this.topBar = new Node('CuteTopBar');
-        root.addChild(this.topBar);
-        setRect(this.topBar, 0, 570, DESIGN_WIDTH, 130);
-
-        this.pageRoot = new Node('CutePageRoot');
-        root.addChild(this.pageRoot);
-        setRect(this.pageRoot, 0, -5, DESIGN_WIDTH, 1010);
-
-        this.bottomNav = new Node('CuteBottomNav');
-        root.addChild(this.bottomNav);
-        setRect(this.bottomNav, 0, -575, DESIGN_WIDTH, 130);
-
-        this.drawerLayer = new Node('CuteDrawerLayer');
-        root.addChild(this.drawerLayer);
-        setRect(this.drawerLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-        this.modalLayer = new Node('CuteModalLayer');
-        root.addChild(this.modalLayer);
-        setRect(this.modalLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-        this.utilityLayer = new Node('CuteUtilityLayer');
-        root.addChild(this.utilityLayer);
-        setRect(this.utilityLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-        this.battleLayer = new Node('CuteBattleResultLayer');
-        root.addChild(this.battleLayer);
-        setRect(this.battleLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-        this.revealLayer = new Node('CuteRevealLayer');
-        root.addChild(this.revealLayer);
-        setRect(this.revealLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-        this.revealLayer.active = false;
-
-        this.guideLayer = new Node('CuteGuideLayer');
-        root.addChild(this.guideLayer);
-        setRect(this.guideLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-        this.guideLayer.active = false;
-
-        this.toastLayer = new Node('CuteToastLayer');
-        root.addChild(this.toastLayer);
-        setRect(this.toastLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-        this.loadingLayer = new Node('CuteLoadingLayer');
-        root.addChild(this.loadingLayer);
-        setRect(this.loadingLayer, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-        this.loadingLayer.active = false;
+        clearNode(shell.globalBackground);
+        this.buildBackground(shell.globalBackground);
     }
 
     private buildBackground(root: Node) {
@@ -675,7 +607,6 @@ export class MainUI extends Component {
         this.renderTopBar();
         this.renderBottomNav();
         this.renderCurrentPage(false);
-        this.renderDrawer();
         this.renderSkillModal();
         this.renderUtilityModal();
         this.renderBattleResultModal();
@@ -693,7 +624,7 @@ export class MainUI extends Component {
         text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -20, 98, 28, 16, CuteTheme.honeyDark, 'left', true);
         text(this.topBar, 'Paw', '🐾', -135, -18, 34, 28, 18, CuteTheme.mintDark, 'center', true);
 
-        const secondary = !['home', 'pet', 'inventory', 'adventure', 'more'].includes(this.currentPage);
+        const secondary = !isMainPage(this.currentPage);
         const showBack = secondary && this.currentPage !== 'profile';
         if (showBack) {
             button(this.topBar, 'BackPage', '', -92, 3, 48, 48, () => this.goBackPage(), {
@@ -739,46 +670,18 @@ export class MainUI extends Component {
 
     private renderBottomNav() {
         if (!this.bottomNav) return;
-        clearNode(this.bottomNav);
-
-        panel(this.bottomNav, 'Shelf', 0, 0, 720, 126, new Color(174, 112, 62, 255), 0, true, CuteTheme.woodDark, 3);
-        panel(this.bottomNav, 'ShelfTop', 0, 55, 720, 14, new Color(231, 181, 111, 255), 4, false, CuteTheme.woodDark, 2);
-
-        const active = this.drawerOpen ? 'more' : this.mainTabForPage(this.currentPage);
-        const tabs = [
-            { key: 'home', title: '家园', icon: '🏠', action: () => this.showPage('home') },
-            { key: 'pet', title: '宝宝', icon: '🐶', action: () => this.showPage('pet') },
-            { key: 'inventory', title: '背包', icon: '🎒', action: () => this.showPage('inventory') },
-            { key: 'adventure', title: '冒险', icon: '🧭', action: () => this.showPage('adventure') },
-            { key: 'more', title: '更多', icon: '📖', action: () => this.toggleDrawer() },
-        ];
-
-        tabs.forEach((item, index) => {
-            const tabNode = button(
-                this.bottomNav!,
-                `Tab_${item.key}`,
-                item.title,
-                -286 + index * 143,
-                1,
-                126,
-                98,
-                item.action,
-                {
-                    icon: item.icon,
-                    selected: active === item.key,
-                    fill: active === item.key ? CuteTheme.paperWarm : new Color(225, 181, 125, 255),
-                    border: active === item.key ? CuteTheme.honey : CuteTheme.woodDark,
-                    fontSize: 18,
-                    radius: 25,
-                },
-            );
-            if (item.key === 'more') this.addNotificationBadge(tabNode, this.totalNotificationCount(), 45, 34);
-        });
+        renderBottomNavigation(
+            this.bottomNav,
+            mainTabForPage(this.currentPage),
+            (page) => this.showPage(page),
+            this.totalNotificationCount(),
+        );
     }
 
     private renderCurrentPage(animatePage = false) {
-        if (!this.pageRoot) return;
+        if (!this.pageHost) return;
         this.captureScrollOffsets(this.pageRoot);
+        this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
         clearNode(this.pageRoot);
 
         switch (this.currentPage) {
@@ -2122,15 +2025,11 @@ export class MainUI extends Component {
     }
 
     private renderMoreLanding() {
-        if(!this.pageRoot)return;const root=this.pageRoot;
-
-        const card=panel(root,'MoreCard',0,10,650,790,CuteTheme.paper,42,true,CuteTheme.caramelSoft,3);
-        text(card,'Hint','核心养成与协作入口',0,315,520,44,22,CuteTheme.caramel,'center',true);
-        button(card,'Formation','五宠阵法',-150,175,260,150,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:22,radius:30,subtitle:'5套阵型 · 10级成长 · 阵法大招'});
-        button(card,'Guild','萌宠公会',150,175,260,150,()=>this.showPage('guild'),{icon:'🏰',fill:CuteTheme.mint,fontSize:22,radius:30,subtitle:'签到 · 任务 · 首领 · 远征 · 互助'});
-        button(card,'OpenDrawer','打开全部功能柜',0,-10,280,70,()=>this.toggleDrawer(),{icon:'🧸',fill:CuteTheme.honey,fontSize:19,radius:29});
-        text(card,'Summary','研究型页面已重排：宝宝数值、职业、技能、资质和操作占主要空间；\n装饰贴图退到次要层级，关键信息字号更大。',0,-125,540,100,18,CuteTheme.muted,'center',false);
-        text(card,'Audio','🎵 家园萌系音乐　⚔ 普通战斗音乐　👑 BOSS战音乐\n点击、确认、报错、攻击、治疗和护盾均使用新音效',0,-265,540,90,16,CuteTheme.caramel,'center',false);
+        if (!this.pageRoot) return;
+        renderMorePage(this.pageRoot, {
+            onOpen: (page) => this.showPage(page),
+            notificationCount: (page) => this.pageNotificationCount(page),
+        });
     }
 
     private renderFormation() {
@@ -2369,7 +2268,6 @@ export class MainUI extends Component {
             this.finishGuide();
             return;
         }
-        this.drawerOpen = false;
         this.detailSkill = null;
         this.hatchAcceleratorOpen = false;
         this.showPage(step.page as PageName);
@@ -2482,81 +2380,6 @@ export class MainUI extends Component {
             fontSize: 18,
             radius: 28,
         });
-    }
-
-    private renderDrawer() {
-        if (!this.drawerLayer) return;
-        clearNode(this.drawerLayer);
-        this.drawerLayer.active = this.drawerOpen;
-        if (!this.drawerOpen) return;
-
-        if (!this.drawerLayer.getComponent(BlockInputEvents)) this.drawerLayer.addComponent(BlockInputEvents);
-        const dim = panel(this.drawerLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(91, 56, 35, 82), 0, false, CuteTheme.transparent, 0);
-        dim.on(Node.EventType.TOUCH_END, () => this.closeDrawer());
-
-        const drawer = panel(this.drawerLayer, 'Drawer', 0, -205, 704, 730, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
-        headingTag(drawer, 'DrawerTitle', '功能柜', 0, 322, 178, CuteTheme.paperWarm);
-        button(drawer, 'Close', '×', 310, 322, 48, 48, () => this.closeDrawer(), { fill: CuteTheme.peach, fontSize: 28, radius: 23 });
-
-        const entries = [
-            ['shop', '商城', '🛒', CuteTheme.honey], ['benefits', '福利', '🎀', CuteTheme.peach],
-            ['hatchery', '孵化室', '🥚', CuteTheme.mint], ['skills', '打技能', '📕', CuteTheme.sky],
-            ['fusion', '炼妖', '🔮', CuteTheme.lilac], ['formation', '阵法', '🐉', CuteTheme.lilac],
-            ['guild', '公会', '🏰', CuteTheme.mint], ['friends', '好友', '📷', CuteTheme.peach],
-            ['ranking', '排行', '🏆', CuteTheme.paperWarm], ['marriage', '婚姻', '💞', CuteTheme.pink],
-            ['mail', '邮件', '💌', CuteTheme.mint], ['trade', '交易', '🏷', CuteTheme.lilac],
-            ['profile', '玩家', '📒', CuteTheme.sky], ['settings', '设置', '⚙', new Color(235, 232, 216, 255)],
-        ] as Array<[PageName, string, string, Color]>;
-
-        entries.forEach(([page, title, icon, fill], index) => {
-            const col = index % 4;
-            const row = Math.floor(index / 4);
-            const entryNode = button(drawer, `Entry_${page}`, title, -237 + col * 158, 206 - row * 132, 138, 108, () => this.showPage(page), {
-                icon, fill, fontSize: 16, radius: 26,
-            });
-            this.addNotificationBadge(entryNode, this.pageNotificationCount(page), 49, 40);
-        });
-
-        if (CuteFeedback.animationEnabled()) {
-            const opacity = drawer.getComponent(UIOpacity) || drawer.addComponent(UIOpacity);
-            opacity.opacity = 0;
-            drawer.setPosition(new Vec3(0, -470, 0));
-            drawer.setScale(new Vec3(0.98, 0.98, 1));
-            tween(opacity).to(0.16, { opacity: 255 }).start();
-            tween(drawer).to(0.22, { position: new Vec3(0, -205, 0), scale: Vec3.ONE }, { easing: 'backOut' }).start();
-        }
-    }
-
-    private toggleDrawer() {
-        if (this.drawerOpen) {
-            this.closeDrawer();
-            return;
-        }
-        this.drawerOpen = true;
-        CuteFeedback.playDrawer();
-        this.renderDrawer();
-        this.renderBottomNav();
-    }
-
-    private closeDrawer() {
-        if (!this.drawerLayer || !this.drawerOpen) return;
-        const drawer = this.drawerLayer.getChildByName('Drawer');
-        if (drawer?.isValid && CuteFeedback.animationEnabled()) {
-            const opacity = drawer.getComponent(UIOpacity) || drawer.addComponent(UIOpacity);
-            tween(opacity).to(0.12, { opacity: 0 }).start();
-            tween(drawer)
-                .to(0.14, { position: new Vec3(0, -500, 0), scale: new Vec3(0.97, 0.97, 1) }, { easing: 'quadIn' })
-                .call(() => {
-                    this.drawerOpen = false;
-                    this.renderDrawer();
-                    this.renderBottomNav();
-                })
-                .start();
-            return;
-        }
-        this.drawerOpen = false;
-        this.renderDrawer();
-        this.renderBottomNav();
     }
 
     private renderSkillModal() {
@@ -4087,6 +3910,7 @@ export class MainUI extends Component {
             marriage: '心愿婚礼',
             mail: '邮差信箱',
             trade: '寄售市场',
+            collection: '宠物图鉴',
             profile: '玩家手账',
             settings: '游戏设置',
             benefits: '福利成长',
@@ -4107,6 +3931,7 @@ export class MainUI extends Component {
             marriage: '💞',
             mail: '💌',
             trade: '🏷',
+            collection: '📚',
             profile: '📒',
             settings: '⚙',
             benefits: '🎀',
@@ -4127,6 +3952,7 @@ export class MainUI extends Component {
             marriage: '两只宝宝会站在左右两侧，通过心愿丝带展示血缘、生育力和产蛋状态。',
             mail: '系统邮件和奖励附件会放进萌系信封与包裹卡片中。',
             trade: '寄售宝宝会显示技能格、特殊技能、资质、成长和价格。',
+            collection: '按种族、元素和稀有度浏览已发现与尚未发现的宠物。',
             profile: '玩家头像、等级、成就、容量和赛季记录会整理成一本个人手账。',
             settings: '可调整声音、点击反馈、动效与画质档位。',
             benefits: '签到、每日任务、成长成就、月卡与赛季战令会集中在福利中心。',
@@ -4134,14 +3960,6 @@ export class MainUI extends Component {
             guild: '轻量异步公会，包含签到、捐献、任务、首领、远征和互助。',
         };
         return summaries[page] || '该页面将在后续萌系界面批次中完整接入。';
-    }
-
-    private mainTabForPage(page: PageName) {
-        if (page === 'home') return 'home';
-        if (page === 'pet') return 'pet';
-        if (page === 'inventory') return 'inventory';
-        if (page === 'adventure') return 'adventure';
-        return 'more';
     }
 
     private rarityName(pet: any) {
