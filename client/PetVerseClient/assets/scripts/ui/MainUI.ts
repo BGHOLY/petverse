@@ -104,6 +104,8 @@ export class MainUI extends Component {
     private eggSyncRunning = false;
     private hatchAcceleratorOpen = false;
     private hatchAcceleratorEggId = 0;
+    private hatchEggFilter: 'all' | 'rare' | 'mutant' = 'all';
+    private hatchEggSort: 'rarity' | 'time' = 'rarity';
     private homePetPickerOpen = false;
     private pendingHomePetId = 0;
     private fusionPickerSide: 'A' | 'B' | null = null;
@@ -848,6 +850,7 @@ export class MainUI extends Component {
         const parts: string[] = [this.currentPage];
         if (this.currentPage === 'shop') parts.push(this.shopCategory);
         if (this.currentPage === 'inventory') parts.push(this.inventoryCategory, this.inventorySort);
+        if (this.currentPage === 'hatchery') parts.push(this.hatchEggFilter, this.hatchEggSort);
         if (this.currentPage === 'benefits') parts.push(this.benefitMode);
         if (this.currentPage === 'friends') parts.push(this.friendMode);
         if (this.currentPage === 'marriage') parts.push(this.marriageMode);
@@ -1368,7 +1371,7 @@ export class MainUI extends Component {
             const device = panel(room, `Device_${slot}`, x, 170, 202, 300, egg ? new Color(255, 247, 219, 255) : new Color(249, 252, 239, 255), 30, true, egg ? CuteTheme.honeyDark : CuteTheme.mintDark, egg?.isMutant ? 5 : 3);
             headingTag(device, 'Title', `${slot}号装置`, 0, 124, 112, egg ? CuteTheme.paperWarm : CuteTheme.mint);
             if (!egg) {
-                text(device, 'EggEmpty', '🥚', 0, 42, 100, 100, 56, CuteTheme.honeyDark, 'center', true);
+                drawUiIcon(device, 'EggEmpty', 'hatchery', 0, 48, 70, CuteTheme.honeyDark);
                 text(device, 'State', '空闲\n等待选择宠物蛋', 0, -40, 150, 58, 17, CuteTheme.muted, 'center', false);
                 tag(device, 'Free', '可使用', 0, -108, 92, CuteTheme.mint);
                 return;
@@ -1386,14 +1389,22 @@ export class MainUI extends Component {
             text(device, 'EggName', getEggDisplayName(egg), 0, -35, 184, 42, 15, CuteTheme.caramel, 'center', false);
             progress(device, 'Progress', 0, -77, 166, 14, ready ? 1 : 1 - remaining / total, ready ? CuteTheme.green : CuteTheme.honey);
             text(device, 'Time', ready ? '可以孵化' : this.formatSeconds(remaining), 0, -100, 176, 26, 14, ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
-            button(device, 'Accelerate', '加速', -48, -128, 84, 38, () => this.openHatchAccelerator(egg), { icon: '⏳', fill: CuteTheme.sky, fontSize: 12, radius: 17, disabled: ready });
-            button(device, 'Hatch', ready ? '孵化' : '计时中', 48, -128, 84, 38, () => void this.hatchEgg(egg), { icon: ready ? '✨' : '🕒', fill: ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 17, disabled: !ready || this.busy.has(`hatch:${egg?.id}`) });
+            button(device, 'Accelerate', '加速', -48, -128, 84, 38, () => this.openHatchAccelerator(egg), { fill: CuteTheme.sky, fontSize: 12, radius: 17, disabled: ready });
+            button(device, 'Hatch', ready ? '领取' : '计时中', 48, -128, 84, 38, () => void this.hatchEgg(egg), { fill: ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 17, disabled: !ready || this.busy.has(`hatch:${egg?.id}`) });
         });
 
-        const storedEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
+        const allStoredEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
+        const storedEggs = allStoredEggs
+            .filter((egg) => this.hatchEggFilter === 'all'
+                || this.hatchEggFilter === 'mutant' && Boolean(egg?.isMutant)
+                || this.hatchEggFilter === 'rare' && Number(egg?.rarityPotential || 1) >= 4)
+            .sort((a, b) => this.hatchEggSort === 'rarity'
+                ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
+                : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
         const warehouse = panel(room, 'Warehouse', 0, -205, 650, 390, new Color(255, 252, 239, 255), 30, true, CuteTheme.caramelSoft, 3);
-        headingTag(warehouse, 'Title', `宠物蛋仓库 ${storedEggs.length}`, -205, 160, 210, CuteTheme.paperWarm);
-        text(warehouse, 'WarehouseHint', '蛋只显示物种外观、稀有度、变异状态和孵化时长', 102, 160, 360, 28, 13, CuteTheme.muted, 'center', true);
+        headingTag(warehouse, 'Title', `蛋仓 ${allStoredEggs.length}`, -238, 160, 120, CuteTheme.paperWarm);
+        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-80+index*88,160,80,38,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:12,radius:15}));
+        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',238,160,118,38,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:11,radius:15});
         const rows = Math.max(1, Math.ceil(storedEggs.length / 2));
         const area = this.createScrollArea(warehouse, 'EggScroll', 0, -20, 616, 284, 616, Math.max(284, rows * 134 + 12), 'vertical');
         storedEggs.forEach((egg, index) => {
@@ -1408,7 +1419,7 @@ export class MainUI extends Component {
             button(card, 'Put', '选择装置', 72, -38, 102, 34, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 11, radius: 15, disabled: activeEggs.length >= 3 });
             card.on(Node.EventType.TOUCH_END, () => this.requestIncubation(egg, 0));
         });
-        if (!storedEggs.length) text(area.content, 'Empty', '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);
+        if (!storedEggs.length) text(area.content, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);
     }
 
     private renderSkillLearning() {
