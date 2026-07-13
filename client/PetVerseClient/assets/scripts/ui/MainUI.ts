@@ -134,6 +134,9 @@ export class MainUI extends Component {
     private teamDragSourceSlot = -1;
     private teamDragMoved = false;
     private formationSelectedCandidateId = 0;
+    private formationSelectedSlotIndex = -1;
+    private teamPetFilter: 'all' | 'front' | 'damage' | 'support' = 'all';
+    private teamPetSort: 'power' | 'level' = 'power';
 
     private friendMode: 'friends' | 'requests' | 'discover' = 'friends';
     private incomingFriendRequests: any[] = [];
@@ -522,18 +525,20 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'adventure': {
-                    const [tower, team, pets, friends, world] = await Promise.all([
+                    const [tower, team, pets, friends, world, formation] = await Promise.all([
                         ApiClient.get('/tower/status'),
                         ApiClient.get('/team'),
                         ApiClient.get('/pet/my'),
                         ApiClient.get('/friend/list'),
                         ApiClient.get('/exploration/world'),
+                        ApiClient.get('/formation'),
                     ]);
                     if (tower?.success !== false) GameStore.setTower(tower);
                     if (pets?.success !== false) GameStore.setPets(pets);
                     if (friends?.success !== false) GameStore.setList('friends', friends);
                     this.applyTeamResult(team);
                     this.applyWorldExploration(world);
+                    this.formationOverview = formation?.data || formation || this.formationOverview;
                     this.ensureSelectedFriend();
                     break;
                 }
@@ -1594,17 +1599,22 @@ export class MainUI extends Component {
 
     private renderTeamEditor(page: Node) {
         this.normalizeTeamAssignments();
+        const formation=this.formationConfig();
         const editor = panel(page, 'TeamEditor', 0, 0, 650, 850, new Color(255, 250, 232, 255), 34, false, CuteTheme.caramelSoft, 2);
         editor.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
         editor.on(Node.EventType.MOUSE_UP, this.finishTeamDrag, this);
         editor.on(Node.EventType.TOUCH_START, this.beginTeamDragFromEvent, this);
         editor.on(Node.EventType.MOUSE_DOWN, this.beginTeamDragFromEvent, this);
         headingTag(editor, 'Title', '五宠阵法编队', -210, 382, 190, CuteTheme.mint);
-        text(editor, 'Hint', '先点候选宝宝，再点上方1～5号阵位完成替换；阵位之间仍可直接拖动交换。', -290, 343, 580, 32, 14, CuteTheme.muted, 'left', true);
-        const formationCodes = ['dragon','turtle','crane','tiger','phoenix'];
+        const counterNames=(Array.isArray(formation?.counters)?formation.counters:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
+        const counteredByNames=(Array.isArray(formation?.counteredBy)?formation.counteredBy:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
+        text(editor, 'Hint', `总战力 ${formatNumber(this.teamPower())}　克制 ${counterNames} · 受 ${counteredByNames} 克制　点两个阵位交换`, -290, 343, 580, 32, 12, CuteTheme.muted, 'left', true);
+        const formationCodes = (Array.isArray(this.formationOverview?.formations)?this.formationOverview.formations.map((item:any)=>String(item?.code||item?.id)):['dragon','turtle','crane','tiger','phoenix']).slice(0,5);
         formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,300,110,42,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:18}));
 
-        const field = panel(editor, 'FormationField', 0, 130, 612, 240, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
+        const ultimate=formation?.ultimate||{};
+        text(editor,'Ultimate',`${ultimate?.icon||'阵'} ${ultimate?.name||'阵法大招'} · 能量 ${Number(ultimate?.energyCost||0)}　${ultimate?.description||formation?.description||'按阵法配置发动全队技能'}`,-286,258,572,34,12,CuteTheme.peachDark,'left',true);
+        const field = panel(editor, 'FormationField', 0, 115, 612, 220, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
         this.formationSlotNodes.clear();
         const positions = this.formationEditorPositions(this.selectedFormationCode);
         const byId = new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
@@ -1612,33 +1622,37 @@ export class MainUI extends Component {
             const petId = Number(this.teamSlotAssignments[index] || 0);
             const pet = byId.get(petId) || null;
             const pending = Number(this.formationSelectedCandidateId || 0) > 0;
-            const slot = panel(field, `Slot_${index}`, x, y, 116, 108, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 21, true, pending ? CuteTheme.mintDark : pet ? CuteTheme.honey : CuteTheme.caramelSoft, pending ? 4 : 2);
+            const slotSelected=index===this.formationSelectedSlotIndex;
+            const slot = panel(field, `Slot_${index}`, x, y, 116, 102, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 21, true, slotSelected?CuteTheme.peachDark:pending ? CuteTheme.mintDark : pet ? CuteTheme.honey : CuteTheme.caramelSoft, slotSelected||pending ? 4 : 2);
             this.formationSlotNodes.set(index, slot);
-            text(slot, 'Role', `#${index+1} · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 43, 104, 18, 12, CuteTheme.mintDark, 'center', true);
+            text(slot, 'Role', `${index+1}号位 · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 40, 104, 18, 11, CuteTheme.mintDark, 'center', true);
             if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 12, 42, 42, CuteTheme.paperWarm);
             else text(slot, 'Empty', '＋', 0, 12, 42, 42, 26, CuteTheme.muted, 'center', true);
             text(slot, 'Name', pet ? this.compactPetName(pet) : pending ? '点此放入' : '空阵位', 0, -18, 102, 18, 12, CuteTheme.caramel, 'center', true);
-            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -40, 104, 18, 12, CuteTheme.peachDark, 'center', true);
-            const assignSelected = (event:any) => {
-                const selectedId=Number(this.formationSelectedCandidateId||0);
-                if(selectedId<=0)return;
-                if(event)event.propagationStopped=true;
-                this.assignPetToFormationSlot(selectedId,index);
-            };
+            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -38, 104, 18, 11, CuteTheme.peachDark, 'center', true);
+            const selectSlot = (event:any) => this.handleFormationSlotClick(index,event);
             slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; this.teamDragMoved=false; });
             slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.moveTeamDrag(event));
-            slot.on(Node.EventType.TOUCH_END, assignSelected);
+            slot.on(Node.EventType.TOUCH_END, selectSlot);
             slot.on(Node.EventType.MOUSE_DOWN, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; this.teamDragMoved=false; });
             slot.on(Node.EventType.MOUSE_MOVE, (event:any) => this.moveTeamDrag(event));
-            slot.on(Node.EventType.MOUSE_UP, assignSelected);
+            slot.on(Node.EventType.MOUSE_UP, selectSlot);
         });
 
-        const available = GameStore.pets.filter((pet)=>!pet?.isEgg&&pet?.tradeStatus!=='listed'&&!pet?.tradeListingId);
+        const available = GameStore.pets
+            .filter((pet)=>!pet?.isEgg&&pet?.tradeStatus!=='listed'&&!pet?.tradeListingId&&this.matchesTeamPetFilter(pet))
+            .sort((left,right)=>this.teamPetSort==='level'
+                ? Number(right?.level||1)-Number(left?.level||1)
+                : this.battleAttributesOf(right).power-this.battleAttributesOf(left).power);
         this.formationCandidateNodes.clear();
         const rows = Math.max(1, Math.ceil(available.length / 2));
         const selectedPet=available.find((pet)=>Number(pet?.id||0)===Number(this.formationSelectedCandidateId||0));
-        text(editor,'CandidateTitle',selectedPet?`已选 ${this.compactPetName(selectedPet)}：请点上方阵位`:'候选宝宝（点击选中，可上下滚动）',-285,-10,570,28,15,selectedPet?CuteTheme.mintDark:CuteTheme.caramel,'left',true);
-        const choices = this.createScrollArea(editor,'TeamPetScroll',0,-180,610,312,610,Math.max(312,rows*108+8),'vertical');
+        text(editor,'CandidateTitle',selectedPet?`已选 ${this.compactPetName(selectedPet)}：请点上方阵位`:'可用宝宝',-285,-10,230,28,15,selectedPet?CuteTheme.mintDark:CuteTheme.caramel,'left',true);
+        const filters:Array<['all'|'front'|'damage'|'support',string]>=[['all','全部'],['front','前排'],['damage','输出'],['support','辅助']];
+        filters.forEach(([key,label],index)=>button(editor,`Filter_${key}`,label,-210+index*92,-48,82,34,()=>{this.teamPetFilter=key;this.formationSelectedCandidateId=0;this.renderCurrentPage(false);},{selected:this.teamPetFilter===key,fill:this.teamPetFilter===key?CuteTheme.mint:CuteTheme.paperWarm,fontSize:11,radius:15}));
+        button(editor,'Sort',this.teamPetSort==='power'?'战力优先':'等级优先',218,-48,112,34,()=>{this.teamPetSort=this.teamPetSort==='power'?'level':'power';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:11,radius:15});
+        const choices = this.createScrollArea(editor,'TeamPetScroll',0,-210,610,270,610,Math.max(270,rows*108+8),'vertical');
+        if(!available.length)text(choices.content,'Empty','当前筛选没有可用宝宝',0,-80,500,48,16,CuteTheme.muted,'center',true);
         available.forEach((pet,index)=>{
             const id=Number(pet?.id||0); const onTeam=this.teamPetIds.includes(id); const pending=id===Number(this.formationSelectedCandidateId||0); const col=index%2,row=Math.floor(index/2);
             const card=panel(choices.content,`Pet_${id}`,-151+col*302,-49-row*108,286,96,pending?new Color(222,246,225,255):onTeam?CuteTheme.honey:CuteTheme.paperWarm,22,true,pending?CuteTheme.mintDark:onTeam?CuteTheme.honeyDark:CuteTheme.white,pending?4:2);
@@ -1678,10 +1692,10 @@ export class MainUI extends Component {
         text(rewardCard, 'Title', '通关奖励', 0, 46, 170, 30, 17, CuteTheme.caramel, 'center', true);
         text(rewardCard, 'Reward', `金币 ${formatNumber(reward?.gold || floor * 100)}\n钻石 ${formatNumber(reward?.diamond || 0)}\n经验 ${formatNumber(reward?.exp || floor * 30)}`, 0, -18, 170, 86, 15, CuteTheme.caramel, 'center', true);
 
-        text(parent, 'TowerTip', '使用当前三宠编队连续迎战守关怪物，胜利后自动进入下一层。', 0, -100, 560, 46, 14, CuteTheme.muted, 'center', true);
+        text(parent, 'TowerTip', '使用完整五宠编队迎战守关怪物，胜利后自动进入下一层。', 0, -100, 560, 46, 14, CuteTheme.muted, 'center', true);
         button(parent, 'TowerChallenge', '挑战本层', 0, -164, 240, 66, () => void this.startAdventureBattle('tower'), {
             icon: '🏯', fill: CuteTheme.honey, fontSize: 19, radius: 28,
-            disabled: !this.teamPetIds.length || this.busy.has('battle:tower'),
+            disabled: this.teamPetIds.length!==5 || this.busy.has('battle:tower'),
         });
     }
 
@@ -1692,10 +1706,10 @@ export class MainUI extends Component {
         headingTag(parent, 'PveHeading', '日常试炼', 0, 170, 170, CuteTheme.mint);
         text(parent, 'PveDecor', '🌲　⚔　🐾　⚔　🌲', 0, 88, 520, 70, 42, CuteTheme.mintDark, 'center', true);
         text(parent, 'PveTitle', '森林训练场', 0, 28, 420, 46, 26, CuteTheme.caramel, 'center', true);
-        text(parent, 'PveInfo', `队伍平均等级 Lv.${averageLevel}\n系统会按队伍等级生成3名训练对手\n该模式用于验证编队、技能与战斗搭配`, 0, -50, 520, 100, 16, CuteTheme.muted, 'center', false);
+        text(parent, 'PveInfo', `队伍平均等级 Lv.${averageLevel}\n系统会按队伍等级生成完整五宠训练阵容\n该模式用于验证编队、技能与战斗搭配`, 0, -50, 520, 100, 16, CuteTheme.muted, 'center', false);
         button(parent, 'PveChallenge', '开始试炼', 0, -164, 240, 66, () => void this.startAdventureBattle('pve'), {
             icon: '⚔', fill: CuteTheme.mint, fontSize: 19, radius: 28,
-            disabled: !this.teamPetIds.length || this.busy.has('battle:pve'),
+            disabled: this.teamPetIds.length!==5 || this.busy.has('battle:pve'),
         });
     }
 
@@ -2084,12 +2098,13 @@ export class MainUI extends Component {
 
     private renderFormation() {
         if(!this.pageRoot)return;
+        if(this.teamEditing){this.renderTeamEditor(this.pageRoot);return;}
         renderFormationPanel(this.pageRoot,this.formationOverview||{},this.selectedFormationCode,{
             onSelect:(code)=>void this.selectFormation(code),
             onUpgrade:(code)=>void this.upgradeFormation(code),
             onBuyKnowledge:()=>void this.buyFormationKnowledge(),
             onBuyCore:()=>void this.buyFormationCore(),
-            onEditTeam:()=>{this.beginTeamEditing();this.showPage('adventure');},
+            onEditTeam:()=>this.beginTeamEditing(),
             onBack:()=>this.goBackPage(),
         });
     }
@@ -2109,7 +2124,14 @@ export class MainUI extends Component {
         });
     }
 
+    private formationConfig(code=this.selectedFormationCode) {
+        const formations=Array.isArray(this.formationOverview?.formations)?this.formationOverview.formations:[];
+        return formations.find((item:any)=>String(item?.code||item?.id)===String(code))||null;
+    }
+
     private formationName(code: string) {
+        const config=this.formationConfig(code);
+        if(config?.name)return String(config.name).split('·')[0];
         const map:Record<string,string>={dragon:'龙阵',turtle:'龟阵',crane:'鹤阵',tiger:'虎阵',phoenix:'凤阵'};
         return map[String(code)]||'龙阵';
     }
@@ -2917,8 +2939,8 @@ export class MainUI extends Component {
         this.teamPetIds=ids.map((id:any)=>Number(id||0)).filter((id:number)=>id>0).slice(0,5);
         this.selectedFormationCode=String(result?.formationCode||team?.formationCode||this.selectedFormationCode||'dragon');
         const rawSlots=Array.isArray(result?.slotAssignments)?result.slotAssignments:Array.isArray(team?.slotAssignments)?team.slotAssignments:[];
-        this.teamSlotAssignments=rawSlots.map((id:any)=>Number(id||0)).filter((id:number)=>id>0).slice(0,5);
-        if(this.teamSlotAssignments.length!==5)this.teamSlotAssignments=[...this.teamPetIds];
+        this.teamSlotAssignments=Array.from({length:5},(_,index)=>Number(rawSlots[index]||0));
+        this.normalizeTeamAssignments();
         const byId=new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
         this.teamPets=this.teamSlotAssignments.map((id)=>pets.find((pet:any)=>Number(pet?.id||0)===id)||byId.get(id)).filter(Boolean);
     }
@@ -2955,7 +2977,8 @@ export class MainUI extends Component {
         if (this.teamPetIds.length !== 5 || this.teamSlotAssignments.filter(Boolean).length !== 5 || this.busy.has('team:save')) { this.showToast('请完整选择5只宝宝'); return; }
         this.busy.add('team:save');
         try {
-            const result=await ApiClient.post('/team/set',{petIds:this.teamPetIds,formationCode:this.selectedFormationCode,slotAssignments:[...this.teamSlotAssignments],tactics:{focusPriority:'lowestHp',guardTarget:'healer',shieldThreshold:60,cleansePriority:['control','healBlock','dot'],ultimatePolicy:'ready'}});
+            const slots=this.teamSlotAssignments.map((petId,index)=>({position:index+1,petId:Number(petId||0)}));
+            const result=await ApiClient.post('/team/set',{petIds:this.teamPetIds,formationId:this.selectedFormationCode,slots,formationCode:this.selectedFormationCode,slotAssignments:[...this.teamSlotAssignments],tactics:{focusPriority:'lowestHp',guardTarget:'healer',shieldThreshold:60,cleansePriority:['control','healBlock','dot'],ultimatePolicy:'ready'}});
             if(result?.success===false){this.showToast(result?.message||'编队保存失败');return;}
             this.applyTeamResult(result);this.teamEditing=false;this.teamEditSnapshot=null;this.formationSelectedCandidateId=0;this.showToast('五宠阵法编队已保存');void AudioDirector.playSfx('confirm');
         }catch(error){console.error('[CuteMainUI] save team failed:',error);this.showToast('编队保存失败，请检查后端');}
@@ -3751,6 +3774,9 @@ export class MainUI extends Component {
     }
 
     private formationEditorPositions(code:string):Array<[number,number]> {
+        const config=this.formationConfig(code);
+        const configured=Array.isArray(config?.positions)?config.positions:Array.isArray(config?.slots)?config.slots:[];
+        if(configured.length===5)return configured.map((slot:any)=>[Number(slot?.x||0)*1.18,Number(slot?.y||0)*0.36-5] as [number,number]);
         const map:Record<string,Array<[number,number]>>={
             dragon:[[0,52],[-188,10],[188,10],[-96,-55],[96,-55]],
             turtle:[[-160,50],[160,50],[0,8],[-150,-58],[150,-58]],
@@ -3762,6 +3788,9 @@ export class MainUI extends Component {
     }
 
     private formationSlotRole(code:string,index:number) {
+        const config=this.formationConfig(code);
+        const slot=(Array.isArray(config?.positions)?config.positions:config?.slots||[])[index];
+        if(slot?.label||slot?.role)return String(slot.label||this.petRoleLabel(slot.role));
         const roles:Record<string,string[]>={
             dragon:['肉盾','物伤','物伤','法伤','治疗'],
             turtle:['肉盾','肉盾','辅助','输出','治疗'],
@@ -3783,6 +3812,13 @@ export class MainUI extends Component {
     }
 
     private formationSlotBonus(code:string,index:number) {
+        const config=this.formationConfig(code);
+        const slot=(Array.isArray(config?.positions)?config.positions:config?.slots||[])[index];
+        if(slot?.bonusText)return String(slot.bonusText).split(' / ')[0];
+        if(slot?.bonuses&&typeof slot.bonuses==='object'){
+            const type=Object.keys(slot.bonuses)[0];
+            if(type){const value=Number(slot.bonuses[type]||0);return `${this.formationBonusName(type)}+${Math.abs(value)<1?Math.round(value*100)+'%':value}`;}
+        }
         const bonuses:Record<string,string[]>={
             dragon:['减伤+12%','物攻+10%','暴击+8%','法攻+10%','治疗+12%'],
             turtle:['减伤+15%','防御+12%','抗控+10%','伤害+6%','治疗+10%'],
@@ -3793,6 +3829,19 @@ export class MainUI extends Component {
         return (bonuses[String(code)]||bonuses.dragon)[index]||'属性加成';
     }
 
+    private formationBonusName(type:string) {
+        const labels:Record<string,string>={defenseRate:'防御',tauntRate:'嘲讽',physicalDamageRate:'物伤',critRate:'暴击',magicDamageRate:'法伤',energyRate:'能量',healingRate:'治疗',damageReductionRate:'减伤',shieldRate:'护盾',controlResistRate:'抗控',speedRate:'速度',controlAccuracyRate:'控制命中',singleDamageRate:'单体伤害'};
+        return labels[String(type)]||'属性';
+    }
+
+    private matchesTeamPetFilter(pet:any) {
+        if(this.teamPetFilter==='all')return true;
+        const role=String(pet?.role||'').toLowerCase();
+        if(this.teamPetFilter==='front')return ['tank','defense','breaker'].indexOf(role)>=0;
+        if(this.teamPetFilter==='support')return ['healer','cleanse','support','control','revive'].indexOf(role)>=0;
+        return ['physical','physical_damage','magic','magic_damage','burst','damage','execute','speed'].indexOf(role)>=0;
+    }
+
     private beginTeamEditing() {
         this.normalizeTeamAssignments();
         this.teamEditSnapshot = {
@@ -3801,6 +3850,7 @@ export class MainUI extends Component {
             formationCode: this.selectedFormationCode,
         };
         this.formationSelectedCandidateId = 0;
+        this.formationSelectedSlotIndex = -1;
         this.teamDragMoved = false;
         this.teamEditing = true;
         this.renderCurrentPage(false);
@@ -3816,6 +3866,7 @@ export class MainUI extends Component {
         this.teamEditSnapshot = null;
         this.teamEditing = false;
         this.formationSelectedCandidateId = 0;
+        this.formationSelectedSlotIndex = -1;
         this.teamDragMoved = false;
         this.clearFormationDropHighlight();
         this.renderCurrentPage(false);
@@ -3916,6 +3967,31 @@ export class MainUI extends Component {
         this.teamPets=this.teamSlotAssignments.map((id)=>byId.get(Number(id||0))).filter(Boolean);
     }
 
+    private handleFormationSlotClick(index:number,event:any) {
+        if(this.teamDragMoved)return;
+        if(event)event.propagationStopped=true;
+        const selectedPetId=Number(this.formationSelectedCandidateId||0);
+        if(selectedPetId>0){this.assignPetToFormationSlot(selectedPetId,index);return;}
+        const petId=Number(this.teamSlotAssignments[index]||0);
+        if(this.formationSelectedSlotIndex<0){
+            if(!petId)return;
+            this.formationSelectedSlotIndex=index;
+            void AudioDirector.playSfx('click_1');
+            this.renderCurrentPage(false);
+            return;
+        }
+        const source=this.formationSelectedSlotIndex;
+        this.formationSelectedSlotIndex=-1;
+        if(source===index){this.renderCurrentPage(false);return;}
+        const next=Array.from({length:5},(_,slotIndex)=>Number(this.teamSlotAssignments[slotIndex]||0));
+        [next[source],next[index]]=[next[index],next[source]];
+        this.teamSlotAssignments=next;
+        this.refreshTeamPetsFromSlots();
+        void AudioDirector.playSfx('confirm');
+        this.showToast(`${source+1}号位与${index+1}号位已交换`);
+        this.renderCurrentPage(false);
+    }
+
     private assignPetToFormationSlot(petId:number,target:number) {
         const id=Number(petId||0);
         if(!id||target<0||target>=5)return;
@@ -3932,6 +4008,7 @@ export class MainUI extends Component {
         this.teamSlotAssignments=next;
         this.teamPetIds=[...new Set(next.filter((value)=>value>0))].slice(0,5);
         this.formationSelectedCandidateId=0;
+        this.formationSelectedSlotIndex=-1;
         this.normalizeTeamAssignments();
         void AudioDirector.playSfx('confirm');
         this.showToast(`已放入${target+1}号阵位`);
@@ -3965,6 +4042,7 @@ export class MainUI extends Component {
         const next=[...this.teamSlotAssignments];
         [next[source],next[target]]=[next[target],next[source]];
         this.teamSlotAssignments=next;
+        this.formationSelectedSlotIndex=-1;
         this.refreshTeamPetsFromSlots();
         void AudioDirector.playSfx('confirm');
         this.renderCurrentPage(false);

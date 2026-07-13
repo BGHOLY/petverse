@@ -299,7 +299,7 @@ export class GuildService {
     if (!memberResult.success) return memberResult;
     const running = await this.expeditionRepository.findOne({ where: { userId, status: 'running' } });
     if (running) return { success: false, message: 'A guild expedition is already running', expedition: this.expeditionView(running) };
-    const ids = [...new Set((Array.isArray(petIds) ? petIds : []).map(Number).filter((id) => id > 0))].slice(0, 3);
+    const ids = [...new Set((Array.isArray(petIds) ? petIds : []).map(Number).filter((id) => id > 0))].slice(0, 5);
     if (!ids.length) return { success: false, message: 'Select at least one expedition pet' };
     const pets = await this.petRepository.find({ where: { ownerId: userId, isEgg: false } });
     if (ids.some((id) => !pets.some((pet) => pet.id === id))) return { success: false, message: 'Invalid expedition pet' };

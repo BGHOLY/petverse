@@ -43,8 +43,8 @@ export class CuteGuideState {
         },
         {
             page: 'adventure',
-            title: '组建三宠冒险队伍',
-            description: '选择一至三只宝宝组成队伍，可挑战爬塔、日常试炼和好友切磋，胜利后会获得养成资源。',
+            title: '组建五宠阵法队伍',
+            description: '选择五只宝宝并安排1至5号阵位，可挑战爬塔、主线、首领和好友切磋。',
             icon: '🧭',
             focusX: 0,
             focusY: 120,

@@ -14,6 +14,8 @@ import {
     normalizeList,
 } from './UiKit';
 
+const MAX_LEVEL_RANKS = 3;
+
 const { ccclass } = _decorator;
 
 @ccclass('RankingPanel')
@@ -54,7 +56,7 @@ export class RankingPanel extends Component {
             ...power.slice(0, 4).map((item: any) => this.formatPetRank(item)),
             '',
             '等级榜',
-            ...level.slice(0, 3).map((item: any) => this.formatPetRank(item)),
+            ...level.slice(0, MAX_LEVEL_RANKS).map((item: any) => this.formatPetRank(item)),
         ];
 
         const total = tower.length + power.length + level.length;

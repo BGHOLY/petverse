@@ -13,21 +13,36 @@ export class TeamController {
 
   @Post('set')
   setTeam(@Body() body: any) {
+    const slots = Array.isArray(body?.slots)
+      ? body.slots
+          .slice(0, 5)
+          .sort((left: any, right: any) => Number(left?.position || 0) - Number(right?.position || 0))
+          .map((slot: any) => Number(slot?.petId || 0))
+      : undefined;
+    const petIds = Array.isArray(body?.petIds)
+      ? body.petIds
+      : (slots || []).filter((id: number) => id > 0);
     return this.teamService.setTeam(
       DEFAULT_USER_ID,
-      Array.isArray(body?.petIds) ? body.petIds : [],
-      body?.formationCode,
-      Array.isArray(body?.slotAssignments) ? body.slotAssignments : undefined,
+      petIds,
+      body?.formationId || body?.formationCode,
+      slots || (Array.isArray(body?.slotAssignments) ? body.slotAssignments : undefined),
       body?.tactics,
     );
   }
 
   @Post('formation')
   setFormation(@Body() body: any) {
+    const slots = Array.isArray(body?.slots)
+      ? body.slots
+          .slice(0, 5)
+          .sort((left: any, right: any) => Number(left?.position || 0) - Number(right?.position || 0))
+          .map((slot: any) => Number(slot?.petId || 0))
+      : undefined;
     return this.teamService.setFormation(
       DEFAULT_USER_ID,
-      String(body?.formationCode || 'dragon'),
-      Array.isArray(body?.slotAssignments) ? body.slotAssignments : undefined,
+      String(body?.formationId || body?.formationCode || 'dragon'),
+      slots || (Array.isArray(body?.slotAssignments) ? body.slotAssignments : undefined),
     );
   }
 

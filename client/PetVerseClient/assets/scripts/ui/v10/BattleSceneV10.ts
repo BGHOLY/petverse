@@ -16,6 +16,8 @@ import {
 } from '../cute/CuteUiKit';
 import AudioDirector from './AudioDirector';
 
+const MAX_VISIBLE_STATUSES = 3;
+
 export type FivePetBattleOptions = {
     mode: 'pve' | 'tower' | 'boss' | 'arena' | 'guild-boss';
     title?: string;
@@ -179,7 +181,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             text(card, 'Name', String(unit?.name || unit?.nickname || '宝宝').slice(0, 9), 0, -25, 118, 24, 12, CuteTheme.caramel, 'center', true);
             progress(card, 'Hp', 0, -49, 104, 11, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
             if (Number(unit?.shield || 0) > 0) progress(card, 'Shield', 0, -62, 104, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky);
-            const statusText = Array.isArray(unit?.statuses) ? unit.statuses.slice(0, 3).map((s: any) => statusIcon(s?.type)).join('') : '';
+            const statusText = Array.isArray(unit?.statuses) ? unit.statuses.slice(0, MAX_VISIBLE_STATUSES).map((s: any) => statusIcon(s?.type)).join('') : '';
             if (statusText) tag(card, 'Status', statusText, 38, 63, 58, CuteTheme.peach);
             const marks = [...directiveTargets.entries()].filter(([, id]) => id === String(unit?.id));
             if (marks.length) tag(card, 'DirectiveMark', marks.map(([type]) => COMMAND_META[type as Exclude<DirectiveType, 'auto'>]?.icon || '').join(''), -39, 63, 56, CuteTheme.honey);

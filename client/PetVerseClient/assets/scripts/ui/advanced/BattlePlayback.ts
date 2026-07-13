@@ -98,11 +98,11 @@ function findMentionedUnit(line: string, units: UnitView[]) {
 
 function redrawUnit(unit: UnitView, active = false) {
     const name = petName(unit.pet, unit.index, unit.side === 'right');
-    progress(unit.root, 'Hp', 0, -82, 126, 14, unit.hp / unit.maxHp, CuteTheme.green);
-    text(unit.root, 'HpText', `${Math.max(0, Math.round(unit.hp))}/${Math.round(unit.maxHp)}`, 0, -103, 140, 24, 11, CuteTheme.muted, 'center', true);
+    progress(unit.root, 'Hp', 0, -58, 84, 11, unit.hp / unit.maxHp, CuteTheme.green);
+    text(unit.root, 'HpText', `${Math.max(0, Math.round(unit.hp))}/${Math.round(unit.maxHp)}`, 0, -75, 96, 20, 9, CuteTheme.muted, 'center', true);
     const badgeText = unit.hp <= 0 ? '倒下' : active ? '行动中' : `战力${formatNumber(powerOf(unit.pet))}`;
-    tag(unit.root, 'State', badgeText, 0, 88, 102, unit.hp <= 0 ? CuteTheme.peach : active ? CuteTheme.honey : CuteTheme.paperWarm);
-    text(unit.root, 'Name', name, 0, -61, 148, 28, 14, CuteTheme.caramel, 'center', true);
+    tag(unit.root, 'State', badgeText, 0, 76, 88, unit.hp <= 0 ? CuteTheme.peach : active ? CuteTheme.honey : CuteTheme.paperWarm);
+    text(unit.root, 'Name', name, 0, -41, 100, 24, 11, CuteTheme.caramel, 'center', true);
     const opacity = unit.root.getComponent(UIOpacity) || unit.root.addComponent(UIOpacity);
     opacity.opacity = unit.hp <= 0 ? 95 : 255;
 }
@@ -144,18 +144,18 @@ export function showBattlePlayback(layer: Node, options: BattlePlaybackOptions) 
     const rightUnits: UnitView[] = [];
 
     const createUnit = (pet: any, index: number, side: 'left' | 'right') => {
-        const x = -220 + index * 220;
+        const x = -240 + index * 120;
         const y = side === 'right' ? 282 : -258;
-        const card = panel(stage, `${side}_${index}`, x, y, 188, 220, side === 'left' ? new Color(255, 249, 231, 248) : new Color(250, 242, 248, 248), 26, true, CuteTheme.white, 3);
-        const art = createPetArtSprite(card, 'Art', getPetArtPath(pet, 'portrait'), 0, 5, 146, 146);
+        const card = panel(stage, `${side}_${index}`, x, y, 108, 178, side === 'left' ? new Color(255, 249, 231, 248) : new Color(250, 242, 248, 248), 22, true, CuteTheme.white, 3);
+        const art = createPetArtSprite(card, 'Art', getPetArtPath(pet, 'portrait'), 0, 8, 76, 76);
         const maxHp = hpOf(pet);
         const unit: UnitView = { pet, root: card, art, hp: maxHp, maxHp, side, index };
         redrawUnit(unit, index === 0);
         return unit;
     };
 
-    playerTeam.slice(0, 3).forEach((pet: any, index: number) => leftUnits.push(createUnit(pet, index, 'left')));
-    enemyTeam.slice(0, 3).forEach((pet: any, index: number) => rightUnits.push(createUnit(pet, index, 'right')));
+    playerTeam.slice(0, 5).forEach((pet: any, index: number) => leftUnits.push(createUnit(pet, index, 'left')));
+    enemyTeam.slice(0, 5).forEach((pet: any, index: number) => rightUnits.push(createUnit(pet, index, 'right')));
 
     if (!leftUnits.length) {
         text(stage, 'NoLeft', '我方编队为空', 0, -260, 400, 60, 22, CuteTheme.peachDark, 'center', true);
@@ -261,7 +261,7 @@ export function showBattlePlayback(layer: Node, options: BattlePlaybackOptions) 
             target.hp = Math.max(0, target.hp - damage);
             lunge(attacker, target, /暴击/.test(line));
             redrawUnit(target, true);
-            text(stage, 'Float', `${/暴击/.test(line) ? '暴击 ' : ''}-${damage}`, -220 + target.index * 220, target.side === 'left' ? -110 : 150, 180, 50, /暴击/.test(line) ? 30 : 24, /暴击/.test(line) ? CuteTheme.peachDark : CuteTheme.red, 'center', true);
+            text(stage, 'Float', `${/暴击/.test(line) ? '暴击 ' : ''}-${damage}`, -240 + target.index * 120, target.side === 'left' ? -145 : 165, 116, 44, /暴击/.test(line) ? 23 : 19, /暴击/.test(line) ? CuteTheme.peachDark : CuteTheme.red, 'center', true);
             if (target.hp <= 0) {
                 if (target.side === 'left') state.activeLeft = Math.min(leftUnits.length - 1, state.activeLeft + 1);
                 else state.activeRight = Math.min(rightUnits.length - 1, state.activeRight + 1);

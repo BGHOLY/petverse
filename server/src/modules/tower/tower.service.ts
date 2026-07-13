@@ -165,13 +165,13 @@ export class TowerService {
               pet.tradeStatus !== 'listed' &&
               !pet.tradeListingId,
           )
-          .slice(0, 3)
+          .slice(0, 5)
       : [];
 
-    if (!pets.length) {
+    if (pets.length !== 5) {
       return {
         success: false,
-        message: 'Active team is empty',
+        message: `Tower challenge requires a complete five-pet team. Current team: ${pets.length}/5`,
       };
     }
 

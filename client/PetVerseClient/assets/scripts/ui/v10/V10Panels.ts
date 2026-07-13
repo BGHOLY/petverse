@@ -9,6 +9,8 @@ import {
     text,
 } from '../cute/CuteUiKit';
 
+const MAX_WEEKLY_TASKS = 3;
+
 export type FormationPanelActions = {
     onSelect: (code: string) => void;
     onUpgrade: (code: string) => void;
@@ -44,12 +46,11 @@ export function renderFormationPanel(
         const selected = String(item?.code) === selectedCode;
         const y = 215 - index * 124;
         const card = panel(page, `Formation_${item?.code}`, 0, y, 624, 110, selected ? new Color(226, 246, 216, 255) : CuteTheme.paper, 25, false, selected ? CuteTheme.mintDark : CuteTheme.caramelSoft, selected ? 4 : 2);
-        text(card, 'Icon', FORMATION_ICON[String(item?.code)] || '✦', -270, 10, 54, 54, 34, CuteTheme.caramel, 'center', true);
+        text(card, 'Icon', item?.icon || FORMATION_ICON[String(item?.code)] || '✦', -270, 10, 54, 54, 34, CuteTheme.caramel, 'center', true);
         text(card, 'Name', `${item?.name || item?.code}　Lv.${item?.level || 1}/10`, -228, 29, 220, 31, 17, CuteTheme.caramel, 'left', true);
-        const effects = Array.isArray(item?.positionBonuses) ? item.positionBonuses : Array.isArray(item?.effects) ? item.effects : [];
-        const effectSummary = effects.length
-            ? effects.slice(0, 5).map((effect: any, effectIndex: number) => `${effectIndex + 1}位${typeof effect === 'string' ? effect : effect?.label || effect?.name || effect?.description || ''}`).join('　')
-            : String(item?.description || item?.summary || '不同站位承担不同职责');
+        const counters = Array.isArray(item?.counters) ? item.counters.map((code: string) => overview?.formations?.find((formation: any) => formation?.code === code)?.name?.split('·')[0] || code).join('、') : '';
+        const ultimate = item?.ultimate || {};
+        const effectSummary = `${item?.description || item?.summary || '不同站位承担不同职责'}${counters ? `\n克制 ${counters}` : ''}${ultimate?.name ? ` · 大招 ${ultimate.name}` : ''}`;
         text(card, 'Summary', effectSummary, -228, -10, 340, 52, 13, CuteTheme.muted, 'left', false);
         const next = item?.nextCost;
         text(card, 'Cost', next ? `下级：${next.knowledge}心得${next.cores ? `＋${next.cores}核心` : ''}` : '已满级', 110, 28, 172, 28, 13, CuteTheme.caramel, 'center', true);
@@ -109,7 +110,7 @@ export function renderGuildPanel(root: Node, data: any, actions: GuildPanelActio
 
     const taskCard = panel(page, 'Tasks', 0, -190, 620, 244, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
     headingTag(taskCard, 'TaskTitle', '每周任务（三选二）', -182, 92, 250, CuteTheme.mint);
-    const tasks = Array.isArray(data?.tasks) ? data.tasks.slice(0, 3) : [];
+    const tasks = Array.isArray(data?.tasks) ? data.tasks.slice(0, MAX_WEEKLY_TASKS) : [];
     tasks.forEach((task: any, index: number) => {
         const y = 42 - index * 58;
         text(taskCard, `T${index}`, `${task.title}　${task.progress}/${task.target}`, -275, y, 330, 30, 14, CuteTheme.caramel, 'left', true);
