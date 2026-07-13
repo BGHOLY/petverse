@@ -120,7 +120,8 @@ export class MainUI extends Component {
     private guildOverview: any = null;
     private selectedFormationCode = 'dragon';
     private teamSlotAssignments: any[] = [];
-    private petDetailTab: 'attributes' | 'aptitudes' | 'skills' | 'stats' | 'lineage' = 'attributes';
+    private petDetailTab: 'attributes' | 'aptitudes' | 'skills' | 'equipment' = 'attributes';
+    private petAttributeView: 'overview' | 'stats' | 'lineage' = 'overview';
     private petSelectorOffset = 0;
     private petSelectorScrollToken = 0;
     private teamEditSnapshot: { petIds: number[]; slots: number[]; formationCode: string } | null = null;
@@ -840,7 +841,7 @@ export class MainUI extends Component {
     }
 
     private currentScrollScope() {
-        const parts = [this.currentPage];
+        const parts: string[] = [this.currentPage];
         if (this.currentPage === 'shop') parts.push(this.shopCategory);
         if (this.currentPage === 'benefits') parts.push(this.benefitMode);
         if (this.currentPage === 'friends') parts.push(this.friendMode);
@@ -848,7 +849,7 @@ export class MainUI extends Component {
         if (this.currentPage === 'ranking') parts.push(this.rankingMode);
         if (this.currentPage === 'trade') parts.push(this.tradeMode);
         if (this.currentPage === 'adventure') parts.push(this.adventureMode, this.teamEditing ? 'team-edit' : 'overview');
-        if (this.currentPage === 'pet') parts.push(String(GameStore.currentPetId || 0), this.petDetailTab);
+        if (this.currentPage === 'pet') parts.push(String(GameStore.currentPetId || 0), this.petDetailTab, this.petAttributeView);
         if (this.fusionPickerSide) parts.push(`fusion-picker-${this.fusionPickerSide}`);
         if (this.homePetPickerOpen) parts.push('home-pet-picker');
         return parts.join('|');
@@ -916,6 +917,7 @@ export class MainUI extends Component {
                 this.capturePetSelectorOffset(selector.scroll);
                 GameStore.selectPet(id);
                 this.petDetailTab = 'attributes';
+                this.petAttributeView = 'overview';
                 this.renderCurrentPage(false);
             }, {
                 iconPath: getPetArtPath(item, 'thumb'), iconSize: 62,
@@ -925,7 +927,7 @@ export class MainUI extends Component {
                 subtitle: `${this.rarityName(item)} · Lv.${Number(item?.level || 1)} · ${formatNumber(this.battleAttributesOf(item).power)}`,
             });
             const teamIndex = this.teamPetIds.indexOf(id);
-            if (teamIndex >= 0) tag(card, 'TeamBadge', `出战${teamIndex + 1}`, 46, 38, 60, CuteTheme.mint);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `编队${teamIndex + 1}`, 46, 38, 60, CuteTheme.mint);
             if (item?.isLocked) tag(card, 'LockBadge', '锁定', -48, 38, 54, CuteTheme.paperWarm);
             if (item?.isMutant) tag(card, 'MutantBadge', '变异', 48, -38, 54, CuteTheme.peach);
         });
@@ -941,14 +943,14 @@ export class MainUI extends Component {
         const book = panel(root, 'PetResearchBook', 0, -42, 692, 808, CuteTheme.paper, 34, true, CuteTheme.caramelSoft, 3);
         const profile = panel(book, 'Profile', -214, 72, 244, 620, new Color(255, 248, 226, 255), 28, false, CuteTheme.caramelSoft, 2);
         image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 176, 216, 226, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
-        button(profile, 'Lock', selected?.isLocked ? '' : '', 88, 252, 48, 48, () => void this.togglePetLock(selected), {
-            icon: selected?.isLocked ? '🔒' : '🔓', fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
-            fontSize: 17, radius: 22,
+        button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 80, 252, 64, 42, () => void this.togglePetLock(selected), {
+            fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
+            fontSize: 12, radius: 18,
         });
         text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 44, 214, 38, 24, CuteTheme.caramel, 'center', true);
         text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 9, 214, 28, 15, CuteTheme.muted, 'center', true);
         tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -42 : 0, -30, 108, CuteTheme.lilac);
-        if (selected?.isMutant) tag(profile, 'Mutant', '✨变异', 62, -30, 90, CuteTheme.peach);
+        if (selected?.isMutant) tag(profile, 'Mutant', '变异', 62, -30, 90, CuteTheme.peach);
         const attrs = this.battleAttributesOf(selected);
         text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -72, 205, 38, 20, CuteTheme.honeyDark, 'center', true);
         const role = (selected?.speciesConfig?.roleTags || [getPetSpeciesMeta(selected).role || '综合']).slice(0, 2).map((value:any)=>this.petRoleLabel(value)).join(' / ');
@@ -956,19 +958,27 @@ export class MainUI extends Component {
         const identity = panel(profile, 'Identity', 0, -150, 210, 106, new Color(250, 244, 226, 255), 20, false, CuteTheme.white, 1);
         text(identity, 'Role', `◆ 定位：${role}`, -94, 30, 188, 26, 14, CuteTheme.caramel, 'left', true);
         text(identity, 'Marriage', `♥ 婚姻：${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'}　蛋 ${Number(selected?.breedCount || 0)}`, -94, 0, 188, 26, 14, CuteTheme.caramel, 'left', true);
-        text(identity, 'Team', `⚔ 出战：${teamIndex >= 0 ? `${teamIndex + 1}号位 · ${this.formationName(this.selectedFormationCode)}` : '未出战'}`, -94, -30, 188, 26, 14, CuteTheme.caramel, 'left', true);
+        text(identity, 'Team', `编队：${teamIndex >= 0 ? `${teamIndex + 1}号位 · ${this.formationName(this.selectedFormationCode)}` : '未编队'}`, -94, -30, 188, 26, 14, CuteTheme.caramel, 'left', true);
         button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -232, 184, 48, () => this.setHomePet(Number(selected?.id || 0)), {
-            icon: '♥', fill: CuteTheme.peach, fontSize: 14, radius: 20,
+            fill: CuteTheme.peach, fontSize: 14, radius: 20,
         });
-        text(profile, 'LockHint', selected?.isLocked ? '已锁定：禁止交易、炼妖、打书和婚姻' : '未锁定：危险操作前请先确认', 0, -276, 204, 46, 12, selected?.isLocked ? CuteTheme.peachDark : CuteTheme.muted, 'center', false);
+        button(profile, 'StatPoints', '属性加点', -52, -278, 98, 38, () => {
+            this.petDetailTab = 'attributes'; this.petAttributeView = 'stats'; this.renderCurrentPage(false);
+        }, { selected: this.petAttributeView === 'stats', fill: CuteTheme.sky, fontSize: 12, radius: 16 });
+        button(profile, 'Lineage', '血脉', 62, -278, 98, 38, () => {
+            this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
+        }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
         const data = panel(book, 'ResearchData', 116, 72, 420, 620, new Color(249, 252, 240, 255), 28, false, CuteTheme.mintDark, 2);
-        const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['aptitudes','资质'],['skills','技能'],['stats','加点'],['lineage','血脉']];
-        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -164 + index * 82, 274, 76, 42, () => {
-            this.petDetailTab = key; this.renderCurrentPage(false);
+        const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
+        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -144 + index * 96, 274, 88, 42, () => {
+            this.petDetailTab = key;
+            if (key === 'attributes') this.petAttributeView = 'overview';
+            this.renderCurrentPage(false);
         }, { selected: this.petDetailTab === key, fill: this.petDetailTab === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 18 }));
 
-        if (this.petDetailTab === 'attributes') {
+        const detailView = this.petDetailTab === 'attributes' ? this.petAttributeView : this.petDetailTab;
+        if (detailView === 'overview') {
             text(data, 'Explain', '核心战斗属性', -180, 226, 360, 34, 19, CuteTheme.caramel, 'left', true);
             const survival = panel(data, 'Survival', 0, 137, 384, 120, new Color(255, 250, 232, 255), 22, false, CuteTheme.white, 1);
             headingTag(survival, 'Title', '生存', -137, 38, 90, CuteTheme.mint);
@@ -981,15 +991,15 @@ export class MainUI extends Component {
             const develop = panel(data, 'Develop', 0, -174, 384, 184, new Color(242, 249, 238, 255), 22, false, CuteTheme.white, 1);
             headingTag(develop, 'Title', '速度与培养', -118, 70, 140, CuteTheme.sky);
             this.battleStat(develop, 'Speed', '➤', '速度', attrs.speed, -88, 20);
-            this.battleStat(develop, 'Growth', '🌱', '成长', this.growthValue(selected).toFixed(3), 88, 20);
+            this.battleStat(develop, 'Growth', '成', '成长', this.growthValue(selected).toFixed(3), 88, 20);
             this.battleStat(develop, 'Quality', '◇', '品质', Number(selected?.quality || 100), -88, -52);
-            this.battleStat(develop, 'Skills', '📕', '技能数', Array.isArray(selected?.skills) ? selected.skills.length : 0, 88, -52);
-        } else if (this.petDetailTab === 'aptitudes') {
+            this.battleStat(develop, 'Skills', '技', '技能数', Array.isArray(selected?.skills) ? selected.skills.length : 0, 88, -52);
+        } else if (detailView === 'aptitudes') {
             const apt=this.aptitudesOf(selected);
             text(data,'Explain','资质决定升级后转化出的实际属性',0,226,380,34,16,CuteTheme.muted,'center',true);
             ([['体力资质',apt.hp,'❤'],['攻击资质',apt.attack,'⚔'],['防御资质',apt.defense,'◆'],['法力资质',apt.magic,'✦'],['速度资质',apt.speed,'➤']] as Array<[string,number,string]>).forEach(([name,value,icon],index)=>this.aptitudeRow(data,`Apt_${index}`,icon,name,value,154-index*75));
             text(data,'Growth',`成长 ${this.growthValue(selected).toFixed(3)}　品质 ${Number(selected?.quality || 100)}`,0,-228,360,36,18,CuteTheme.caramel,'center',true);
-        } else if (this.petDetailTab === 'skills') {
+        } else if (detailView === 'skills') {
             text(data,'Explain','技能效果、触发条件和目标优先展示',0,226,380,36,15,CuteTheme.muted,'center',true);
             const skills=Array.isArray(selected?.skills)?selected.skills:[];
             const area=this.createScrollArea(data,'SkillResearchScroll',0,-3,392,390,392,Math.max(390,skills.length*88+8),'vertical');
@@ -997,9 +1007,9 @@ export class MainUI extends Component {
                 iconPath:this.skillIconPath(skill),iconSize:54,fill:this.skillColor(skill),textColor:this.skillTier(skill)==='low'?CuteTheme.caramel:CuteTheme.white,fontSize:16,radius:22,
                 subtitle:`${this.skillTierLabel(skill)} · ${safeName(skill?.description,'点击查看完整效果').slice(0,30)}`,
             }));
-            button(data,'Learn','前往打书',-100,-242,176,48,()=>this.showPage('skills'),{icon:'📕',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
-            button(data,'Fusion','前往炼妖',100,-242,176,48,()=>this.showPage('fusion'),{icon:'🔮',fill:CuteTheme.lilac,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
-        } else if (this.petDetailTab === 'stats') {
+            button(data,'Learn','前往打书',-100,-242,176,48,()=>this.showPage('skills'),{fill:CuteTheme.honey,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+            button(data,'Fusion','前往炼妖',100,-242,176,48,()=>this.showPage('fusion'),{fill:CuteTheme.lilac,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+        } else if (detailView === 'stats') {
             const points=selected?.statPoints || { unspent:Number(selected?.unspentStatPoints||0), constitution:Number(selected?.constitutionPoints||0), strength:Number(selected?.strengthPoints||0), spirit:Number(selected?.spiritPoints||0), endurance:Number(selected?.endurancePoints||0), speed:Number(selected?.speedStatPoints||0) };
             this.ensurePetStatDraft(Number(selected?.id || 0));
             const draftTotal=this.petStatDraftTotal();
@@ -1013,21 +1023,32 @@ export class MainUI extends Component {
                 button(data,`P5_${key}`,'+5',178,y,58,38,()=>this.queuePetStatPoints(key,5,Number(points.unspent||0)),{fill:CuteTheme.honey,fontSize:13,radius:16,disabled:remaining<5});
             });
             text(data,'DraftHint','所有“+”和一键推荐只生成预览，点击确认后才会真正生效。',0,-174,380,36,13,CuteTheme.muted,'center',true);
-            button(data,'Recommend','推荐',-150,-232,88,44,()=>this.recommendPetStats(selected,Number(points.unspent||0)),{icon:'✨',fill:CuteTheme.sky,fontSize:12,radius:19,disabled:remaining<=0});
+            button(data,'Recommend','推荐',-150,-232,88,44,()=>this.recommendPetStats(selected,Number(points.unspent||0)),{fill:CuteTheme.sky,fontSize:12,radius:19,disabled:remaining<=0});
             button(data,'ClearDraft','清空',-50,-232,88,44,()=>this.clearPetStatDraft(),{icon:'↶',fill:CuteTheme.paperWarm,fontSize:12,radius:19,disabled:draftTotal<=0});
             button(data,'Reset','重置',50,-232,88,44,()=>void this.resetPetStats(),{icon:'↻',fill:CuteTheme.paperWarm,fontSize:12,radius:19,disabled:Boolean(selected?.isLocked)});
             button(data,'ConfirmStats','确认',150,-232,88,44,()=>void this.confirmPetStats(),{icon:'✓',fill:CuteTheme.honey,fontSize:12,radius:19,disabled:draftTotal<=0||Boolean(selected?.isLocked)||this.busy.has('pet-stats:confirm')});
-        } else {
+        } else if (detailView === 'lineage') {
             const lineage=selected?.lineage||{};
             text(data,'LineageTitle','血脉与繁育信息',0,215,360,38,21,CuteTheme.caramel,'center',true);
-            const info=[`👨 父系：${Number(lineage.fatherId||selected?.fatherId||0)||'初代'}`,`👩 母系：${Number(lineage.motherId||selected?.motherId||0)||'初代'}`,`💍 婚姻：${selected?.married||selected?.marriedPetId?'已婚':'未婚'}`,`🥚 生蛋：${Number(selected?.breedCount||0)}个`, `🌳 代数：${Number(lineage.generation||selected?.generation||1)}`,`🧬 基因：${safeName(selected?.geneCode,'AAAA')}`,`🌸 生育力：${Number(selected?.fertility||100)}/100`];
+            const info=[`父系：${Number(lineage.fatherId||selected?.fatherId||0)||'初代'}`,`母系：${Number(lineage.motherId||selected?.motherId||0)||'初代'}`,`婚姻：${selected?.married||selected?.marriedPetId?'已婚':'未婚'}`,`生蛋：${Number(selected?.breedCount||0)}个`, `代数：${Number(lineage.generation||selected?.generation||1)}`,`基因：${safeName(selected?.geneCode,'AAAA')}`,`生育力：${Number(selected?.fertility||100)}/100`];
             info.forEach((line,index)=>text(data,`L_${index}`,line,-170,156-index*54,340,36,17,index<2?CuteTheme.muted:CuteTheme.caramel,'left',true));
+        } else {
+            text(data, 'EquipmentTitle', '装备位', 0, 218, 360, 38, 21, CuteTheme.caramel, 'center', true);
+            text(data, 'EquipmentHint', '装备系统尚未开放，以下仅保留六个槽位，不提供虚假属性。', 0, 180, 372, 44, 14, CuteTheme.muted, 'center');
+            const slotNames = ['头饰', '项圈', '护甲', '饰品', '徽记', '灵石'];
+            slotNames.forEach((name, index) => {
+                const col = index % 3;
+                const row = Math.floor(index / 3);
+                const slot = panel(data, `Equipment_${index}`, -126 + col * 126, 70 - row * 150, 108, 126, new Color(236, 230, 216, 255), 20, false, CuteTheme.white, 2);
+                text(slot, 'Lock', '锁', 0, 20, 54, 48, 24, CuteTheme.muted, 'center', true);
+                text(slot, 'Name', name, 0, -36, 90, 28, 14, CuteTheme.muted, 'center', true);
+            });
         }
 
         const toolbar=panel(book,'Toolbar',0,-320,650,62,new Color(255,252,239,255),22,false,CuteTheme.caramelSoft,2);
         button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
-        tag(toolbar,'Sort','出战优先 · 战力降序',205,0,180,CuteTheme.sky);
+        tag(toolbar,'Sort','编队优先 · 战力降序',205,0,180,CuteTheme.sky);
     }
 
     private renderInventory() {
