@@ -57,6 +57,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     let completionNotified = false;
     let closing = false;
     let promptOverride = '';
+    let armedDirective: Exclude<DirectiveType, 'auto'> | null = null;
     const unitNodes = new Map<string, { node: Node; enemy: boolean; alive: boolean }>();
     const directiveTargets = new Map<DirectiveType, string>();
 
@@ -116,11 +117,12 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             return;
         }
 
-        const prompt = promptOverride || `拖动下方指令到目标宝宝（${countdown}秒后自动）`;
+        const prompt = promptOverride || `先点指令，再拖动浮动箭头到目标宝宝（${countdown}秒后自动）`;
         text(command, 'Prompt', prompt, 0, 91, 640, 32, 15, CuteTheme.caramel, 'center', true);
         const cd = session.cooldowns?.left || {};
         const actions: Array<[Exclude<DirectiveType, 'auto'>, number]> = [['focus', -246], ['guard', -82], ['shield', 82], ['cleanse', 246]];
         actions.forEach(([type, x]) => createDragCommand(command, type, x, 28, cd));
+        if(armedDirective)createDirectiveArrow(armedDirective);
 
         const initialCd = Number(session.ultimate?.initialCooldown || 3);
         const ultimateRemaining = Math.max(Number(cd.ultimate || 0), initialCd - Number(session.round || 1));
@@ -130,6 +132,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         });
         button(command, 'Auto', autoMode ? '本场自动中' : '开启本场自动', 230, -68, 170, 58, () => {
             autoMode = true;
+            armedDirective = null;
             promptOverride = '已开启本场自动';
             void send({ type: 'auto' });
         }, { icon: '▶', selected: autoMode, fill: CuteTheme.paperWarm, fontSize: 14, radius: 24, disabled: processing });
@@ -180,6 +183,15 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             if (statusText) tag(card, 'Status', statusText, 38, 63, 58, CuteTheme.peach);
             const marks = [...directiveTargets.entries()].filter(([, id]) => id === String(unit?.id));
             if (marks.length) tag(card, 'DirectiveMark', marks.map(([type]) => COMMAND_META[type as Exclude<DirectiveType, 'auto'>]?.icon || '').join(''), -39, 63, 56, CuteTheme.honey);
+            const chooseTarget=()=>{
+                const type=armedDirective;
+                if(!type||!alive)return;
+                const meta=COMMAND_META[type];
+                if((meta.side==='enemy')!==enemy)return;
+                commitDirectiveTarget(type,String(unit?.id));
+            };
+            card.on(Node.EventType.TOUCH_END,chooseTarget);
+            card.on(Node.EventType.MOUSE_UP,chooseTarget);
             if (!alive) {
                 const opacity = card.getComponent(UIOpacity) || card.addComponent(UIOpacity);
                 opacity.opacity = 120;
@@ -193,43 +205,74 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const cooling = type !== 'focus' && Number(cd[type] || 0) > 0;
         const label = cooling ? `${meta.title}(${Number(cd[type] || 0)})` : meta.title;
         const node = button(parent, `Cmd_${type}`, label, x, y, 146, 62, () => {
-            if (!cooling && !processing) promptOverride = `请把“${meta.title}”拖到${meta.side === 'enemy' ? '敌方' : '我方'}宝宝`;
-        }, { icon: meta.icon, fill: meta.fill, fontSize: 14, radius: 24, disabled: processing || cooling });
-        if (processing || cooling) return;
-        const origin = node.position.clone();
-        node.on(Node.EventType.TOUCH_START, () => {
-            promptOverride = `拖到${meta.side === 'enemy' ? '敌方' : '我方'}存活宝宝后松手`;
-            for (const entry of unitNodes.values()) {
-                const valid = entry.alive && ((meta.side === 'enemy' && entry.enemy) || (meta.side === 'ally' && !entry.enemy));
-                if (valid) tween(entry.node).to(0.10, { scale: new Vec3(1.07, 1.07, 1) }).start();
+            if(cooling||processing)return;
+            armedDirective=armedDirective===type?null:type;
+            promptOverride=armedDirective
+                ? `已选择“${meta.title}”：拖动中间箭头，或直接点击${meta.side==='enemy'?'敌方':'我方'}宝宝`
+                : '已取消目标选择';
+            void AudioDirector.playSfx('click_1');
+            render();
+        }, { icon: meta.icon, fill: meta.fill, selected: armedDirective===type, fontSize: 14, radius: 24, disabled: processing || cooling });
+        return node;
+    };
+
+    const createDirectiveArrow = (type: Exclude<DirectiveType, 'auto'>) => {
+        const meta=COMMAND_META[type];
+        const arrow=panel(battlefield,'DirectiveArrow',0,-258,168,54,new Color(meta.fill.r,meta.fill.g,meta.fill.b,250),24,true,CuteTheme.white,4);
+        text(arrow,'Label',`${meta.icon} ${meta.title}　➜`,0,0,150,38,17,CuteTheme.caramel,'center',true);
+        const origin=arrow.position.clone();
+        let dragging=false;
+        const showTargets=(hoveredId='')=>{
+            for(const [id,entry] of unitNodes.entries()){
+                const valid=entry.alive&&((meta.side==='enemy'&&entry.enemy)||(meta.side==='ally'&&!entry.enemy));
+                entry.node.setScale(valid?(id===hoveredId?new Vec3(1.16,1.16,1):new Vec3(1.06,1.06,1)):Vec3.ONE);
             }
-        });
-        node.on(Node.EventType.TOUCH_MOVE, (event: any) => {
-            const delta = event?.getUIDelta?.() || event?.getDelta?.();
-            if (delta) node.setPosition(node.position.x + Number(delta.x || 0), node.position.y + Number(delta.y || 0), node.position.z);
-            const hoveredId = targetAtTouch(event, meta.side);
-            for (const [id, entry] of unitNodes.entries()) {
-                const valid = entry.alive && ((meta.side === 'enemy' && entry.enemy) || (meta.side === 'ally' && !entry.enemy));
-                entry.node.setScale(valid ? (id === hoveredId ? new Vec3(1.14, 1.14, 1) : new Vec3(1.04, 1.04, 1)) : Vec3.ONE);
-            }
-        });
-        node.on(Node.EventType.TOUCH_CANCEL, () => { node.setPosition(origin); render(); });
-        node.on(Node.EventType.TOUCH_END, (event: any) => {
-            const targetId = targetAtTouch(event, meta.side);
-            node.setPosition(origin);
-            if (!targetId) {
-                promptOverride = `没有选中目标，请拖到${meta.side === 'enemy' ? '敌方' : '我方'}宝宝卡片`;
-                render();
+        };
+        const move=(event:any)=>{
+            if(!dragging)return;
+            const delta=event?.getUIDelta?.()||event?.getDelta?.();
+            if(delta)arrow.setPosition(arrow.position.x+Number(delta.x||0),arrow.position.y+Number(delta.y||0),arrow.position.z);
+            showTargets(targetAtTouch(event,meta.side));
+        };
+        const finish=(event:any)=>{
+            if(!dragging)return;
+            dragging=false;
+            const targetId=targetAtTouch(event,meta.side);
+            arrow.setPosition(origin);
+            resetTargetScales();
+            if(!targetId){
+                promptOverride=`箭头没有落在目标上，请重试或直接点击${meta.side==='enemy'?'敌方':'我方'}宝宝`;
                 void AudioDirector.playSfx('error');
+                render();
                 return;
             }
-            directiveTargets.set(type, targetId);
-            const targetName = unitName(targetId);
-            promptOverride = `已指定：${meta.title} ${targetName}`;
-            render();
-            void AudioDirector.playSfx('confirm');
-            void send({ type, targetId });
-        });
+            commitDirectiveTarget(type,targetId);
+        };
+        const begin=()=>{dragging=true;showTargets();};
+        const cancel=()=>{dragging=false;arrow.setPosition(origin);resetTargetScales();promptOverride=`“${meta.title}”仍已选中，请重新拖动箭头`;render();};
+        arrow.on(Node.EventType.TOUCH_START,begin);
+        arrow.on(Node.EventType.TOUCH_MOVE,move);
+        arrow.on(Node.EventType.TOUCH_END,finish);
+        arrow.on(Node.EventType.TOUCH_CANCEL,cancel);
+        arrow.on(Node.EventType.MOUSE_DOWN,begin);
+        arrow.on(Node.EventType.MOUSE_MOVE,move);
+        arrow.on(Node.EventType.MOUSE_UP,finish);
+        showTargets();
+    };
+
+    const resetTargetScales=()=>{
+        for(const entry of unitNodes.values())if(entry.node?.isValid)entry.node.setScale(Vec3.ONE);
+    };
+
+    const commitDirectiveTarget=(type:Exclude<DirectiveType,'auto'>,targetId:string)=>{
+        if(!targetId||processing)return;
+        const meta=COMMAND_META[type];
+        directiveTargets.set(type,targetId);
+        armedDirective=null;
+        resetTargetScales();
+        promptOverride=`已指定：${meta.title} ${unitName(targetId)}`;
+        void AudioDirector.playSfx('confirm');
+        void send({type,targetId});
     };
 
     const targetAtTouch = (event: any, side: 'enemy' | 'ally') => {
@@ -309,6 +352,11 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const tick = () => {
             if (token !== timerToken || session?.status !== 'active' || processing) return;
             countdown -= 1;
+            if(armedDirective){
+                if(countdown<=0){armedDirective=null;void send({type:'auto'});}
+                else setTimeout(tick,1000);
+                return;
+            }
             render();
             if (autoMode || countdown <= 0) void send({ type: 'auto' });
             else setTimeout(tick, 1000);

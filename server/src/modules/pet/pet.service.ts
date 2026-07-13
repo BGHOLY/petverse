@@ -406,12 +406,14 @@ export class PetService {
     forcedRarity?: number,
     mode: BreedingMode = 'breed',
     seed?: string,
+    mutationRateBonus = 0,
   ): OffspringBlueprint {
     const blueprint = this.breedingService.buildOffspring(
       parentA,
       parentB,
       mode,
       seed,
+      mutationRateBonus,
     );
 
     if (forcedRarity) {

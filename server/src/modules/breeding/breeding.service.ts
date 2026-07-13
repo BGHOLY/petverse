@@ -86,6 +86,7 @@ export interface OffspringBlueprint {
   mutationData: {
     naturalMutation: boolean;
     mutationRate: number;
+    mutationRateBonus?: number;
     geneMutationCount: number;
     geneMutationLoci: number[];
     mutatedTraits: string[];
@@ -107,6 +108,7 @@ export class BreedingService {
     parentB: Pet,
     mode: BreedingMode = 'breed',
     requestedSeed?: string,
+    mutationRateBonus = 0,
   ): OffspringBlueprint {
     const seed = String(requestedSeed || createRandomSeed(mode));
     const rng = new SeededRandom(seed);
@@ -119,12 +121,13 @@ export class BreedingService {
         ? speciesA
         : (rng.pick([speciesA, speciesB]) || speciesA);
 
-    const mutationRate = this.getMutationRate(
+    const normalizedMutationBonus = Math.max(0, Math.min(0.2, Number(mutationRateBonus || 0)));
+    const mutationRate = Math.min(0.2, this.getMutationRate(
       childSpecies,
       parentA,
       parentB,
       modeConfig.mutationBaseRate,
-    );
+    ) + normalizedMutationBonus);
     const isMutant = rng.chance(mutationRate);
     const skillSlotCount = this.rollSkillCapacity(parentA, parentB, mode, rng);
     const aptitudes = this.rollAptitudes(parentA, parentB, childSpecies, isMutant, mode, rng);
@@ -172,6 +175,7 @@ export class BreedingService {
       mutationData: {
         naturalMutation: isMutant,
         mutationRate,
+        mutationRateBonus: normalizedMutationBonus,
         geneMutationCount: geneResult.mutationCount,
         geneMutationLoci: geneResult.mutationLoci,
         mutatedTraits: [

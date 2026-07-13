@@ -45,6 +45,7 @@ export class FusionService {
     parentAId: number,
     parentBId: number,
     seed?: string,
+    useMutationEssence = false,
   ) {
     const parents =
       await this.loadAndValidateParents(
@@ -66,7 +67,10 @@ export class FusionService {
         undefined,
         'fusion',
         seed,
+        useMutationEssence ? 0.03 : 0,
       );
+
+    const cost = this.buildFusionCost(useMutationEssence);
 
     return {
       success: true,
@@ -77,7 +81,7 @@ export class FusionService {
         parents.parentB,
       ],
       blueprint,
-      cost: FUSION_COST,
+      cost,
       wallet:
         await this.economyService.getWallet(
           userId,
@@ -91,7 +95,9 @@ export class FusionService {
     parentBId: number,
     requestId: string,
     requestedSeed?: string,
+    useMutationEssence = false,
   ) {
+    const fusionCost = this.buildFusionCost(useMutationEssence);
     const normalizedRequestId =
       this.economyService.normalizeRequestId(
         requestId,
@@ -187,7 +193,7 @@ export class FusionService {
             await this.economyService.spend(
               manager,
               userId,
-              FUSION_COST,
+              fusionCost,
             );
 
             const seed = String(
@@ -201,6 +207,7 @@ export class FusionService {
                 undefined,
                 'fusion',
                 seed,
+                useMutationEssence ? 0.03 : 0,
               );
             const createData =
               this.petService.buildPetCreateDataFromBlueprint(
@@ -235,7 +242,7 @@ export class FusionService {
                 parentBId: parentB.id,
                 resultPetId: savedPet.id,
                 seed: blueprint.seed,
-                costData: FUSION_COST,
+                costData: fusionCost,
                 parentSnapshot:
                   blueprint.parentSnapshot,
                 resultBlueprint: blueprint,
@@ -276,7 +283,7 @@ export class FusionService {
           result.record.resultBlueprint,
         cost:
           result.record.costData ||
-          FUSION_COST,
+          fusionCost,
         consumedPetIds: [
           result.record.parentAId,
           result.record.parentBId,
@@ -311,9 +318,19 @@ export class FusionService {
           error?.message || 'Fusion failed',
         ),
         requestId: normalizedRequestId,
-        cost: FUSION_COST,
+        cost: fusionCost,
       };
     }
+  }
+
+  private buildFusionCost(useMutationEssence: boolean): EconomyCost {
+    return {
+      ...FUSION_COST,
+      items: {
+        ...(FUSION_COST.items || {}),
+        ...(useMutationEssence ? { mutation_essence: 1 } : {}),
+      },
+    };
   }
 
   async getHistory(

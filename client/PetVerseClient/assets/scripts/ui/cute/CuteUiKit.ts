@@ -33,7 +33,9 @@ export const CuteTheme = {
     wood: new Color(194, 134, 77, 255),
     woodDark: new Color(126, 78, 42, 255),
     white: new Color(255, 255, 255, 255),
-    muted: new Color(132, 102, 78, 255),
+    // Secondary copy still needs to pass on a small 720-wide phone.  Keep it
+    // warm, but darker than the old decorative brown so 12px labels stay clear.
+    muted: new Color(111, 82, 61, 255),
     green: new Color(116, 187, 82, 255),
     red: new Color(224, 104, 103, 255),
     shadow: new Color(96, 55, 32, 48),
@@ -133,8 +135,9 @@ export function text(
 
     const label = node.getComponent(Label) || node.addComponent(Label);
     label.string = String(value ?? '');
-    label.fontSize = fontSize;
-    label.lineHeight = Math.max(fontSize + 4, Math.floor(fontSize * 1.2));
+    const readableFontSize = Math.max(12, fontSize);
+    label.fontSize = readableFontSize;
+    label.lineHeight = Math.max(readableFontSize + 4, Math.floor(readableFontSize * 1.25));
     label.color = color;
     label.enableWrapText = true;
     label.overflow = Label.Overflow.SHRINK;
@@ -285,7 +288,7 @@ export function button(
     // button appear unresponsive in Cocos preview. Use the built-in SCALE
     // transition for press feedback instead.
     comp.transition = Button.Transition.SCALE;
-    comp.zoomScale = 0.94;
+    comp.zoomScale = 0.96;
     comp.interactable = !disabled;
 
     // Re-rendering reuses the node, so replace only our public click callback.

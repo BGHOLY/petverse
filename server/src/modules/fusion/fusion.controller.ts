@@ -31,6 +31,7 @@ export class FusionController {
       body?.seed
         ? String(body.seed)
         : undefined,
+      Boolean(body?.useMutationEssence),
     );
   }
 
@@ -52,6 +53,7 @@ export class FusionController {
       body?.seed
         ? String(body.seed)
         : undefined,
+      Boolean(body?.useMutationEssence),
     );
   }
 

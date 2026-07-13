@@ -142,6 +142,8 @@ export class MainUI extends Component {
     private teamEditSnapshot: { petIds: number[]; slots: number[]; formationCode: string } | null = null;
     private teamDragPetId = 0;
     private teamDragSourceSlot = -1;
+    private teamDragMoved = false;
+    private formationSelectedCandidateId = 0;
 
     private friendMode: 'friends' | 'requests' | 'discover' = 'friends';
     private incomingFriendRequests: any[] = [];
@@ -186,6 +188,10 @@ export class MainUI extends Component {
     private guideStepIndex = 0;
 
     private busy = new Set<string>();
+    private scrollOffsets = new Map<string, Vec2>();
+    private petStatDraftPetId = 0;
+    private petStatDraft: Record<string, number> = {};
+    private fusionUseMutationEssence = false;
     private countdownAccumulator = 0;
     private toastToken = 0;
     private unsubscribeStore: (() => void) | null = null;
@@ -772,6 +778,7 @@ export class MainUI extends Component {
 
     private renderCurrentPage(animatePage = false) {
         if (!this.pageRoot) return;
+        this.captureScrollOffsets(this.pageRoot);
         clearNode(this.pageRoot);
 
         switch (this.currentPage) {
@@ -928,7 +935,57 @@ export class MainUI extends Component {
         scroll.bounceDuration = 0.22;
         scroll.cancelInnerEvents = true;
 
+        const key = `${this.currentScrollScope()}::${name}`;
+        (view as any).__petVerseScrollKey = key;
+        const saved = this.scrollOffsets.get(key);
+        if (saved && name !== 'PetSelectorScroll') {
+            const maxX = Math.max(0, realWidth - width);
+            const maxY = Math.max(0, realHeight - height);
+            const target = new Vec2(
+                Math.max(0, Math.min(maxX, Number(saved.x || 0))),
+                Math.max(0, Math.min(maxY, Number(saved.y || 0))),
+            );
+            this.scheduleOnce(() => {
+                if (!view.isValid || !content.isValid || !scroll.isValid || scroll.content !== content) return;
+                try {
+                    scroll.stopAutoScroll();
+                    scroll.scrollToOffset(target, 0);
+                } catch (error) {
+                    console.warn('[CuteMainUI] skipped stale scroll restore', error);
+                }
+            }, 0);
+        }
+
         return { view, content, scroll };
+    }
+
+    private currentScrollScope() {
+        const parts = [this.currentPage];
+        if (this.currentPage === 'shop') parts.push(this.shopCategory);
+        if (this.currentPage === 'benefits') parts.push(this.benefitMode);
+        if (this.currentPage === 'friends') parts.push(this.friendMode);
+        if (this.currentPage === 'marriage') parts.push(this.marriageMode);
+        if (this.currentPage === 'ranking') parts.push(this.rankingMode);
+        if (this.currentPage === 'trade') parts.push(this.tradeMode);
+        if (this.currentPage === 'adventure') parts.push(this.adventureMode, this.teamEditing ? 'team-edit' : 'overview');
+        if (this.currentPage === 'pet') parts.push(String(GameStore.currentPetId || 0), this.petDetailTab);
+        if (this.fusionPickerSide) parts.push(`fusion-picker-${this.fusionPickerSide}`);
+        if (this.homePetPickerOpen) parts.push('home-pet-picker');
+        return parts.join('|');
+    }
+
+    private captureScrollOffsets(root: Node | null) {
+        if (!root?.isValid) return;
+        for (const scroll of root.getComponentsInChildren(ScrollView)) {
+            const key = String((scroll.node as any).__petVerseScrollKey || '');
+            if (!key || scroll.node.name === 'PetSelectorScroll' || !scroll.isValid || !scroll.content?.isValid) continue;
+            try {
+                const offset = scroll.getScrollOffset();
+                if (Number.isFinite(offset?.x) && Number.isFinite(offset?.y)) {
+                    this.scrollOffsets.set(key, new Vec2(Math.max(0, Number(offset.x)), Math.max(0, Number(offset.y))));
+                }
+            } catch {}
+        }
     }
 
     private scrollHint(parent: Node, name: string, value: string, x: number, y: number, width = 240) {
@@ -1064,15 +1121,22 @@ export class MainUI extends Component {
             button(data,'Fusion','前往炼妖',100,-242,176,48,()=>this.showPage('fusion'),{icon:'🔮',fill:CuteTheme.lilac,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
         } else if (this.petDetailTab === 'stats') {
             const points=selected?.statPoints || { unspent:Number(selected?.unspentStatPoints||0), constitution:Number(selected?.constitutionPoints||0), strength:Number(selected?.strengthPoints||0), spirit:Number(selected?.spiritPoints||0), endurance:Number(selected?.endurancePoints||0), speed:Number(selected?.speedStatPoints||0) };
-            text(data,'Available',`可分配属性点：${Number(points.unspent||0)}（每升1级获得5点）`,0,222,390,36,18,CuteTheme.honeyDark,'center',true);
+            this.ensurePetStatDraft(Number(selected?.id || 0));
+            const draftTotal=this.petStatDraftTotal();
+            const remaining=Math.max(0,Number(points.unspent||0)-draftTotal);
+            text(data,'Available',`剩余 ${remaining} 点　·　待确认 ${draftTotal} 点`,0,222,390,36,18,draftTotal>0?CuteTheme.peachDark:CuteTheme.honeyDark,'center',true);
             const stats:Array<[string,string,string,string]>= [['体质','constitution','生命 +3/点','❤'],['力量','strength','物攻 +0.35/点','⚔'],['灵力','spirit','法攻 +0.35/点，提升治疗','✦'],['耐力','endurance','双防 +0.25/点','◆'],['敏捷','speed','速度 +0.15/点','➤']];
             stats.forEach(([name,key,desc,icon],index)=>{
-                const y=158-index*70; text(data,`S_${key}`,`${icon} ${name}　${Number(points[key]||0)}`,-188,y,155,30,17,CuteTheme.caramel,'left',true); text(data,`D_${key}`,desc,-35,y,190,28,13,CuteTheme.muted,'left',true);
-                button(data,`P1_${key}`,'+1',116,y,58,38,()=>void this.allocatePetStats({[key]:1}),{fill:CuteTheme.mint,fontSize:13,radius:16,disabled:Number(points.unspent||0)<1});
-                button(data,`P5_${key}`,'+5',178,y,58,38,()=>void this.allocatePetStats({[key]:5}),{fill:CuteTheme.honey,fontSize:13,radius:16,disabled:Number(points.unspent||0)<5});
+                const pending=Number(this.petStatDraft[key]||0);
+                const y=158-index*70; text(data,`S_${key}`,`${icon} ${name}　${Number(points[key]||0)+pending}${pending>0?` (+${pending})`:''}`,-188,y,155,30,16,CuteTheme.caramel,'left',true); text(data,`D_${key}`,desc,-35,y,190,28,13,CuteTheme.muted,'left',true);
+                button(data,`P1_${key}`,'+1',116,y,58,38,()=>this.queuePetStatPoints(key,1,Number(points.unspent||0)),{fill:CuteTheme.mint,fontSize:13,radius:16,disabled:remaining<1});
+                button(data,`P5_${key}`,'+5',178,y,58,38,()=>this.queuePetStatPoints(key,5,Number(points.unspent||0)),{fill:CuteTheme.honey,fontSize:13,radius:16,disabled:remaining<5});
             });
-            button(data,'Recommend','一键推荐',-100,-222,176,48,()=>void this.recommendPetStats(),{icon:'✨',fill:CuteTheme.sky,fontSize:15,radius:21,disabled:Number(points.unspent||0)<=0});
-            button(data,'Reset','重置加点',100,-222,176,48,()=>void this.resetPetStats(),{icon:'↻',fill:CuteTheme.paperWarm,fontSize:15,radius:21,disabled:Boolean(selected?.isLocked)});
+            text(data,'DraftHint','所有“+”和一键推荐只生成预览，点击确认后才会真正生效。',0,-174,380,36,13,CuteTheme.muted,'center',true);
+            button(data,'Recommend','推荐',-150,-232,88,44,()=>this.recommendPetStats(selected,Number(points.unspent||0)),{icon:'✨',fill:CuteTheme.sky,fontSize:12,radius:19,disabled:remaining<=0});
+            button(data,'ClearDraft','清空',-50,-232,88,44,()=>this.clearPetStatDraft(),{icon:'↶',fill:CuteTheme.paperWarm,fontSize:12,radius:19,disabled:draftTotal<=0});
+            button(data,'Reset','重置',50,-232,88,44,()=>void this.resetPetStats(),{icon:'↻',fill:CuteTheme.paperWarm,fontSize:12,radius:19,disabled:Boolean(selected?.isLocked)});
+            button(data,'ConfirmStats','确认',150,-232,88,44,()=>void this.confirmPetStats(),{icon:'✓',fill:CuteTheme.honey,fontSize:12,radius:19,disabled:draftTotal<=0||Boolean(selected?.isLocked)||this.busy.has('pet-stats:confirm')});
         } else {
             const lineage=selected?.lineage||{};
             text(data,'LineageTitle','血脉与繁育信息',0,215,360,38,21,CuteTheme.caramel,'center',true);
@@ -1359,7 +1423,7 @@ export class MainUI extends Component {
         [-214, 0, 214].forEach((x, index) => {
             const slot = index + 1;
             const egg = slotEgg(slot);
-            const device = panel(room, `Device_${slot}`, x, 190, 202, 300, egg ? new Color(255, 247, 219, 255) : new Color(249, 252, 239, 255), 30, true, egg ? CuteTheme.honeyDark : CuteTheme.mintDark, egg?.isMutant ? 5 : 3);
+            const device = panel(room, `Device_${slot}`, x, 170, 202, 300, egg ? new Color(255, 247, 219, 255) : new Color(249, 252, 239, 255), 30, true, egg ? CuteTheme.honeyDark : CuteTheme.mintDark, egg?.isMutant ? 5 : 3);
             headingTag(device, 'Title', `${slot}号装置`, 0, 124, 112, egg ? CuteTheme.paperWarm : CuteTheme.mint);
             if (!egg) {
                 text(device, 'EggEmpty', '🥚', 0, 42, 100, 100, 56, CuteTheme.honeyDark, 'center', true);
@@ -1389,7 +1453,7 @@ export class MainUI extends Component {
         headingTag(warehouse, 'Title', `宠物蛋仓库 ${storedEggs.length}`, -205, 160, 210, CuteTheme.paperWarm);
         text(warehouse, 'WarehouseHint', '蛋只显示物种外观、稀有度、变异状态和孵化时长', 102, 160, 360, 28, 13, CuteTheme.muted, 'center', true);
         const rows = Math.max(1, Math.ceil(storedEggs.length / 2));
-        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -12, 616, 300, 616, Math.max(300, rows * 134 + 12), 'vertical');
+        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -20, 616, 284, 616, Math.max(284, rows * 134 + 12), 'vertical');
         storedEggs.forEach((egg, index) => {
             const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
             const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
@@ -1444,30 +1508,39 @@ export class MainUI extends Component {
 
         const parentA = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentAId) || null;
         const parentB = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentBId) || null;
-        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -168, 152, 'A');
-        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 168, 152, 'B');
-        text(page, 'FusionMark', '＋', 0, 165, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
+        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -168, 135, 'A');
+        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 168, 135, 'B');
+        text(page, 'FusionMark', '＋', 0, 148, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
 
-        const preview = panel(page, 'OutcomeRange', 0, -190, 640, 206, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
-        headingTag(preview, 'RangeTitle', '可能结果范围', -220, 76, 190, CuteTheme.paperWarm);
+        const preview = panel(page, 'OutcomeRange', 0, -150, 640, 178, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        headingTag(preview, 'RangeTitle', '可能结果范围', -220, 63, 190, CuteTheme.paperWarm);
         if (!parentA || !parentB) {
             text(preview, 'RangeEmpty', '分别选择父系和母系宝宝后，这里会自动显示可能出现的物种、稀有度、成长、资质、技能和变异范围。', 0, -4, 560, 92, 16, CuteTheme.muted, 'center', false);
         } else {
             const range = this.fusionOutcomeRange(parentA, parentB);
-            text(preview, 'SpeciesRange', `可能物种：${range.species.join(' / ')}　稀有度：${range.rarity}`, -292, 44, 584, 30, 16, CuteTheme.caramel, 'left', true);
-            text(preview, 'GrowthRange', `成长 ${range.growth}　品质 ${range.quality}　技能格 ${range.skillSlots}`, -292, 12, 584, 28, 14, CuteTheme.caramel, 'left', true);
-            text(preview, 'AptitudeRange', `体 ${range.aptitudes.hp}　攻 ${range.aptitudes.attack}　防 ${range.aptitudes.defense}\n法 ${range.aptitudes.magic}　速 ${range.aptitudes.speed}`, -292, -29, 584, 54, 14, CuteTheme.muted, 'left', true);
-            text(preview, 'SkillRange', `技能数 ${range.skillCount}　特殊技能 ${range.specialSkills}　变异概率 ${range.mutation}`, -292, -72, 584, 28, 13, CuteTheme.peachDark, 'left', true);
+            text(preview, 'SpeciesRange', `可能物种：${range.species.join(' / ')}　稀有度：${range.rarity}`, -292, 34, 584, 28, 15, CuteTheme.caramel, 'left', true);
+            text(preview, 'GrowthRange', `成长 ${range.growth}　品质 ${range.quality}　技能格 ${range.skillSlots}`, -292, 5, 584, 26, 13, CuteTheme.caramel, 'left', true);
+            text(preview, 'AptitudeRange', `体 ${range.aptitudes.hp}　攻 ${range.aptitudes.attack}　防 ${range.aptitudes.defense}\n法 ${range.aptitudes.magic}　速 ${range.aptitudes.speed}`, -292, -32, 584, 46, 13, CuteTheme.muted, 'left', true);
+            text(preview, 'SkillRange', `技能数 ${range.skillCount}　特殊技能 ${range.specialSkills}　变异概率 ${range.mutation}`, -292, -67, 584, 24, 12, CuteTheme.peachDark, 'left', true);
         }
 
-        button(page, 'ExecuteButton', '确认并炼妖', 0, -350, 240, 62, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 27, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
-        text(page, 'Cost', '消耗：1000金币＋合宠核心×1　｜　两只父母会被消耗，操作不可撤销', 0, -402, 620, 30, 14, CuteTheme.peachDark, 'center', true);
+        const coreCount=this.inventoryQuantity('fusion_core');
+        const essenceCount=this.inventoryQuantity('mutation_essence');
+        const materials=panel(page,'FusionMaterials',0,-292,640,96,new Color(255,249,232,255),24,false,CuteTheme.honey,2);
+        text(materials,'AutoTitle','自动放入炼妖材料',-292,28,180,26,15,CuteTheme.caramel,'left',true);
+        tag(materials,'Gold',`金币 1000 / ${formatNumber(Number(GameStore.user?.gold||0))}`,-206,-16,166,Number(GameStore.user?.gold||0)>=1000?CuteTheme.mint:CuteTheme.peach);
+        tag(materials,'Core',`合宠核心 1 / ${coreCount}`,-24,-16,166,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
+        button(materials,'Essence',this.fusionUseMutationEssence?`✓ 变异精华 1 / ${essenceCount}`:`＋ 变异精华 0 / ${essenceCount}`,205,-4,220,56,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选：变异率 +3%'});
+
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -382, 240, 58, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 26, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        text(page, 'Cost', '父母会被消耗；核心自动放入，变异精华由玩家决定是否使用', 0, -424, 620, 26, 13, CuteTheme.peachDark, 'center', true);
     }
 
     private renderAdventure() {
         if (!this.pageRoot) return;
         const root=this.pageRoot;
         const page=panel(root,'AdventurePage',0,0,692,905,new Color(239,247,221,255),40,true,CuteTheme.caramelSoft,4);
+        if(this.teamEditing){this.renderTeamEditor(page);return;}
         const teamCard=panel(page,'TeamCard',0,292,650,220,CuteTheme.paper,28,false,CuteTheme.caramelSoft,2);
         headingTag(teamCard,'TeamTitle','五宠出战编队',-225,84,180,CuteTheme.paperWarm);
         text(teamCard,'Power',`总战力 ${formatNumber(this.teamPower())}`,275,84,180,30,15,CuteTheme.caramel,'right',true);
@@ -1475,7 +1548,6 @@ export class MainUI extends Component {
         text(teamCard,'Formation',`当前阵法：${this.formationName(this.selectedFormationCode)}`, -225,-91,250,30,14,CuteTheme.caramel,'left',true);
         button(teamCard,'FormationBtn','阵法设置',100,-88,126,44,()=>this.showPage('formation'),{icon:'🐉',fill:CuteTheme.lilac,fontSize:13,radius:19});
         button(teamCard,'EditTeam',this.teamEditing?'取消编辑':'调整编队',245,-88,126,44,()=>this.teamEditing?this.cancelTeamEditing():this.beginTeamEditing(),{icon:this.teamEditing?'↩':'✎',fill:this.teamEditing?CuteTheme.peach:CuteTheme.mint,fontSize:13,radius:19});
-        if(this.teamEditing){this.renderTeamEditor(page);return;}
         const modes=[
             {key:'world' as const,title:'世界主线',icon:'🗺',fill:CuteTheme.honey},
             {key:'pve' as const,title:'区域危机',icon:'⚔',fill:CuteTheme.mint},
@@ -1569,57 +1641,71 @@ export class MainUI extends Component {
 
     private renderTeamEditor(page: Node) {
         this.normalizeTeamAssignments();
-        const editor = panel(page, 'TeamEditor', 0, -140, 650, 610, new Color(255, 250, 232, 255), 30, false, CuteTheme.caramelSoft, 2);
+        const editor = panel(page, 'TeamEditor', 0, 0, 650, 850, new Color(255, 250, 232, 255), 34, false, CuteTheme.caramelSoft, 2);
         editor.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
         editor.on(Node.EventType.MOUSE_UP, this.finishTeamDrag, this);
         editor.on(Node.EventType.TOUCH_START, this.beginTeamDragFromEvent, this);
         editor.on(Node.EventType.MOUSE_DOWN, this.beginTeamDragFromEvent, this);
-        headingTag(editor, 'Title', '阵法站位编辑', -210, 272, 190, CuteTheme.mint);
-        text(editor, 'Hint', '拖动下方候选到阵位；拖动已上阵宝宝可直接交换，目标位会放大高亮。', -290, 234, 580, 32, 14, CuteTheme.muted, 'left', true);
+        headingTag(editor, 'Title', '五宠阵法编队', -210, 382, 190, CuteTheme.mint);
+        text(editor, 'Hint', '先点候选宝宝，再点上方1～5号阵位完成替换；阵位之间仍可直接拖动交换。', -290, 343, 580, 32, 14, CuteTheme.muted, 'left', true);
         const formationCodes = ['dragon','turtle','crane','tiger','phoenix'];
-        formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,196,110,40,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:17}));
+        formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,300,110,42,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:18}));
 
-        const field = panel(editor, 'FormationField', 0, 70, 612, 232, new Color(243, 249, 236, 255), 25, false, CuteTheme.mintDark, 2);
+        const field = panel(editor, 'FormationField', 0, 130, 612, 240, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
         this.formationSlotNodes.clear();
         const positions = this.formationEditorPositions(this.selectedFormationCode);
         const byId = new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
         positions.forEach(([x,y], index) => {
             const petId = Number(this.teamSlotAssignments[index] || 0);
             const pet = byId.get(petId) || null;
-            const slot = panel(field, `Slot_${index}`, x, y, 112, 104, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 20, true, pet ? CuteTheme.honey : CuteTheme.caramelSoft, 2);
+            const pending = Number(this.formationSelectedCandidateId || 0) > 0;
+            const slot = panel(field, `Slot_${index}`, x, y, 116, 108, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 21, true, pending ? CuteTheme.mintDark : pet ? CuteTheme.honey : CuteTheme.caramelSoft, pending ? 4 : 2);
             this.formationSlotNodes.set(index, slot);
-            tag(slot, 'Role', `${index+1} · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 42, 100, pet ? CuteTheme.mint : CuteTheme.paperWarm);
-            if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 10, 46, 46, CuteTheme.paperWarm);
-            else text(slot, 'Empty', '＋', 0, 10, 44, 44, 28, CuteTheme.muted, 'center', true);
-            text(slot, 'Name', pet ? this.compactPetName(pet) : '拖到这里', 0, -20, 102, 20, 11, CuteTheme.caramel, 'center', true);
-            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -41, 104, 18, 10, CuteTheme.peachDark, 'center', true);
-            slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; });
-            slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.highlightFormationDropTarget(event));
-            slot.on(Node.EventType.MOUSE_DOWN, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; });
-            slot.on(Node.EventType.MOUSE_MOVE, (event:any) => this.highlightFormationDropTarget(event));
+            text(slot, 'Role', `#${index+1} · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 43, 104, 18, 12, CuteTheme.mintDark, 'center', true);
+            if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 12, 42, 42, CuteTheme.paperWarm);
+            else text(slot, 'Empty', '＋', 0, 12, 42, 42, 26, CuteTheme.muted, 'center', true);
+            text(slot, 'Name', pet ? this.compactPetName(pet) : pending ? '点此放入' : '空阵位', 0, -18, 102, 18, 12, CuteTheme.caramel, 'center', true);
+            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -40, 104, 18, 12, CuteTheme.peachDark, 'center', true);
+            const assignSelected = (event:any) => {
+                const selectedId=Number(this.formationSelectedCandidateId||0);
+                if(selectedId<=0)return;
+                if(event)event.propagationStopped=true;
+                this.assignPetToFormationSlot(selectedId,index);
+            };
+            slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; this.teamDragMoved=false; });
+            slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.moveTeamDrag(event));
+            slot.on(Node.EventType.TOUCH_END, assignSelected);
+            slot.on(Node.EventType.MOUSE_DOWN, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; this.teamDragMoved=false; });
+            slot.on(Node.EventType.MOUSE_MOVE, (event:any) => this.moveTeamDrag(event));
+            slot.on(Node.EventType.MOUSE_UP, assignSelected);
         });
 
         const available = GameStore.pets.filter((pet)=>!pet?.isEgg&&pet?.tradeStatus!=='listed'&&!pet?.tradeListingId);
         this.formationCandidateNodes.clear();
-        const rows = Math.max(1, Math.ceil(available.length / 3));
-        text(editor,'CandidateTitle','候选宝宝（可上下滚动）',-285,-72,300,28,15,CuteTheme.caramel,'left',true);
-        const choices = this.createScrollArea(editor,'TeamPetScroll',0,-174,610,172,610,Math.max(172,rows*100+8),'vertical');
+        const rows = Math.max(1, Math.ceil(available.length / 2));
+        const selectedPet=available.find((pet)=>Number(pet?.id||0)===Number(this.formationSelectedCandidateId||0));
+        text(editor,'CandidateTitle',selectedPet?`已选 ${this.compactPetName(selectedPet)}：请点上方阵位`:'候选宝宝（点击选中，可上下滚动）',-285,-10,570,28,15,selectedPet?CuteTheme.mintDark:CuteTheme.caramel,'left',true);
+        const choices = this.createScrollArea(editor,'TeamPetScroll',0,-180,610,312,610,Math.max(312,rows*108+8),'vertical');
         available.forEach((pet,index)=>{
-            const id=Number(pet?.id||0); const selected=this.teamPetIds.includes(id); const col=index%3,row=Math.floor(index/3);
-            const card=panel(choices.content,`Pet_${id}`,-202+col*202,-46-row*100,190,88,selected?CuteTheme.honey:CuteTheme.paperWarm,20,true,selected?CuteTheme.honeyDark:CuteTheme.white,2);
+            const id=Number(pet?.id||0); const onTeam=this.teamPetIds.includes(id); const pending=id===Number(this.formationSelectedCandidateId||0); const col=index%2,row=Math.floor(index/2);
+            const card=panel(choices.content,`Pet_${id}`,-151+col*302,-49-row*108,286,96,pending?new Color(222,246,225,255):onTeam?CuteTheme.honey:CuteTheme.paperWarm,22,true,pending?CuteTheme.mintDark:onTeam?CuteTheme.honeyDark:CuteTheme.white,pending?4:2);
             this.formationCandidateNodes.set(id,card);
-            image(card,'Icon',getPetArtPath(pet,'thumb'),-62,2,54,54,CuteTheme.paperWarm);
-            text(card,'Name',this.compactPetName(pet,`宝宝${index+1}`),-25,19,116,26,13,CuteTheme.caramel,'left',true);
-            text(card,'Meta',`${this.rarityName(pet)} · ${formatNumber(this.battleAttributesOf(pet).power)}`,-25,-13,116,24,11,CuteTheme.muted,'left',true);
-            if(selected)tag(card,'Selected','已选',60,31,48,CuteTheme.mint);
-            card.on(Node.EventType.TOUCH_START,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;});
-            card.on(Node.EventType.TOUCH_MOVE,(event:any)=>this.highlightFormationDropTarget(event));
-            card.on(Node.EventType.MOUSE_DOWN,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;});
-            card.on(Node.EventType.MOUSE_MOVE,(event:any)=>this.highlightFormationDropTarget(event));
+            image(card,'Icon',getPetArtPath(pet,'thumb'),-105,2,62,62,CuteTheme.paperWarm);
+            text(card,'Name',this.compactPetName(pet,`宝宝${index+1}`),-64,22,178,28,14,CuteTheme.caramel,'left',true);
+            text(card,'Meta',`${this.rarityName(pet)} · ${this.petRoleLabel(pet?.role)} · 战力 ${formatNumber(this.battleAttributesOf(pet).power)}`,-64,-15,190,24,11,CuteTheme.muted,'left',true);
+            if(pending)tag(card,'Selected','待放入',100,32,64,CuteTheme.mint);
+            else if(onTeam)tag(card,'Selected','已上阵',100,32,64,CuteTheme.honey);
+            card.on(Node.EventType.TOUCH_START,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;this.teamDragMoved=false;});
+            card.on(Node.EventType.TOUCH_MOVE,(event:any)=>this.moveTeamDrag(event));
+            card.on(Node.EventType.TOUCH_END,(event:any)=>{event.propagationStopped=true;this.finishTeamDrag(event);});
+            card.on(Node.EventType.TOUCH_CANCEL,()=>this.cancelTeamDrag());
+            card.on(Node.EventType.MOUSE_DOWN,()=>{this.teamDragPetId=id;this.teamDragSourceSlot=-1;this.teamDragMoved=false;});
+            card.on(Node.EventType.MOUSE_MOVE,(event:any)=>this.moveTeamDrag(event));
+            card.on(Node.EventType.MOUSE_UP,(event:any)=>{event.propagationStopped=true;this.finishTeamDrag(event);});
         });
-        text(editor,'Count',`已选择 ${this.teamPetIds.length}/5　${this.formationName(this.selectedFormationCode)}`,-285,-282,300,30,15,CuteTheme.caramel,'left',true);
-        button(editor,'Cancel','取消修改',105,-282,140,48,()=>this.cancelTeamEditing(),{fill:CuteTheme.paperWarm,fontSize:15,radius:21});
-        button(editor,'Save','保存阵容',245,-282,140,48,()=>void this.saveTeam(),{icon:'✓',fill:CuteTheme.honey,fontSize:15,radius:21,disabled:this.teamPetIds.length!==5||this.teamSlotAssignments.filter(Boolean).length!==5||this.busy.has('team:save')});
+        text(editor,'Count',`已上阵 ${this.teamPetIds.length}/5　${this.formationName(this.selectedFormationCode)}`,-285,-382,300,30,15,CuteTheme.caramel,'left',true);
+        button(editor,'Cancel','取消修改',105,-382,140,50,()=>this.cancelTeamEditing(),{fill:CuteTheme.paperWarm,fontSize:15,radius:22});
+        button(editor,'Save','保存阵容',245,-382,140,50,()=>void this.saveTeam(),{icon:'✓',fill:CuteTheme.honey,fontSize:15,radius:22,disabled:this.teamPetIds.length!==5||this.teamSlotAssignments.filter(Boolean).length!==5||this.busy.has('team:save')});
     }
 
     private renderTowerMode(parent: Node) {
@@ -2106,18 +2192,65 @@ export class MainUI extends Component {
         showFivePetBattle(this.battleLayer,{mode:'guild-boss',title:'公会首领战',formationCode:this.selectedFormationCode,onClose:()=>{this.showPage('guild');},onComplete:async()=>{const result=await ApiClient.post('/guild/boss/challenge',{});this.showToast(result?.message||'公会首领结算完成');this.guildOverview=(await ApiClient.get('/guild/my'))||this.guildOverview;}});
     }
 
-    private async allocatePetStats(points:Record<string,number>) {
-        const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
-        const result=await ApiClient.post('/pet/stats/allocate',{petId,points});
-        if(result?.success===false){this.showToast(result?.message||'加点失败');void AudioDirector.playSfx('error');return;}
-        const detail=await ApiClient.get(`/pet/${petId}`);if(detail?.success!==false){const pet=detail?.data||detail?.pet||detail;GameStore.updatePet(pet);}this.showToast('属性点已分配');void AudioDirector.playSfx('confirm');
+    private ensurePetStatDraft(petId:number) {
+        if(this.petStatDraftPetId===petId)return;
+        this.petStatDraftPetId=petId;
+        this.petStatDraft={};
     }
-    private async recommendPetStats() {
+    private petStatDraftTotal() {
+        return Object.values(this.petStatDraft).reduce((sum,value)=>sum+Math.max(0,Number(value||0)),0);
+    }
+    private queuePetStatPoints(key:string,amount:number,available:number) {
         const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
-        const result=await ApiClient.post('/pet/stats/recommend',{petId,template:'auto'});if(result?.success===false){this.showToast(result?.message||'推荐加点失败');return;}await GameStore.ensureCurrentPetDetail(true);this.showToast('已按宝宝定位完成推荐加点');
+        this.ensurePetStatDraft(petId);
+        const remaining=Math.max(0,Number(available||0)-this.petStatDraftTotal());
+        const add=Math.min(Math.max(0,Math.floor(amount)),remaining);if(add<=0)return;
+        this.petStatDraft[key]=Number(this.petStatDraft[key]||0)+add;
+        this.renderCurrentPage(false);
+    }
+    private clearPetStatDraft() {
+        this.petStatDraft={};
+        this.showToast('已清空本次加点预览，宝宝属性没有变化');
+        this.renderCurrentPage(false);
+    }
+    private recommendPetStats(pet:any,available:number) {
+        const petId=Number(pet?.id||0);if(!petId)return;
+        this.ensurePetStatDraft(petId);
+        const remaining=Math.max(0,Number(available||0)-this.petStatDraftTotal());
+        if(remaining<=0){this.showToast('没有可分配的属性点');return;}
+        const roleValues=[...(pet?.speciesConfig?.roleTags||[]),pet?.role,getPetSpeciesMeta(pet).role].map((value:any)=>String(value||'').toLowerCase()).join(' ');
+        const weights:Record<string,number>=roleValues.match(/tank|defense|肉盾|防御/)
+            ? {constitution:4,endurance:4,speed:1,strength:1}
+            : roleValues.match(/healer|support|cleanse|治疗|辅助|净化/)
+                ? {spirit:5,constitution:3,speed:2}
+                : roleValues.match(/magic|control|法伤|控制/)
+                    ? {spirit:5,speed:3,constitution:2}
+                    : roleValues.match(/physical|burst|物伤|爆发/)
+                        ? {strength:5,speed:3,constitution:2}
+                        : {constitution:2,strength:2,spirit:2,endurance:2,speed:2};
+        const order=Object.keys(weights);const weightTotal=Object.values(weights).reduce((sum,value)=>sum+value,0);
+        let assigned=0;
+        order.forEach((key,index)=>{const value=index===order.length-1?remaining-assigned:Math.floor(remaining*weights[key]/weightTotal);if(value>0){this.petStatDraft[key]=Number(this.petStatDraft[key]||0)+value;assigned+=value;}});
+        this.showToast('推荐方案已放入预览，确认前不会修改属性');
+        this.renderCurrentPage(false);
+    }
+    private async confirmPetStats() {
+        const petId=Number(GameStore.currentPet?.id||0);if(!petId||this.busy.has('pet-stats:confirm'))return;
+        this.ensurePetStatDraft(petId);
+        if(this.petStatDraftTotal()<=0){this.showToast('请先添加属性点或使用推荐方案');return;}
+        this.busy.add('pet-stats:confirm');
+        try{
+            const points={...this.petStatDraft};
+            const result=await ApiClient.post('/pet/stats/allocate',{petId,points});
+            if(result?.success===false){this.showToast(result?.message||'加点失败');void AudioDirector.playSfx('error');return;}
+            this.petStatDraft={};
+            const detail=await ApiClient.get(`/pet/${petId}`);if(detail?.success!==false){const updated=detail?.data||detail?.pet||detail;GameStore.updatePet(updated);}
+            this.showToast('加点已确认并生效');void AudioDirector.playSfx('confirm');
+        }finally{this.busy.delete('pet-stats:confirm');this.renderCurrentPage(false);}
     }
     private async resetPetStats() {
         const petId=Number(GameStore.currentPet?.id||0);if(!petId)return;
+        this.ensurePetStatDraft(petId);this.petStatDraft={};
         const result=await ApiClient.post('/pet/stats/reset',{petId});this.showToast(result?.message||'加点已重置');if(result?.success!==false)await GameStore.ensureCurrentPetDetail(true);
     }
 
@@ -2460,6 +2593,7 @@ export class MainUI extends Component {
 
     private renderUtilityModal() {
         if (!this.utilityLayer) return;
+        this.captureScrollOffsets(this.utilityLayer);
         clearNode(this.utilityLayer);
         const active = this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
         this.utilityLayer.active = active;
@@ -2530,14 +2664,20 @@ export class MainUI extends Component {
 
         if (this.fusionConfirmOpen) {
             const a=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentAId); const b=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentBId);
-            const card=panel(this.utilityLayer,'FusionConfirm',0,0,600,640,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
-            headingTag(card,'Title','最终确认',0,270,160,CuteTheme.peach);
-            text(card,'Warning','炼妖会永久消耗以下两只宝宝，且操作不可撤销。',0,222,520,42,17,CuteTheme.peachDark,'center',true);
+            const coreCount=this.inventoryQuantity('fusion_core');const essenceCount=this.inventoryQuantity('mutation_essence');
+            const card=panel(this.utilityLayer,'FusionConfirm',0,0,620,700,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+            headingTag(card,'Title','最终确认',0,300,160,CuteTheme.peach);
+            text(card,'Warning','炼妖会永久消耗以下两只宝宝，且操作不可撤销。',0,252,520,42,17,CuteTheme.peachDark,'center',true);
             [a,b].forEach((pet,index)=>{const x=index===0?-145:145;const box=panel(card,`Parent_${index}`,x,60,250,260,CuteTheme.paperWarm,26,true,CuteTheme.white,2);image(box,'Art',getPetArtPath(pet,'thumb'),0,72,96,96,CuteTheme.paperWarm);text(box,'Name',safeName(pet?.nickname,'宝宝'),0,8,220,34,20,CuteTheme.caramel,'center',true);text(box,'Meta',`${this.rarityName(pet)} · 成长${this.growthValue(pet).toFixed(3)}
 技能${Array.isArray(pet?.skills)?pet.skills.length:0} · 特殊${this.specialSkills(pet).length}`,0,-48,220,62,14,CuteTheme.muted,'center',false);});
-            text(card,'Cost','消耗：1000金币＋合宠核心×1',0,-116,480,34,16,CuteTheme.caramel,'center',true);
-            button(card,'Cancel','返回检查',-110,-244,180,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();},{fill:CuteTheme.paperWarm,fontSize:15,radius:24});
-            button(card,'Confirm','确认炼妖',110,-244,190,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();void this.executeFusion();},{icon:'🔮',fill:CuteTheme.peach,fontSize:16,radius:24});
+            const cost=panel(card,'Cost',0,-118,550,90,new Color(248,243,224,255),22,false,CuteTheme.honey,2);
+            text(cost,'Auto','系统已自动放入',-252,24,180,26,14,CuteTheme.caramel,'left',true);
+            tag(cost,'Gold',`金币 1000`, -168,-18,128,Number(GameStore.user?.gold||0)>=1000?CuteTheme.mint:CuteTheme.peach);
+            tag(cost,'Core',`核心 1/${coreCount}`,-30,-18,128,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
+            button(cost,'Essence',this.fusionUseMutationEssence?`✓ 精华 1/${essenceCount}`:`＋ 不用精华`,162,-7,190,54,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选 · 变异率+3%'});
+            text(card,'EssenceHint',this.fusionUseMutationEssence?'本次会额外消耗1个变异精华':'本次不消耗变异精华',0,-184,500,28,14,this.fusionUseMutationEssence?CuteTheme.peachDark:CuteTheme.muted,'center',true);
+            button(card,'Cancel','返回检查',-110,-276,180,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();},{fill:CuteTheme.paperWarm,fontSize:15,radius:24});
+            button(card,'Confirm','确认炼妖',110,-276,190,56,()=>{this.fusionConfirmOpen=false;this.renderUtilityModal();void this.executeFusion();},{icon:'🔮',fill:CuteTheme.peach,fontSize:16,radius:24});
             return;
         }
 
@@ -2583,10 +2723,30 @@ export class MainUI extends Component {
         this.renderUtilityModal();
     }
 
+    private inventoryQuantity(itemCode:string) {
+        const item=GameStore.inventory.find((entry)=>String(entry?.itemCode||'').toLowerCase()===String(itemCode||'').toLowerCase());
+        return Math.max(0,Number(item?.quantity||0));
+    }
+
+    private toggleFusionMutationEssence() {
+        if(!this.fusionUseMutationEssence&&this.inventoryQuantity('mutation_essence')<1){
+            this.showToast('背包中没有变异精华，本次炼妖不会放入');
+            void AudioDirector.playSfx('error');
+            return;
+        }
+        this.fusionUseMutationEssence=!this.fusionUseMutationEssence;
+        this.showToast(this.fusionUseMutationEssence?'已放入变异精华：本次变异率 +3%':'已取下变异精华：本次不会消耗');
+        this.renderCurrentPage(false);
+        this.renderUtilityModal();
+    }
+
     private confirmFusionExecution() {
         const a=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentAId); const b=GameStore.pets.find((pet)=>Number(pet?.id)===this.fusionParentBId);
         if(!a||!b){this.showToast('请先精准选择两只宝宝');return;}
         if(a?.isLocked||b?.isLocked){this.showToast('锁定宝宝不能炼妖');return;}
+        if(Number(GameStore.user?.gold||0)<1000){this.showToast('金币不足，需要1000金币');return;}
+        if(this.inventoryQuantity('fusion_core')<1){this.showToast('背包中没有合宠核心');return;}
+        if(this.fusionUseMutationEssence&&this.inventoryQuantity('mutation_essence')<1){this.fusionUseMutationEssence=false;this.showToast('背包中没有变异精华，已自动取消放入');this.renderCurrentPage(false);return;}
         this.fusionConfirmOpen=true;
         this.renderUtilityModal();
     }
@@ -2792,12 +2952,15 @@ export class MainUI extends Component {
 
     private async executeFusion() {
         if (!this.fusionParentAId || !this.fusionParentBId || this.busy.has('fusion:execute')) return;
+        if(this.inventoryQuantity('fusion_core')<1){this.showToast('背包中没有合宠核心');return;}
+        if(this.fusionUseMutationEssence&&this.inventoryQuantity('mutation_essence')<1){this.fusionUseMutationEssence=false;this.showToast('背包中没有变异精华，本次炼妖已取消');return;}
         this.busy.add('fusion:execute');
         try {
             const result = await ApiClient.post('/fusion/execute', {
                 parentAId: this.fusionParentAId,
                 parentBId: this.fusionParentBId,
                 requestId: `fusion-${Date.now()}-${this.fusionParentAId}-${this.fusionParentBId}`,
+                useMutationEssence: this.fusionUseMutationEssence,
             });
             if (result?.success === false) {
                 this.showToast(result?.message || '炼妖失败');
@@ -2813,6 +2976,7 @@ export class MainUI extends Component {
             if (profile?.success !== false) GameStore.setProfile(profile);
             this.fusionParentAId = 0;
             this.fusionParentBId = 0;
+            this.fusionUseMutationEssence = false;
             this.ensureFusionParents();
             const fusedPet = result?.pet || result?.resultPet || result?.data?.pet || result?.offspring || null;
             if (fusedPet && this.revealLayer) {
@@ -2890,7 +3054,7 @@ export class MainUI extends Component {
         try {
             const result=await ApiClient.post('/team/set',{petIds:this.teamPetIds,formationCode:this.selectedFormationCode,slotAssignments:[...this.teamSlotAssignments],tactics:{focusPriority:'lowestHp',guardTarget:'healer',shieldThreshold:60,cleansePriority:['control','healBlock','dot'],ultimatePolicy:'ready'}});
             if(result?.success===false){this.showToast(result?.message||'编队保存失败');return;}
-            this.applyTeamResult(result);this.teamEditing=false;this.teamEditSnapshot=null;this.showToast('五宠阵法编队已保存');void AudioDirector.playSfx('confirm');
+            this.applyTeamResult(result);this.teamEditing=false;this.teamEditSnapshot=null;this.formationSelectedCandidateId=0;this.showToast('五宠阵法编队已保存');void AudioDirector.playSfx('confirm');
         }catch(error){console.error('[CuteMainUI] save team failed:',error);this.showToast('编队保存失败，请检查后端');}
         finally{this.busy.delete('team:save');this.renderCurrentPage(false);}
     }
@@ -3021,15 +3185,15 @@ export class MainUI extends Component {
         clearNode(this.toastLayer);
 
         const token = ++this.toastToken;
-        const toast = panel(this.toastLayer, 'Toast', 0, 458, 520, 68, CuteTheme.paperWarm, 30, true, CuteTheme.white, 3);
-        text(toast, 'Paw', '🐾', -220, 0, 42, 42, 22, CuteTheme.honeyDark, 'center', true);
-        text(toast, 'Message', message, 18, 0, 430, 46, 17, CuteTheme.caramel, 'center', true);
+        const toast = panel(this.toastLayer, 'Toast', 0, 16, 590, 96, new Color(255, 250, 232, 248), 38, true, CuteTheme.white, 4);
+        text(toast, 'Paw', '🐾', -252, 0, 48, 48, 27, CuteTheme.honeyDark, 'center', true);
+        text(toast, 'Message', message, 20, 0, 492, 68, 20, CuteTheme.caramel, 'center', false);
 
         const opacity = toast.getComponent(UIOpacity) || toast.addComponent(UIOpacity);
         opacity.opacity = 0;
         toast.setScale(new Vec3(0.92, 0.92, 1));
 
-        tween(opacity).to(0.14, { opacity: 255 }).delay(1.8).to(0.2, { opacity: 0 }).call(() => {
+        tween(opacity).to(0.18, { opacity: 255 }).delay(1.45).to(0.65, { opacity: 0 }, { easing: 'sineIn' }).call(() => {
             if (token === this.toastToken && toast.isValid) toast.destroy();
         }).start();
         tween(toast).to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
@@ -3722,6 +3886,8 @@ export class MainUI extends Component {
             slots: [...this.teamSlotAssignments],
             formationCode: this.selectedFormationCode,
         };
+        this.formationSelectedCandidateId = 0;
+        this.teamDragMoved = false;
         this.teamEditing = true;
         this.renderCurrentPage(false);
     }
@@ -3735,6 +3901,8 @@ export class MainUI extends Component {
         }
         this.teamEditSnapshot = null;
         this.teamEditing = false;
+        this.formationSelectedCandidateId = 0;
+        this.teamDragMoved = false;
         this.clearFormationDropHighlight();
         this.renderCurrentPage(false);
     }
@@ -3748,6 +3916,12 @@ export class MainUI extends Component {
         return highlighted;
     }
 
+    private moveTeamDrag(event:any) {
+        if(this.teamDragSourceSlot<0&&this.teamDragPetId<=0)return;
+        this.teamDragMoved=true;
+        this.highlightFormationDropTarget(event);
+    }
+
     private clearFormationDropHighlight() {
         for (const node of this.formationSlotNodes.values()) {
             if (node?.isValid) node.setScale(Vec3.ONE);
@@ -3756,33 +3930,42 @@ export class MainUI extends Component {
 
     private beginTeamDragFromEvent(event:any) {
         const directSlot=this.formationSlotAtEvent(event);
-        if(directSlot>=0){this.teamDragSourceSlot=directSlot;this.teamDragPetId=0;return;}
+        if(directSlot>=0){this.teamDragSourceSlot=directSlot;this.teamDragPetId=0;this.teamDragMoved=false;return;}
         let target=event?.target as Node|null;
         while(target){
             const slotByTarget=[...this.formationSlotNodes.entries()].find(([,node])=>node===target);
-            if(slotByTarget){this.teamDragSourceSlot=slotByTarget[0];this.teamDragPetId=0;return;}
+            if(slotByTarget){this.teamDragSourceSlot=slotByTarget[0];this.teamDragPetId=0;this.teamDragMoved=false;return;}
             const petByTarget=[...this.formationCandidateNodes.entries()].find(([,node])=>node===target);
-            if(petByTarget){this.teamDragPetId=petByTarget[0];this.teamDragSourceSlot=-1;return;}
+            if(petByTarget){this.teamDragPetId=petByTarget[0];this.teamDragSourceSlot=-1;this.teamDragMoved=false;return;}
             target=target.parent;
         }
         const slot=[...this.formationSlotNodes.entries()].find(([,node])=>this.nodeContainsTouch(node,event));
-        if(slot){this.teamDragSourceSlot=slot[0];this.teamDragPetId=0;return;}
+        if(slot){this.teamDragSourceSlot=slot[0];this.teamDragPetId=0;this.teamDragMoved=false;return;}
         const candidate=[...this.formationCandidateNodes.entries()].find(([,node])=>this.nodeContainsTouch(node,event));
-        if(candidate){this.teamDragPetId=candidate[0];this.teamDragSourceSlot=-1;}
+        if(candidate){this.teamDragPetId=candidate[0];this.teamDragSourceSlot=-1;this.teamDragMoved=false;}
     }
 
     private finishTeamDrag(event:any) {
         if (!this.teamEditing) return;
         const petId=this.teamDragPetId;
         const source=this.teamDragSourceSlot;
+        const moved=this.teamDragMoved;
         this.teamDragPetId=0;
         this.teamDragSourceSlot=-1;
+        this.teamDragMoved=false;
         this.clearFormationDropHighlight();
         if (source>=0) {
+            if(!moved)return;
             this.handleTeamSlotDrop(source,event);
             return;
         }
         if (petId>0) {
+            if(!moved){
+                this.formationSelectedCandidateId=this.formationSelectedCandidateId===petId?0:petId;
+                void AudioDirector.playSfx('click_1');
+                this.renderCurrentPage(false);
+                return;
+            }
             const pet=GameStore.pets.find((item)=>Number(item?.id||0)===petId);
             if (pet) this.handleTeamPetDrop(pet,event);
         }
@@ -3791,6 +3974,7 @@ export class MainUI extends Component {
     private cancelTeamDrag() {
         this.teamDragPetId=0;
         this.teamDragSourceSlot=-1;
+        this.teamDragMoved=false;
         this.clearFormationDropHighlight();
     }
 
@@ -3816,6 +4000,28 @@ export class MainUI extends Component {
     private refreshTeamPetsFromSlots() {
         const byId=new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
         this.teamPets=this.teamSlotAssignments.map((id)=>byId.get(Number(id||0))).filter(Boolean);
+    }
+
+    private assignPetToFormationSlot(petId:number,target:number) {
+        const id=Number(petId||0);
+        if(!id||target<0||target>=5)return;
+        const next=Array.from({length:5},(_,index)=>Number(this.teamSlotAssignments[index]||0));
+        const source=next.findIndex((value)=>value===id);
+        const replaced=Number(next[target]||0);
+        if(source>=0&&source!==target){
+            [next[source],next[target]]=[next[target],next[source]];
+        }else if(source<0){
+            next[target]=id;
+            this.teamPetIds=this.teamPetIds.filter((value)=>Number(value)!==replaced&&Number(value)!==id);
+            this.teamPetIds.push(id);
+        }
+        this.teamSlotAssignments=next;
+        this.teamPetIds=[...new Set(next.filter((value)=>value>0))].slice(0,5);
+        this.formationSelectedCandidateId=0;
+        this.normalizeTeamAssignments();
+        void AudioDirector.playSfx('confirm');
+        this.showToast(`已放入${target+1}号阵位`);
+        this.renderCurrentPage(false);
     }
 
     private handleTeamPetDrop(pet:any,event:any) {
@@ -3854,10 +4060,15 @@ export class MainUI extends Component {
         const location=event?.getUILocation?.()||event?.getLocation?.();
         if(!location)return -1;
         const point=new Vec2(Number(location.x||0),Number(location.y||0));
+        for(const [index,node] of this.formationSlotNodes.entries()){
+            if(index===exclude||!node?.isValid)continue;
+            const transform=node.getComponent(UITransform);
+            if(transform?.hitTest(point)||this.nodeContainsTouch(node,event))return index;
+        }
         const positions=this.formationEditorPositions(this.selectedFormationCode);
         return positions.findIndex(([x,y],index)=>index!==exclude
             && Math.abs(point.x-(DESIGN_WIDTH/2+x))<=58
-            && Math.abs(point.y-(565+y))<=54);
+            && Math.abs(point.y-(DESIGN_HEIGHT/2+125+y))<=58);
     }
 
     private titleForPage(page: PageName) {
@@ -3997,7 +4208,9 @@ export class MainUI extends Component {
             skillSlots:`${Math.max(2,Math.min(slotsA,slotsB)-1)}～${Math.min(10,Math.max(slotsA,slotsB)+2)}`,
             skillCount:`${Math.max(1,Math.min(skillsA,skillsB)-1)}～${Math.min(10,Math.max(skillsA,skillsB)+2)}`,
             specialSkills:`0～${Math.min(3,this.specialSkills(parentA).length+this.specialSkills(parentB).length+1)}`,
-            mutation:parentA?.isMutant||parentB?.isMutant?'5%～10%':'1%～5%',
+            mutation:parentA?.isMutant||parentB?.isMutant
+                ? (this.fusionUseMutationEssence?'8%～15%（含精华+3%）':'5%～12%')
+                : (this.fusionUseMutationEssence?'8%（含精华+3%）':'5%'),
             aptitudes:{
                 hp:interval(aptA.hp,aptB.hp), attack:interval(aptA.attack,aptB.attack), defense:interval(aptA.defense,aptB.defense),
                 magic:interval(aptA.magic,aptB.magic), speed:interval(aptA.speed,aptB.speed),
