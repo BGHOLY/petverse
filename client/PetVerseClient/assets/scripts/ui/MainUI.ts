@@ -63,6 +63,15 @@ type AptitudeView = {
     speed: number;
 };
 
+type SecondaryConfirmation = {
+    title: string;
+    message: string;
+    confirmText: string;
+    icon: string;
+    tone: 'honey' | 'mint' | 'peach' | 'lilac';
+    action: () => void | Promise<void>;
+};
+
 @ccclass('MainUI')
 @executeInEditMode(true)
 export class MainUI extends Component {
@@ -118,6 +127,7 @@ export class MainUI extends Component {
     private inventoryCategory: 'all' | 'consumable' | 'material' | 'skill' = 'all';
     private inventorySort: 'category' | 'quantity' = 'category';
     private inventoryDetailItem: any | null = null;
+    private secondaryConfirmation: SecondaryConfirmation | null = null;
     private petFilter = loadPetFilter();
     private readonly router = new AppRouter('home');
     private lastBattleMode: 'tower' | 'pve' | 'friend' = 'tower';
@@ -276,6 +286,7 @@ export class MainUI extends Component {
         this.fusionPickerSide = null;
         this.pendingIncubation = null;
         this.fusionConfirmOpen = false;
+        this.secondaryConfirmation = null;
         if (changed) CuteFeedback.playPage();
         if (page !== 'adventure') void AudioDirector.playBgm('home');
         this.renderCurrentPage(true);
@@ -1858,7 +1869,11 @@ export class MainUI extends Component {
             const remaining = Number(marriage?.cooldownRemainingSeconds || 0);
             const state = marriage?.isMyTurn ? (remaining > 0 ? `我的回合 · ${this.formatSeconds(remaining)}` : '轮到我获得宠物蛋') : '等待对方回合';
             text(row, 'State', state, -190, -27, 360, 28, 13, marriage?.isMyTurn ? CuteTheme.peachDark : CuteTheme.muted, 'left', true);
-            button(row, 'LayEgg', '产蛋', 225, -30, 112, 46, () => void this.layMarriageEgg(marriage), { icon: '🥚', fill: CuteTheme.honey, fontSize: 14, radius: 20, disabled: !marriage?.canLayEgg || this.busy.has(`marriage:egg:${marriage?.id}`) });
+            button(row, 'LayEgg', '产蛋', 225, -30, 112, 46, () => this.openSecondaryConfirmation({
+                title: '确认获得宠物蛋',
+                message: '本次会消耗500金币、1张繁育凭证，以及双方各20点生育力。宠物蛋会直接进入孵化室。',
+                confirmText: '确认产蛋', icon: '🥚', tone: 'honey', action: () => this.layMarriageEgg(marriage),
+            }), { icon: '🥚', fill: CuteTheme.honey, fontSize: 14, radius: 20, disabled: !marriage?.canLayEgg || this.busy.has(`marriage:egg:${marriage?.id}`) });
         });
     }
 
@@ -1874,9 +1889,9 @@ export class MainUI extends Component {
             text(row, 'Name', `${incoming ? '收到' : '发出'}：宝宝${proposal?.proposerPetId || '-'} × 宝宝${proposal?.targetPetId || '-'}`, -224, 17, 340, 30, 16, CuteTheme.caramel, 'left', true);
             text(row, 'State', this.statusLabel(proposal?.status), -224, -17, 220, 24, 13, CuteTheme.muted, 'left', true);
             if (String(proposal?.status) === 'pending' && incoming) {
-                button(row, 'Accept', '同意', 174, 0, 88, 44, () => void this.respondMarriageProposal(proposal, true), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
-                button(row, 'Reject', '拒绝', 269, 0, 82, 44, () => void this.respondMarriageProposal(proposal, false), { fill: CuteTheme.peach, fontSize: 13, radius: 19 });
-            } else if (String(proposal?.status) === 'pending') button(row, 'Cancel', '撤回', 232, 0, 108, 44, () => void this.cancelMarriageProposal(proposal), { fill: CuteTheme.paper, fontSize: 13, radius: 19 });
+                button(row, 'Accept', '同意', 174, 0, 88, 44, () => this.openSecondaryConfirmation({ title: '确认同意结缘', message: '同意后两只宝宝将建立结缘关系，之后双方按回合轮流获得宠物蛋。', confirmText: '同意结缘', icon: '💞', tone: 'mint', action: () => this.respondMarriageProposal(proposal, true) }), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
+                button(row, 'Reject', '拒绝', 269, 0, 82, 44, () => this.openSecondaryConfirmation({ title: '确认拒绝申请', message: '拒绝后这条申请会立即失效，对方需要重新发起申请。', confirmText: '确认拒绝', icon: '💌', tone: 'peach', action: () => this.respondMarriageProposal(proposal, false) }), { fill: CuteTheme.peach, fontSize: 13, radius: 19 });
+            } else if (String(proposal?.status) === 'pending') button(row, 'Cancel', '撤回', 232, 0, 108, 44, () => this.openSecondaryConfirmation({ title: '撤回结缘申请', message: '撤回后本次申请立即失效，需要配对时可再次发起。', confirmText: '确认撤回', icon: '↩', tone: 'peach', action: () => this.cancelMarriageProposal(proposal) }), { fill: CuteTheme.paper, fontSize: 13, radius: 19 });
             else tag(row, 'Status', this.statusLabel(proposal?.status), 230, 0, 116, CuteTheme.paper, CuteTheme.muted);
         });
     }
@@ -1909,7 +1924,11 @@ export class MainUI extends Component {
 
         text(parent, 'Ribbon', '────── 🎀 三代血缘自动校验 🎀 ──────', 0, -80, 560, 42, 16, CuteTheme.peachDark, 'center', true);
         text(parent, 'Rules', '申请有效期72小时；通过后双方轮流获得宠物蛋。\n每次产蛋消耗500金币、繁育凭证和双方20点生育力。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
-        button(parent, 'Propose', '发送结缘申请', 0, -245, 250, 64, () => void this.proposeMarriage(), { icon: '💌', fill: CuteTheme.pink, fontSize: 18, radius: 28, disabled: !own || !target || this.busy.has('marriage:propose') });
+        button(parent, 'Propose', '发送结缘申请', 0, -245, 250, 64, () => this.openSecondaryConfirmation({
+            title: '发送结缘申请',
+            message: `${safeName(own?.nickname, '我的宝宝')} 与 ${safeName(target?.nickname, '好友宝宝')} 的申请将在72小时内有效，通过后三代血缘仍会由服务器校验。`,
+            confirmText: '确认发送', icon: '💌', tone: 'peach', action: () => this.proposeMarriage(),
+        }), { icon: '💌', fill: CuteTheme.pink, fontSize: 18, radius: 28, disabled: !own || !target || this.busy.has('marriage:propose') });
     }
 
     private renderMail() {
@@ -2032,7 +2051,11 @@ export class MainUI extends Component {
         text(priceCard, 'Price', formatNumber(this.tradePrice), 45, 26, 132, 44, 22, CuteTheme.caramel, 'center', true);
         button(priceCard, 'Plus', '+', 142, 26, 54, 48, () => this.changeTradePrice(1), { fill: CuteTheme.paper, fontSize: 22, radius: 20 });
         text(priceCard, 'Fee', '上架费100金币 · 72小时有效 · 成交税5%', 0, -41, 500, 28, 13, CuteTheme.muted, 'center', true);
-        button(parent, 'SubmitList', '确认上架', 0, -238, 230, 64, () => void this.listTradePet(), { icon: '🏷', fill: CuteTheme.lilac, fontSize: 18, radius: 28, disabled: this.busy.has('trade:list') });
+        button(parent, 'SubmitList', '确认上架', 0, -238, 230, 64, () => this.openSecondaryConfirmation({
+            title: '确认上架宝宝',
+            message: `${safeName(pet?.nickname, '宝宝')} 将以 ${formatNumber(this.tradePrice)} ${this.tradeCurrency === 'diamond' ? '钻石' : '金币'}寄售72小时。上架费100金币，成交后收取5%手续费。`,
+            confirmText: '支付并上架', icon: '🏷', tone: 'lilac', action: () => this.listTradePet(),
+        }), { icon: '🏷', fill: CuteTheme.lilac, fontSize: 18, radius: 28, disabled: this.busy.has('trade:list') });
     }
 
     private renderTradeRow(parent: Node, listing: any, index: number, action: 'buy' | 'cancel', yOverride?: number) {
@@ -2045,10 +2068,18 @@ export class MainUI extends Component {
         text(row, 'Price', `${formatNumber(listing?.price || 0)} ${listing?.currencyType === 'diamond' ? '◆' : '●'}`, 100, 0, 160, 34, 17, CuteTheme.peachDark, 'right', true);
         if (action === 'buy') {
             const mine = Number(listing?.sellerUserId || listing?.seller?.id || 0) === Number(GameStore.user?.id || 1);
-            button(row, 'Buy', mine ? '我的' : '购买', 252, 0, 100, 46, () => void this.buyTrade(listing), { fill: mine ? new Color(220, 218, 208, 255) : CuteTheme.honey, fontSize: 14, radius: 20, disabled: mine || this.busy.has(`trade:buy:${listing?.id}`) });
+            button(row, 'Buy', mine ? '我的' : '购买', 252, 0, 100, 46, () => this.openSecondaryConfirmation({
+                title: '确认购买宝宝',
+                message: `${safeName(pet?.nickname, `宝宝${listing?.petId || ''}`)} 售价 ${formatNumber(listing?.price || 0)} ${listing?.currencyType === 'diamond' ? '钻石' : '金币'}，确认后将立即扣款并进入宝宝仓库。`,
+                confirmText: '确认购买', icon: '🛒', tone: 'honey', action: () => this.buyTrade(listing),
+            }), { fill: mine ? new Color(220, 218, 208, 255) : CuteTheme.honey, fontSize: 14, radius: 20, disabled: mine || this.busy.has(`trade:buy:${listing?.id}`) });
         } else {
             const active = String(listing?.status || '') === 'active';
-            button(row, 'Cancel', active ? '取消' : this.statusLabel(listing?.status), 252, 0, 100, 46, () => void this.cancelTrade(listing), { fill: active ? CuteTheme.peach : new Color(220, 218, 208, 255), fontSize: 14, radius: 20, disabled: !active || this.busy.has(`trade:cancel:${listing?.id}`) });
+            button(row, 'Cancel', active ? '取消' : this.statusLabel(listing?.status), 252, 0, 100, 46, () => this.openSecondaryConfirmation({
+                title: '取消寄售',
+                message: `${safeName(pet?.nickname, `宝宝${listing?.petId || ''}`)} 将从市场下架并解除寄售锁定，已支付的上架费不会退回。`,
+                confirmText: '确认下架', icon: '↩', tone: 'peach', action: () => this.cancelTrade(listing),
+            }), { fill: active ? CuteTheme.peach : new Color(220, 218, 208, 255), fontSize: 14, radius: 20, disabled: !active || this.busy.has(`trade:cancel:${listing?.id}`) });
         }
     }
 
@@ -2497,13 +2528,33 @@ export class MainUI extends Component {
         if (!this.utilityLayer) return;
         this.captureScrollOffsets(this.utilityLayer);
         clearNode(this.utilityLayer);
-        const active = Boolean(this.inventoryDetailItem) || this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
+        const active = Boolean(this.secondaryConfirmation) || Boolean(this.inventoryDetailItem) || this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
         this.utilityLayer.active = active;
         if (!active) return;
         if (!this.utilityLayer.getComponent(BlockInputEvents)) this.utilityLayer.addComponent(BlockInputEvents);
 
         const dim = panel(this.utilityLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 118), 0, false, CuteTheme.transparent, 0);
         dim.on(Node.EventType.TOUCH_END, () => this.closeUtilityModal());
+
+        if (this.secondaryConfirmation) {
+            const confirmation = this.secondaryConfirmation;
+            const processing = this.busy.has('secondary:confirm');
+            const accent = confirmation.tone === 'mint'
+                ? CuteTheme.mint
+                : confirmation.tone === 'peach'
+                    ? CuteTheme.peach
+                    : confirmation.tone === 'lilac'
+                        ? CuteTheme.lilac
+                        : CuteTheme.honey;
+            const card = panel(this.utilityLayer, 'SecondaryConfirmDialog', 0, 0, 570, 460, new Color(255, 250, 235, 255), 34, true, CuteTheme.caramelSoft, 4);
+            text(card, 'Icon', confirmation.icon, 0, 145, 90, 80, 48, CuteTheme.caramel, 'center', true);
+            text(card, 'Title', confirmation.title, 0, 78, 470, 44, 25, CuteTheme.caramel, 'center', true);
+            text(card, 'Message', confirmation.message, 0, -10, 470, 112, 16, CuteTheme.muted, 'center', false);
+            text(card, 'Guard', processing ? '正在处理，请稍候…' : '确认后将立即同步到服务器', 0, -88, 450, 30, 13, processing ? CuteTheme.peachDark : CuteTheme.mintDark, 'center', true);
+            button(card, 'Cancel', '再想想', -105, -158, 180, 56, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 24, disabled: processing });
+            button(card, 'Confirm', processing ? '处理中…' : confirmation.confirmText, 110, -158, 190, 56, () => void this.runSecondaryConfirmation(), { fill: accent, fontSize: 16, radius: 24, disabled: processing });
+            return;
+        }
 
         if (this.inventoryDetailItem) {
             const item = this.inventoryDetailItem;
@@ -2632,6 +2683,7 @@ export class MainUI extends Component {
     }
 
     private closeUtilityModal() {
+        if (this.secondaryConfirmation && this.busy.has('secondary:confirm')) return;
         this.hatchAcceleratorOpen=false;
         this.hatchAcceleratorEggId=0;
         this.homePetPickerOpen=false;
@@ -2639,7 +2691,27 @@ export class MainUI extends Component {
         this.fusionPickerSide=null;
         this.pendingIncubation=null;
         this.fusionConfirmOpen=false;
+        this.secondaryConfirmation=null;
         this.renderUtilityModal();
+    }
+
+    private openSecondaryConfirmation(confirmation: SecondaryConfirmation) {
+        this.secondaryConfirmation = confirmation;
+        this.renderUtilityModal();
+    }
+
+    private async runSecondaryConfirmation() {
+        const confirmation = this.secondaryConfirmation;
+        if (!confirmation || this.busy.has('secondary:confirm')) return;
+        this.busy.add('secondary:confirm');
+        this.renderUtilityModal();
+        try {
+            await confirmation.action();
+        } finally {
+            this.busy.delete('secondary:confirm');
+            if (this.secondaryConfirmation === confirmation) this.secondaryConfirmation = null;
+            this.renderUtilityModal();
+        }
     }
 
     private closeHatchAccelerator() { this.closeUtilityModal(); }
