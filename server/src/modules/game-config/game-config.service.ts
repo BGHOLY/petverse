@@ -9,7 +9,7 @@ export class GameConfigService {
       pet: {
         initialCapacity: 50,
         maxCapacity: 200,
-        teamSize: 3,
+        teamSize: 5,
         skillSlots: { min: 2, max: 10 },
       },
       breeding: {

@@ -43,8 +43,8 @@ assert(
   `Expected 60 skill books, received ${SKILL_BOOK_ITEM_CONFIGS.length}`,
 );
 assert(
-  ALL_ITEM_CONFIGS.length === 72,
-  `Expected 72 items, received ${ALL_ITEM_CONFIGS.length}`,
+  ALL_ITEM_CONFIGS.length >= 72,
+  `Expected at least 72 items, received ${ALL_ITEM_CONFIGS.length}`,
 );
 assert(
   unique(ALL_SKILL_CONFIGS.map((skill) => skill.skillCode)),

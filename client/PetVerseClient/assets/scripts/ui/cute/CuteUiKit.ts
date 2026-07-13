@@ -234,6 +234,7 @@ export function button(
     clearNode(node);
 
     const disabled = Boolean(options.disabled);
+    let lastAcceptedClickAt = 0;
     const fill = disabled
         ? new Color(222, 216, 202, 255)
         : options.selected
@@ -296,6 +297,9 @@ export function button(
     node.off(Button.EventType.CLICK);
     if (!disabled) {
         node.on(Button.EventType.CLICK, () => {
+            const now = Date.now();
+            if (now - lastAcceptedClickAt < 320) return;
+            lastAcceptedClickAt = now;
             CuteFeedback.playClick();
             onClick();
         });

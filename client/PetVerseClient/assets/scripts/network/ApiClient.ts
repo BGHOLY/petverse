@@ -97,7 +97,7 @@ export default class ApiClient {
                 success: true,
                 statusCode: response.status,
                 data: json,
-            } as ApiResult<T>;
+            } as unknown as ApiResult<T>;
         } finally {
             clearTimeout(timer);
         }
@@ -119,7 +119,7 @@ export default class ApiClient {
                         if (payload && typeof payload === 'object') {
                             resolve({ ...payload, statusCode } as ApiResult<T>);
                         } else {
-                            resolve({ success: true, statusCode, data: payload } as ApiResult<T>);
+                            resolve({ success: true, statusCode, data: payload } as unknown as ApiResult<T>);
                         }
                     } else {
                         resolve({

@@ -2,7 +2,9 @@
   "extends": "./temp/tsconfig.cocos.json",
   "compilerOptions": {
     "strict": false,
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
+    "lib": ["ES2020", "DOM"],
+    "skipLibCheck": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "useDefineForClassFields": false

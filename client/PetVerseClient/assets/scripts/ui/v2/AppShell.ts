@@ -1,4 +1,4 @@
-import { BlockInputEvents, Node } from 'cc';
+import { BlockInputEvents, Node, screen, sys } from 'cc';
 import { DESIGN_HEIGHT, DESIGN_WIDTH, clearNode, getOrCreate, setRect } from '../cute/CuteUiKit';
 import { PageName } from './AppRoutes';
 
@@ -19,6 +19,23 @@ export type AppShellLayers = {
 };
 
 const PAGE_CONTAINERS = ['HomePage', 'PetPage', 'AdventurePage', 'ShopPage', 'MorePage', 'SecondaryPage'];
+
+function safeAreaInsets() {
+    try {
+        const windowSize = screen.windowSize;
+        const safeArea = sys.getSafeAreaRect();
+        if (!windowSize?.height || !safeArea?.height) return { top: 0, bottom: 0 };
+        const designScale = DESIGN_HEIGHT / windowSize.height;
+        const top = (windowSize.height - safeArea.y - safeArea.height) * designScale;
+        const bottom = safeArea.y * designScale;
+        return {
+            top: Math.max(0, Math.min(120, top)),
+            bottom: Math.max(0, Math.min(100, bottom)),
+        };
+    } catch {
+        return { top: 0, bottom: 0 };
+    }
+}
 
 function containerName(page: PageName) {
     if (page === 'home') return 'HomePage';
@@ -85,9 +102,10 @@ export function resolveAppShell(canvas: Node): AppShellLayers {
         loadingLayer: layer(root, 'LoadingLayer', ['CuteLoadingLayer']),
     };
 
-    setRect(result.topBar, 0, 570, DESIGN_WIDTH, 130);
-    setRect(result.pageRoot, 0, -5, DESIGN_WIDTH, 1010);
-    setRect(result.bottomNavigation, 0, -575, DESIGN_WIDTH, 130);
+    const safe = safeAreaInsets();
+    setRect(result.topBar, 0, 570 - safe.top, DESIGN_WIDTH, 130);
+    setRect(result.pageRoot, 0, -5 + (safe.bottom - safe.top) / 2, DESIGN_WIDTH, 1010);
+    setRect(result.bottomNavigation, 0, -575 + safe.bottom, DESIGN_WIDTH, 130);
     preparePageContainers(result.pageRoot);
 
     const ordered = [
