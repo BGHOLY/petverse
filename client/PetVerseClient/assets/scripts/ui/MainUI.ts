@@ -39,7 +39,6 @@ import {
 import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
 import { getPetArtPath, getPetSpeciesMeta } from './pet/PetArtRegistry';
-import { createPetArtSprite } from './pet/PetArtView';
 import { showBattlePlayback } from './advanced/BattlePlayback';
 import { loadHomePetId, loadPetFilter, saveHomePetId, savePetFilter } from './advanced/PetExperienceState';
 import { showPetReveal } from './advanced/RevealOverlay';
@@ -52,6 +51,7 @@ import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
 import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
 import { renderBottomNavigation } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
+import { HomeActivity, renderHomePage } from './v2/pages/HomePage';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -621,8 +621,11 @@ export class MainUI extends Component {
 
         image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -300, 1, 82, 82, CuteTheme.paperWarm);
         text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -244, 20, 176, 32, 22, CuteTheme.caramel, 'left', true);
-        text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -20, 98, 28, 16, CuteTheme.honeyDark, 'left', true);
-        text(this.topBar, 'Paw', '🐾', -135, -18, 34, 28, 18, CuteTheme.mintDark, 'center', true);
+        text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -13, 76, 24, 14, CuteTheme.honeyDark, 'left', true);
+        text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -170, -13, 60, 24, 12, CuteTheme.mintDark, 'left', true);
+        const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
+        const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
+        progress(this.topBar, 'PlayerExp', -188, -39, 120, 9, currentExp / nextExp, CuteTheme.honey);
 
         const secondary = !isMainPage(this.currentPage);
         const showBack = secondary && this.currentPage !== 'profile';
@@ -752,46 +755,20 @@ export class MainUI extends Component {
 
     private renderHome() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
-        const pet = this.homePet();
-
-        const scene = panel(root, 'HomeScene', 0, 8, 692, 920, new Color(255, 246, 224, 255), 42, true, CuteTheme.caramelSoft, 4);
-        image(scene, 'RoomArt', 'pet-art/home_empty_room', 72, 28, 526, 824, CuteTheme.mint);
-
-        const speciesMeta = getPetSpeciesMeta(pet);
-        const homePet = createPetArtSprite(scene, 'HomePetArt', getPetArtPath(pet, 'home'), 72, -42, 430, 430);
-        homePet.setScale(new Vec3(0.985, 0.985, 1));
-        homePet.on(Node.EventType.TOUCH_END, () => this.openHomePetPicker());
-        tween(homePet)
-            .repeatForever(
-                tween(homePet)
-                    .to(1.8, { position: new Vec3(72, -29, 0), scale: new Vec3(1.015, 1.025, 1) }, { easing: 'sineInOut' })
-                    .to(1.8, { position: new Vec3(72, -42, 0), scale: new Vec3(0.985, 0.985, 1) }, { easing: 'sineInOut' }),
-            )
-            .start();
-        tag(scene, 'SpeciesTag', `${speciesMeta.element} · ${speciesMeta.name}`, 72, 270, 190, pet?.isMutant ? CuteTheme.peach : CuteTheme.mint);
-        if (pet?.isMutant) tag(scene, 'MutationTag', '✨ 变异', 220, 226, 98, CuteTheme.peach);
-
-        headingTag(scene, 'PromoTitle', '限时福利', -274, 365, 118, CuteTheme.paperWarm);
-        button(scene, 'ValueMall', '超值商城', -274, 276, 122, 112, () => this.showPage('shop'), {
-            icon: '🎁', fill: CuteTheme.peach, fontSize: 16, radius: 26, subtitle: '每日特惠',
-        });
-        button(scene, 'MonthCard', '月卡', -274, 142, 122, 112, () => { this.benefitMode = 'month'; this.showPage('benefits'); }, {
-            icon: '🌙', fill: CuteTheme.lilac, fontSize: 17, radius: 26, subtitle: '每日钻石',
-        });
-        button(scene, 'BattlePass', '战令', -274, 8, 122, 112, () => { this.benefitMode = 'pass'; this.showPage('benefits'); }, {
-            icon: '🏅', fill: CuteTheme.honey, fontSize: 17, radius: 26, subtitle: '赛季奖励',
-        });
-        const welfareButton = button(scene, 'Welfare', '福利', -274, -126, 122, 112, () => { this.benefitMode = 'sign'; this.showPage('benefits'); }, {
-            icon: '🎀', fill: CuteTheme.mint, fontSize: 17, radius: 26, subtitle: '签到活动',
-        });
-        this.addNotificationBadge(welfareButton, this.pageNotificationCount('benefits'), 43, 42);
-
-        // Keep the pet stage clean while making the five-pet tactical loop visible
-        // from the first screen instead of leading only with welfare entries.
-        tag(scene, 'TapHint', '轻点宝宝更换心仪', 72, -326, 210, CuteTheme.paperWarm);
-        button(scene, 'CoreAdventure', '探索生态大陆', 72, -392, 286, 58, () => { this.adventureMode='world'; this.showPage('adventure'); }, {
-            icon: '👑', fill: CuteTheme.honey, fontSize: 17, radius: 25,
+        renderHomePage(this.pageRoot, {
+            pet: this.homePet(),
+            notificationCount: this.pageNotificationCount('benefits'),
+            onSelectPet: () => this.openHomePetPicker(),
+            onActivity: (activity: HomeActivity) => {
+                const modes: Record<HomeActivity, typeof this.benefitMode> = {
+                    sign: 'sign',
+                    newcomer: 'month',
+                    daily: 'daily',
+                    events: 'achievement',
+                };
+                this.benefitMode = modes[activity];
+                this.showPage('benefits');
+            },
         });
     }
 
