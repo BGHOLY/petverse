@@ -163,7 +163,7 @@ export class MainUI extends Component {
 
     private capacitySummary: any = null;
 
-    private shopCategory: 'featured' | 'nurture' | 'skills' | 'materials' = 'featured';
+    private shopCategory: 'featured' | 'nurture' | 'skills' | 'materials' | 'hatch' | 'special' = 'featured';
     private selectedShopItemId = 0;
     private shopBuyCount = 1;
 
@@ -1133,47 +1133,62 @@ export class MainUI extends Component {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
 
-        const page = panel(root, 'ShopPage', 0, -2, 692, 910, new Color(255, 246, 224, 255), 40, true, CuteTheme.caramelSoft, 4);
-        text(page, 'Wallet', `金币 ${formatNumber(GameStore.user?.gold)}　◆ 钻石 ${formatNumber(GameStore.user?.diamond)}`, 0, 382, 600, 32, 16, CuteTheme.caramel, 'center', true);
-        const categories: Array<['featured' | 'nurture' | 'skills' | 'materials', string, string]> = [
-            ['featured', '精选', '🎁'], ['nurture', '养成', '🧪'], ['skills', '技能书', '📕'], ['materials', '材料', '🧩'],
+        const page = panel(root, 'ShopPage', 0, -2, 692, 910, new Color(255, 247, 228, 255), 34, true, CuteTheme.caramelSoft, 3);
+        headingTag(page, 'ShopSign', '萌宠集市', -244, 398, 150, CuteTheme.honey);
+        text(page, 'Wallet', `金币 ${formatNumber(GameStore.user?.gold)}　钻石 ${formatNumber(GameStore.user?.diamond)}`, 42, 402, 300, 30, 14, CuteTheme.caramel, 'center', true);
+        text(page, 'RefreshTime', '每日 05:00 刷新', 144, 366, 190, 26, 12, CuteTheme.muted, 'center');
+        button(page, 'Refresh', '刷新', 286, 366, 76, 36, () => void this.refreshPageData('shop'), { fill: CuteTheme.mint, fontSize: 12, radius: 15 });
+
+        const categories: Array<[typeof this.shopCategory, string]> = [
+            ['featured', '精选'], ['nurture', '养成'], ['skills', '技能书'], ['materials', '材料'], ['hatch', '孵化'], ['special', '特殊'],
         ];
-        categories.forEach(([key, title, icon], index) => button(page, `ShopCategory_${key}`, title, -234 + index * 156, 330, 142, 54, () => {
+        const rail = panel(page, 'ShopCategoryRail', -270, -24, 126, 744, new Color(248, 238, 213, 255), 24, false, CuteTheme.white, 2);
+        categories.forEach(([key, title], index) => button(rail, `ShopCategory_${key}`, title, 0, 306 - index * 112, 108, 78, () => {
             this.shopCategory = key; this.shopBuyCount = 1; this.ensureSelectedShopItem(); this.renderCurrentPage(false);
-        }, { icon, selected: this.shopCategory === key, fill: this.shopCategory === key ? CuteTheme.honey : CuteTheme.paper, fontSize: 14, radius: 22 }));
+        }, { selected: this.shopCategory === key, fill: this.shopCategory === key ? CuteTheme.honey : CuteTheme.paper, fontSize: 14, radius: 20 }));
 
         const items = this.filteredShopItems();
-        if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 0, 80, 480, 100, 22, CuteTheme.muted, 'center', true); return; }
+        if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 82, 80, 470, 100, 21, CuteTheme.muted, 'center', true); return; }
         this.ensureSelectedShopItem();
         const rows = Math.ceil(items.length / 3);
-        const area = this.createScrollArea(page, 'ShopItemsScroll', 0, 42, 650, 430, 650, rows * 142 + 18, 'vertical');
+        const area = this.createScrollArea(page, 'ShopItemsScroll', 72, 86, 500, 476, 500, Math.max(476, rows * 154 + 16), 'vertical');
         items.forEach((item, index) => {
             const col = index % 3;
             const rowIndex = Math.floor(index / 3);
             const selected = Number(item?.id || 0) === this.selectedShopItemId;
-            const card = panel(area.content, `ShopItem_${item?.id ?? index}`, -214 + col * 214, -64 - rowIndex * 142, 196, 124,
-                selected ? new Color(255, 240, 196, 255) : CuteTheme.paper, 24, true, selected ? CuteTheme.honeyDark : CuteTheme.white, selected ? 4 : 2);
-            button(card, 'Select', safeName(item?.name, item?.itemCode || '商品'), 0, 0, 190, 118, () => {
+            const owned = GameStore.inventory.find((ownedItem) => String(ownedItem?.itemCode || '') === String(item?.itemCode || ''));
+            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -164 + col * 164, -70 - rowIndex * 154, 152, 140, () => {
                 this.selectedShopItemId = Number(item?.id || 0); this.shopBuyCount = 1; this.renderCurrentPage(false);
-            }, { icon: this.itemIcon(item), fill: selected ? new Color(255, 239, 187, 255) : this.shopItemColor(item), fontSize: 13, radius: 22, selected,
-                subtitle: `${item?.currencyType === 'diamond' ? '◆' : '●'} ${formatNumber(item?.price || 0)}` });
+            }, { fill: selected ? new Color(255, 239, 187, 255) : this.shopItemColor(item), fontSize: 13, radius: 20, selected,
+                subtitle: `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)} · 有${Number(owned?.quantity || 0)}` });
+            const face = card.getChildByName('Face');
+            const title = face?.getChildByName('Title');
+            const subtitle = face?.getChildByName('Subtitle');
+            if (title) title.setPosition(0, -24, 0);
+            if (subtitle) subtitle.setPosition(0, -48, 0);
+            drawUiIcon(card, 'ProductIcon', this.isSkillBook(item) ? 'skills' : String(item?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', 0, 28, 40, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
+            const limit = Number(item?.purchaseLimit || item?.limit || 0);
+            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 45, 49, 56, CuteTheme.peach);
         });
 
         const selected = this.selectedShopItem();
-        const detail = panel(page, 'ShopDetail', 0, -318, 640, 184, new Color(255, 252, 239, 255), 28, false, CuteTheme.caramelSoft, 2);
+        const detail = panel(page, 'ShopDetail', 72, -326, 500, 196, new Color(255, 252, 239, 255), 24, false, CuteTheme.caramelSoft, 2);
         if (!selected) { text(detail, 'NoSelection', '请选择商品', 0, 0, 300, 50, 20, CuteTheme.muted, 'center', true); return; }
-        text(detail, 'Icon', this.itemIcon(selected), -278, 22, 72, 72, 42, CuteTheme.honeyDark, 'center', true);
-        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -222, 50, 300, 32, 20, CuteTheme.caramel, 'left', true);
-        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -222, 6, 350, 62, 14, CuteTheme.muted, 'left', false);
+        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -210, 30, 56, CuteTheme.honeyDark);
+        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -168, 56, 250, 30, 19, CuteTheme.caramel, 'left', true);
+        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -168, 14, 270, 56, 13, CuteTheme.muted, 'left', false);
         const owned = GameStore.inventory.find((item) => String(item?.itemCode || '') === String(selected?.itemCode || ''));
-        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -222, -48, 180, 28, 13, CuteTheme.mintDark, 'left', true);
-        button(detail, 'Minus', '－', 85, -24, 46, 46, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 22, radius: 20 });
-        text(detail, 'Count', `×${this.shopBuyCount}`, 145, -24, 70, 36, 18, CuteTheme.caramel, 'center', true);
-        button(detail, 'Plus', '＋', 205, -24, 46, 46, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 22, radius: 20 });
+        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -168, -54, 180, 26, 12, CuteTheme.mintDark, 'left', true);
+        button(detail, 'Minus', '－', 50, -38, 42, 42, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 20, radius: 17 });
+        text(detail, 'Count', `×${this.shopBuyCount}`, 102, -38, 58, 32, 16, CuteTheme.caramel, 'center', true);
+        button(detail, 'Plus', '＋', 154, -38, 42, 42, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 20, radius: 17 });
         const total = Number(selected?.price || 0) * this.shopBuyCount;
-        button(detail, 'Buy', `${selected?.currencyType === 'diamond' ? '◆' : '●'} ${formatNumber(total)} 购买`, 216, 45, 190, 58, () => void this.buySelectedShopItem(), {
-            icon: '🛒', fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 15, radius: 24, disabled: this.busy.has('shop:buy') });
-        text(page, 'ShopHint', items.length > 9 ? '商品区域可上下滑动；宠物蛋会进入孵化室仓库。' : '宠物蛋会进入孵化室仓库；技能书可在打技能页面使用。', 0, -421, 600, 28, 13, CuteTheme.muted, 'center', true);
+        const balance = selected?.currencyType === 'diamond' ? Number(GameStore.user?.diamond || 0) : Number(GameStore.user?.gold || 0);
+        const soldOut = Boolean(selected?.soldOut) || (selected?.stock !== undefined && Number(selected?.stock || 0) <= 0);
+        const insufficient = total > balance;
+        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 144, 48, 190, 56, () => void this.buySelectedShopItem(), {
+            fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 14, radius: 22, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
+        text(page, 'ShopHint', '购买后停留当前分类；宠物蛋进入孵化室，技能书进入背包。', 72, -433, 500, 26, 12, CuteTheme.muted, 'center', true);
     }
 
     private renderBenefits() {
@@ -3422,6 +3437,14 @@ export class MainUI extends Component {
         const items = Array.isArray((GameStore as any).shopItems) ? (GameStore as any).shopItems : [];
         if (this.shopCategory === 'featured') return items;
         if (this.shopCategory === 'skills') return items.filter((item) => this.isSkillBook(item));
+        if (this.shopCategory === 'hatch') return items.filter((item) => {
+            const value = `${item?.type || ''} ${item?.itemCode || ''} ${item?.effect || ''}`.toLowerCase();
+            return /egg|hatch|incubat|accelerat/.test(value);
+        });
+        if (this.shopCategory === 'special') return items.filter((item) => {
+            const value = `${item?.type || ''} ${item?.itemCode || ''}`.toLowerCase();
+            return String(item?.currencyType || '') === 'diamond' || /special|limited|vip/.test(value);
+        });
         if (this.shopCategory === 'nurture') return items.filter((item) => {
             const type = String(item?.type || '').toLowerCase();
             const effect = String(item?.effect || '').toLowerCase();
@@ -3429,7 +3452,10 @@ export class MainUI extends Component {
         });
         return items.filter((item) => {
             const type = String(item?.type || '').toLowerCase();
-            return !this.isSkillBook(item) && !['food', 'potion', 'capacity', 'clean'].includes(type);
+            const value = `${type} ${item?.itemCode || ''} ${item?.effect || ''}`.toLowerCase();
+            return !this.isSkillBook(item)
+                && !['food', 'potion', 'capacity', 'clean'].includes(type)
+                && !/egg|hatch|incubat|accelerat|special|limited|vip/.test(value);
         });
     }
 
