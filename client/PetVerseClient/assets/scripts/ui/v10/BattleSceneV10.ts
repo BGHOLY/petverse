@@ -31,13 +31,7 @@ export type FivePetBattleOptions = {
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
 type Directive = { type: DirectiveType; targetId?: string; useUltimate?: boolean };
 
-const FORMATION_POSITIONS: Record<string, Array<[number, number]>> = {
-    dragon: [[0, 104], [-196, 26], [196, 26], [-104, -92], [104, -92]],
-    turtle: [[-146, 88], [146, 88], [0, 2], [-164, -102], [164, -102]],
-    crane: [[0, 108], [-174, 18], [174, 18], [-150, -100], [150, -100]],
-    tiger: [[-130, 96], [130, 96], [0, 2], [-186, -96], [186, -96]],
-    phoenix: [[0, 106], [-180, 24], [180, 24], [-108, -96], [108, -96]],
-};
+const DEFAULT_FORMATION_POSITIONS: Array<[number, number]> = [[0, 104], [-196, 26], [196, 26], [-104, -92], [104, -92]];
 
 const COMMAND_META: Record<Exclude<DirectiveType, 'auto'>, { title: string; icon: string; side: 'enemy' | 'ally'; fill: Color }> = {
     focus: { title: '集火', icon: '🎯', side: 'enemy', fill: CuteTheme.peach },
@@ -84,7 +78,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     const render = () => {
         clearNode(battlefield);
         unitNodes.clear();
-        const boss = Boolean(session?.bossBattle || ['boss', 'tower', 'guild-boss'].includes(options.mode));
+        const boss = Boolean(session?.bossBattle || ['boss', 'tower', 'guild-boss'].indexOf(options.mode) >= 0);
         panel(battlefield, 'Sky', 0, 222, 720, 840, boss ? new Color(83, 70, 112, 255) : new Color(164, 216, 236, 255), 0, false, CuteTheme.transparent, 0);
         panel(battlefield, 'Ground', 0, -392, 720, 420, boss ? new Color(77, 65, 58, 255) : new Color(180, 218, 157, 255), 0, false, CuteTheme.transparent, 0);
 
@@ -105,7 +99,9 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
 
         const info = panel(battlefield, 'RoundInfo', 0, -336, 672, 92, new Color(255, 250, 232, 238), 20, false, CuteTheme.caramelSoft, 2);
         const logs = Array.isArray(session.battleLog) ? session.battleLog.slice(-3) : [];
-        text(info, 'Logs', logs.map((item: any) => `• ${String(item?.text || '').slice(0, 42)}`).join('\n') || '等待本回合战术指令', -310, 0, 620, 72, 13, CuteTheme.caramel, 'left', false);
+        const timeline=Array.from({length:Math.min(8,Math.max(1,Number(session?.round||1)))},(_,index)=>index===Math.min(7,Number(session?.round||1)-1)?'●':'○').join(' ');
+        text(info,'Timeline',`回合轨迹 ${timeline}`, -310,28,620,24,12,CuteTheme.muted,'left',true);
+        text(info, 'Logs', logs.map((item: any) => `• ${String(item?.text || '').slice(0, 42)}`).join('\n') || '等待本回合战术指令', -310, -13, 620, 58, 12, CuteTheme.caramel, 'left', false);
 
         const command = panel(battlefield, 'CommandBar', 0, -506, 700, 244, new Color(255, 246, 224, 252), 30, true, CuteTheme.caramelSoft, 4);
         if (session.status !== 'active') {
@@ -128,15 +124,19 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
 
         const initialCd = Number(session.ultimate?.initialCooldown || 3);
         const ultimateRemaining = Math.max(Number(cd.ultimate || 0), initialCd - Number(session.round || 1));
-        const ultimateReady = ultimateRemaining <= 0;
-        button(command, 'Ultimate', ultimateReady ? `阵法大招 · ${session.ultimate?.name || '发动'}` : `阵法大招 · ${ultimateRemaining}回合后`, -130, -68, 330, 58, () => void send({ type: 'focus', targetId: firstAliveId(true), useUltimate: true }), {
+        const energyCost=Number(session?.commands?.ultimate?.energyCost||session?.ultimate?.energyCost||cd.formationEnergyCost||100);
+        const energy=Number(session?.commands?.ultimate?.energy||cd.formationEnergy||0);
+        const ultimateReady = ultimateRemaining <= 0&&energy>=energyCost;
+        progress(command,'FormationEnergy',-115,-18,250,10,energy/Math.max(1,energyCost),CuteTheme.lilac);
+        text(command,'EnergyText',`阵法能量 ${energy}/${energyCost}`,95,-18,180,22,11,CuteTheme.muted,'left',true);
+        button(command, 'Ultimate', ultimateReady ? `阵法大招 · ${session.ultimate?.name || '发动'}` : energy<energyCost?`阵法大招 · 能量不足`:`阵法大招 · ${ultimateRemaining}回合后`, -130, -73, 330, 54, () => void send({ type: 'focus', targetId: firstAliveId(true), useUltimate: true }), {
             icon: '✦', fill: CuteTheme.lilac, fontSize: 15, radius: 24, disabled: processing || !ultimateReady,
         });
-        button(command, 'Auto', autoMode ? '本场自动中' : '开启本场自动', 230, -68, 170, 58, () => {
-            autoMode = true;
+        button(command, 'Auto', autoMode ? '关闭自动' : '开启自动', 230, -73, 170, 54, () => {
+            autoMode = !autoMode;
             armedDirective = null;
-            promptOverride = '已开启本场自动';
-            void send({ type: 'auto' });
+            promptOverride = autoMode?'已开启本场自动':'已关闭自动，可继续手动选择指令';
+            if(autoMode)void send({ type: 'auto' });else { timerToken+=1; render(); scheduleAuto(); }
         }, { icon: '▶', selected: autoMode, fill: CuteTheme.paperWarm, fontSize: 14, radius: 24, disabled: processing });
     };
 
@@ -160,7 +160,8 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const rewardText = win && (rewards.gold || rewards.diamond || rewards.exp)
             ? `\n奖励：金币 ${formatNumber(rewards.gold || 0)}　钻石 ${formatNumber(rewards.diamond || 0)}　经验 ${formatNumber(rewards.exp || 0)}` : '';
         text(command, 'Summary', `总伤害 ${formatNumber(summary?.left?.damage || 0)}　治疗 ${formatNumber(summary?.left?.healing || 0)}　回合 ${Math.max(1, Number(session.round || 1))}${rewardText}`, 0, 5, 640, 70, 15, CuteTheme.caramel, 'center', false);
-        button(command, 'CloseResult', '返回冒险', 0, -76, 220, 58, close, { icon: '↩', fill: CuteTheme.honey, fontSize: 18, radius: 25 });
+        button(command, 'CloseResult', '返回冒险', -120, -76, 190, 58, close, { icon: '↩', fill: CuteTheme.honey, fontSize: 17, radius: 25 });
+        button(command, 'Replay', '再战一次', 120, -76, 190, 58, () => restartBattle(), { icon: '⚔', fill: CuteTheme.mint, fontSize: 17, radius: 25 });
         if (!completionNotified) {
             completionNotified = true;
             options.onComplete?.(session);
@@ -169,7 +170,11 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     };
 
     const renderTeam = (team: any[], formationCode: string, enemy: boolean) => {
-        const positions = FORMATION_POSITIONS[String(formationCode)] || FORMATION_POSITIONS.dragon;
+        const formation=enemy?session?.enemyFormation:session?.formation;
+        const configured=Array.isArray(formation?.positions)?formation.positions:Array.isArray(formation?.slots)?formation.slots:[];
+        const positions:Array<[number,number]>=configured.length===5
+            ? configured.map((slot:any)=>[Number(slot?.x||0)*1.25,Number(slot?.y||0)*0.68] as [number,number])
+            : DEFAULT_FORMATION_POSITIONS;
         team.slice(0, 5).forEach((unit: any, index: number) => {
             const [px, py] = positions[index] || [0, 0];
             const x = px;
@@ -205,16 +210,17 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     const createDragCommand = (parent: Node, type: Exclude<DirectiveType, 'auto'>, x: number, y: number, cd: any) => {
         const meta = COMMAND_META[type];
         const cooling = type !== 'focus' && Number(cd[type] || 0) > 0;
-        const label = cooling ? `${meta.title}(${Number(cd[type] || 0)})` : meta.title;
+        const hasTarget=type!=='cleanse'||(session?.leftTeam||[]).some((unit:any)=>unit?.alive!==false&&(unit?.statuses||[]).some((status:any)=>['stun','freeze','dot','healBlock','slow'].indexOf(String(status?.type))>=0));
+        const label = cooling ? `${meta.title}(${Number(cd[type] || 0)})` : !hasTarget?`${meta.title}(无目标)`:meta.title;
         const node = button(parent, `Cmd_${type}`, label, x, y, 146, 62, () => {
-            if(cooling||processing)return;
+            if(cooling||processing||!hasTarget)return;
             armedDirective=armedDirective===type?null:type;
             promptOverride=armedDirective
                 ? `已选择“${meta.title}”：拖动中间箭头，或直接点击${meta.side==='enemy'?'敌方':'我方'}宝宝`
                 : '已取消目标选择';
             void AudioDirector.playSfx('click_1');
             render();
-        }, { icon: meta.icon, fill: meta.fill, selected: armedDirective===type, fontSize: 14, radius: 24, disabled: processing || cooling });
+        }, { icon: meta.icon, fill: meta.fill, selected: armedDirective===type, fontSize: 14, radius: 24, disabled: processing || cooling || !hasTarget });
         return node;
     };
 
@@ -319,6 +325,10 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
                 if (target?.isValid) tween(target).by(0.05, { position: new Vec3(7, 0, 0) }).by(0.05, { position: new Vec3(-14, 0, 0) }).by(0.05, { position: new Vec3(7, 0, 0) }).start();
             } else if (event?.type === 'heal') void AudioDirector.playSfx('heal');
             else if (/shield/.test(String(event?.type))) void AudioDirector.playSfx('shield');
+            else if (event?.type === 'ultimate') {
+                void AudioDirector.playSfx('magic');
+                tween(battlefield).to(0.08,{scale:new Vec3(1.02,1.02,1)}).to(0.14,{scale:Vec3.ONE}).start();
+            }
             await wait(90);
         }
     };
@@ -366,9 +376,23 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         setTimeout(tick, autoMode ? 300 : 1000);
     };
 
+    const restartBattle=()=>{
+        timerToken+=1;
+        session=null;
+        processing=false;
+        autoMode=options.mode==='arena';
+        countdown=8;
+        completionNotified=false;
+        promptOverride='';
+        armedDirective=null;
+        directiveTargets.clear();
+        render();
+        void start();
+    };
+
     const start = async () => {
         render();
-        const boss = ['boss', 'tower', 'guild-boss'].includes(options.mode);
+        const boss = ['boss', 'tower', 'guild-boss'].indexOf(options.mode) >= 0;
         await AudioDirector.playBgm(boss ? 'boss' : 'battle');
         const result = options.mode === 'arena'
             ? await ApiClient.post('/battle/v10/arena', { formationCode: options.formationCode, difficulty: options.difficulty || 1.05 })

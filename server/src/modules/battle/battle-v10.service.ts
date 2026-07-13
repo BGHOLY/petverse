@@ -216,6 +216,8 @@ export class BattleV10Service {
     const events: any[] = [{ round: session.round, type: 'round', text: `第 ${session.round} 回合` }];
     this.tickStatuses(left, session.round, events);
     this.tickStatuses(right, session.round, events);
+    this.chargeFormationEnergy(session, 'left', events);
+    this.chargeFormationEnergy(session, 'right', events);
     this.applyDirective(session, 'left', leftDirective, events);
     this.applyDirective(session, 'right', rightDirective, events);
 
@@ -370,7 +372,8 @@ export class BattleV10Service {
     }
 
     if (normalized.type === 'shield' && Number(cooldowns.shield || 0) <= 0) {
-      const targets = allies.filter((unit) => unit.alive).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp).slice(0, 2);
+      const selected = allies.find((unit) => unit.id === normalized.targetId && unit.alive);
+      const targets = selected ? [selected] : allies.filter((unit) => unit.alive).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp).slice(0, 1);
       for (const target of targets) {
         const amount = Math.max(1, Math.round(target.maxHp * 0.08));
         target.shield += amount;
@@ -400,7 +403,8 @@ export class BattleV10Service {
     const cooldowns = session.cooldowns?.[side] || {};
     const formationCode = side === 'left' ? session.formationCode : session.enemyFormationCode;
     const config = getFormationConfig(formationCode);
-    if (session.round < config.ultimate.initialCooldown || Number(cooldowns.ultimate || 0) > 0) return;
+    const energyCost = Number(config.ultimate.energyCost || 100);
+    if (session.round < config.ultimate.initialCooldown || Number(cooldowns.ultimate || 0) > 0 || Number(cooldowns.formationEnergy || 0) < energyCost) return;
     const allies = (side === 'left' ? session.leftTeam : session.rightTeam) as BattleUnit[];
     const enemies = (side === 'left' ? session.rightTeam : session.leftTeam) as BattleUnit[];
     const livingAllies = allies.filter((unit) => unit.alive);
@@ -445,7 +449,21 @@ export class BattleV10Service {
     }
     cooldowns.ultimate = config.ultimate.cooldown;
     cooldowns.ultimateUsed = Number(cooldowns.ultimateUsed || 0) + 1;
+    cooldowns.formationEnergy = Math.max(0, Number(cooldowns.formationEnergy || 0) - energyCost);
     session.cooldowns[side] = cooldowns;
+  }
+
+  private chargeFormationEnergy(session: BattleSessionV10, side: Side, events: any[]) {
+    const cooldowns = session.cooldowns?.[side] || {};
+    const formationCode = side === 'left' ? session.formationCode : session.enemyFormationCode;
+    const cost = Number(getFormationConfig(formationCode).ultimate.energyCost || 100);
+    const living = (side === 'left' ? session.leftTeam : session.rightTeam as BattleUnit[]).filter((unit: BattleUnit) => unit.alive).length;
+    const gain = 18 + living * 2;
+    const before = Number(cooldowns.formationEnergy || 0);
+    cooldowns.formationEnergyCost = cost;
+    cooldowns.formationEnergy = Math.min(cost, before + gain);
+    session.cooldowns[side] = cooldowns;
+    if (cooldowns.formationEnergy !== before) events.push({ round: session.round, type: 'formation-energy', side, value: gain, total: cooldowns.formationEnergy, text: `${side === 'left' ? '我方' : '敌方'}阵法能量 +${gain}` });
   }
 
   private selectAttackTarget(session: BattleSessionV10, actor: BattleUnit, enemies: BattleUnit[]) {
@@ -722,7 +740,7 @@ export class BattleV10Service {
   }
 
   private autoUltimate(allies: BattleUnit[], cooldowns: any, tactics: any) {
-    if (Number(cooldowns.ultimate || 0) > 0) return false;
+    if (Number(cooldowns.ultimate || 0) > 0 || Number(cooldowns.formationEnergy || 0) < Number(cooldowns.formationEnergyCost || 100)) return false;
     const policy = String(tactics?.ultimatePolicy || 'ready');
     if (policy === 'lowHp') return this.teamHpRate(allies) < 0.55;
     if (policy === 'bossPhase') return allies.some((unit) => unit.energy >= 100) || this.teamHpRate(allies) < 0.7;
@@ -743,6 +761,8 @@ export class BattleV10Service {
       ultimate: 0,
       ultimateReadyRound: getFormationConfig(code).ultimate.initialCooldown,
       ultimateUsed: 0,
+      formationEnergy: 0,
+      formationEnergyCost: Number(getFormationConfig(code).ultimate.energyCost || 100),
       focusTargetId: '',
       guardTargetId: '',
       guardProtectorId: '',
@@ -866,7 +886,9 @@ export class BattleV10Service {
         ultimate: {
           cooldown: Number(session.cooldowns?.left?.ultimate || 0),
           readyRound: leftFormation.ultimate.initialCooldown,
-          enabled: session.status === 'active' && session.round >= leftFormation.ultimate.initialCooldown && Number(session.cooldowns?.left?.ultimate || 0) <= 0,
+          energy: Number(session.cooldowns?.left?.formationEnergy || 0),
+          energyCost: Number(leftFormation.ultimate.energyCost || 100),
+          enabled: session.status === 'active' && session.round >= leftFormation.ultimate.initialCooldown && Number(session.cooldowns?.left?.ultimate || 0) <= 0 && Number(session.cooldowns?.left?.formationEnergy || 0) >= Number(leftFormation.ultimate.energyCost || 100),
         },
       },
       summary: {
