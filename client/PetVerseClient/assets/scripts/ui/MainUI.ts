@@ -49,7 +49,7 @@ import { renderFormationPanel, renderGuildPanel } from './v10/V10Panels';
 import { AppRouter } from './v2/AppRouter';
 import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
 import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
-import { renderBottomNavigation } from './v2/HandPaintedUi';
+import { drawUiIcon, renderBottomNavigation } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
 import { HomeActivity, renderHomePage } from './v2/pages/HomePage';
 
@@ -113,6 +113,9 @@ export class MainUI extends Component {
     private formationCandidateNodes = new Map<number, Node>();
     private homePetId = loadHomePetId();
     private inventoryTargetPetId = 0;
+    private inventoryCategory: 'all' | 'consumable' | 'material' | 'skill' = 'all';
+    private inventorySort: 'category' | 'quantity' = 'category';
+    private inventoryDetailItem: any | null = null;
     private petFilter = loadPetFilter();
     private readonly router = new AppRouter('home');
     private lastBattleMode: 'tower' | 'pve' | 'friend' = 'tower';
@@ -261,6 +264,7 @@ export class MainUI extends Component {
         if (changed) this.router.navigate(page);
         this.currentPage = this.router.current;
         this.detailSkill = null;
+        this.inventoryDetailItem = null;
         this.hatchAcceleratorOpen = false;
         this.hatchAcceleratorEggId = 0;
         this.homePetPickerOpen = false;
@@ -843,6 +847,7 @@ export class MainUI extends Component {
     private currentScrollScope() {
         const parts: string[] = [this.currentPage];
         if (this.currentPage === 'shop') parts.push(this.shopCategory);
+        if (this.currentPage === 'inventory') parts.push(this.inventoryCategory, this.inventorySort);
         if (this.currentPage === 'benefits') parts.push(this.benefitMode);
         if (this.currentPage === 'friends') parts.push(this.friendMode);
         if (this.currentPage === 'marriage') parts.push(this.marriageMode);
@@ -1056,51 +1061,72 @@ export class MainUI extends Component {
         const root = this.pageRoot;
         this.ensureExperienceSelections();
         const eggItems = GameStore.inventory.filter((item) => this.isEggItem(item));
-        const items = GameStore.inventory.filter((item) => !this.isEggItem(item));
+        const allItems = GameStore.inventory.filter((item) => !this.isEggItem(item));
         const targetPet = this.inventoryTargetPet();
 
-        const bag = panel(root, 'Bag', 0, 0, 692, 905, new Color(255, 244, 220, 255), 40, true, CuteTheme.caramelSoft, 4);
-        headingTag(bag, 'BagTag', `背包物品 ${items.length}`, -225, 390, 176, CuteTheme.mint);
-        text(bag, 'EggNotice', eggItems.length ? `检测到 ${eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0)} 个宠物蛋，正在转入孵化室…` : '宠物蛋统一存放在孵化室，不占普通背包格。', -305, 348, 470, 32, 13, CuteTheme.muted, 'left', true);
-        button(bag, 'HatcheryShortcut', '孵化室', 255, 370, 120, 50, () => this.showPage('hatchery'), { icon: '🥚', fill: CuteTheme.honey, fontSize: 13, radius: 22 });
+        const categoryOf = (item: any): typeof this.inventoryCategory => {
+            if (this.isSkillBook(item)) return 'skill';
+            if (Boolean(item?.usable)) return 'consumable';
+            return 'material';
+        };
+        const items = allItems
+            .filter((item) => this.inventoryCategory === 'all' || categoryOf(item) === this.inventoryCategory)
+            .sort((a, b) => this.inventorySort === 'quantity'
+                ? Number(b?.quantity || 0) - Number(a?.quantity || 0)
+                : categoryOf(a).localeCompare(categoryOf(b)) || String(a?.name || '').localeCompare(String(b?.name || '')));
 
-        const target = panel(bag, 'UseTarget', 0, 282, 640, 92, new Color(246, 253, 237, 255), 24, false, CuteTheme.mintDark, 2);
-        text(target, 'Title', '道具使用对象', -286, 22, 150, 30, 16, CuteTheme.caramel, 'left', true);
+        const bag = panel(root, 'Bag', 0, 0, 692, 905, new Color(255, 247, 228, 255), 34, true, CuteTheme.caramelSoft, 3);
+        headingTag(bag, 'BagTag', '布艺背包', -244, 398, 150, CuteTheme.mint);
+        text(bag, 'Capacity', `容量 ${allItems.length}/${Number(GameStore.user?.inventoryCapacity || 120)}`, 72, 399, 150, 28, 14, CuteTheme.caramel, 'center', true);
+        button(bag, 'Sort', this.inventorySort === 'category' ? '按分类' : '按数量', 260, 399, 118, 42, () => {
+            this.inventorySort = this.inventorySort === 'category' ? 'quantity' : 'category'; this.renderCurrentPage(false);
+        }, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18 });
+
+        const categories: Array<[typeof this.inventoryCategory, string]> = [['all', '全部'], ['consumable', '消耗品'], ['material', '材料'], ['skill', '技能书']];
+        categories.forEach(([key, title], index) => button(bag, `InventoryCategory_${key}`, title, -240 + index * 160, 344, 146, 48, () => {
+            this.inventoryCategory = key; this.renderCurrentPage(false);
+        }, { selected: this.inventoryCategory === key, fill: this.inventoryCategory === key ? CuteTheme.honey : CuteTheme.paper, fontSize: 14, radius: 19 }));
+
+        text(bag, 'EggNotice', eggItems.length
+            ? `${eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0)} 个宠物蛋已单独存放在孵化室`
+            : '宠物蛋单独存放在孵化室，不占普通背包格', -300, 300, 440, 30, 12, CuteTheme.muted, 'left', true);
+        button(bag, 'HatcheryShortcut', '查看孵化室', 250, 300, 132, 40, () => this.showPage('hatchery'), { fill: CuteTheme.honey, fontSize: 12, radius: 17 });
+
+        const target = panel(bag, 'UseTarget', 0, 244, 640, 74, new Color(241, 250, 232, 255), 20, false, CuteTheme.mintDark, 2);
+        text(target, 'Title', '使用对象', -286, 0, 90, 28, 14, CuteTheme.caramel, 'left', true);
         if (targetPet) {
-            image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -82, 0, 66, 66, CuteTheme.paperWarm);
-            text(target, 'PetName', safeName(targetPet?.nickname, '宝宝'), -36, 18, 205, 30, 17, CuteTheme.caramel, 'left', true);
-            text(target, 'Meta', `${safeName(targetPet?.species, getPetSpeciesMeta(targetPet).name)}　Lv.${Number(targetPet?.level || 1)}　${this.rarityName(targetPet)}`, -36, -18, 240, 26, 13, CuteTheme.muted, 'left', true);
-            button(target, 'Prev', '', 190, 0, 48, 48, () => this.cycleInventoryTarget(-1), { icon: '‹', fill: CuteTheme.paperWarm, radius: 20 });
-            button(target, 'Next', '更换', 258, 0, 88, 48, () => this.cycleInventoryTarget(1), { icon: '›', fill: CuteTheme.honey, fontSize: 12, radius: 20 });
+            image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -164, 0, 58, 58, CuteTheme.paperWarm);
+            text(target, 'PetName', safeName(targetPet?.nickname, '宠物'), -126, 14, 210, 26, 16, CuteTheme.caramel, 'left', true);
+            text(target, 'Meta', `${getPetSpeciesMeta(targetPet).name} · Lv.${Number(targetPet?.level || 1)}`, -126, -14, 220, 24, 12, CuteTheme.muted, 'left');
+            button(target, 'Prev', '‹', 196, 0, 46, 42, () => this.cycleInventoryTarget(-1), { fill: CuteTheme.paperWarm, fontSize: 22, radius: 17 });
+            button(target, 'Next', '›', 252, 0, 46, 42, () => this.cycleInventoryTarget(1), { fill: CuteTheme.honey, fontSize: 22, radius: 17 });
         } else {
-            text(target, 'NoPet', '暂无可使用道具的宝宝', 0, 0, 430, 42, 18, CuteTheme.peachDark, 'center', true);
+            text(target, 'NoPet', '暂无可使用道具的宠物', 0, 0, 430, 36, 16, CuteTheme.peachDark, 'center', true);
         }
 
         if (!items.length) {
-            text(bag, 'Empty', '背包空空的\n宠物蛋请前往孵化室查看', 0, -70, 420, 130, 24, CuteTheme.muted, 'center', true);
+            text(bag, 'Empty', '当前分类暂无物品', 0, -80, 420, 100, 22, CuteTheme.muted, 'center', true);
             return;
         }
 
-        const rows = Math.ceil(items.length / 2);
-        const area = this.createScrollArea(bag, 'InventoryScroll', 0, -74, 654, 590, 654, rows * 145 + 16, 'vertical');
+        const rows = Math.ceil(items.length / 4);
+        const area = this.createScrollArea(bag, 'InventoryScroll', 0, -80, 650, 548, 650, Math.max(548, rows * 148 + 12), 'vertical');
         items.forEach((item, index) => {
-            const col = index % 2;
-            const rowIndex = Math.floor(index / 2);
-            const card = panel(area.content, `Item_${item?.id || index}`, -166 + col * 332, -70 - rowIndex * 145, 310, 128,
-                this.isSkillBook(item) ? (this.itemTier(item) === 'high' ? new Color(255, 230, 230, 255) : new Color(230, 248, 226, 255)) : (index % 2 === 0 ? CuteTheme.paper : CuteTheme.mint),
-                24, true, CuteTheme.white, 3);
-            text(card, 'Icon', this.itemIcon(item), -132, 20, 54, 50, 30, CuteTheme.caramel, 'left', true);
-            text(card, 'Name', safeName(item?.name || item?.itemCode, '道具'), -78, 28, 190, 30, 17, CuteTheme.caramel, 'left', true);
-            text(card, 'Description', safeName(item?.description, '暂无描述'), -78, -6, 190, 44, 13, CuteTheme.muted, 'left', false);
-            tag(card, 'Count', `×${Number(item?.quantity || 0)}`, 116, 34, 66, CuteTheme.paperWarm);
-            const skillBook = this.isSkillBook(item);
-            const usable = Boolean(item?.usable) && !skillBook;
-            button(card, 'Action', skillBook ? '去打书' : usable ? '使用' : '材料', 98, -38, 96, 42, () => {
-                if (skillBook) { this.selectedSkillBookCode = String(item?.itemCode || ''); this.showPage('skills'); }
-                else if (usable) void this.useInventoryItem(item);
-            }, { fill: skillBook ? CuteTheme.honey : usable ? CuteTheme.green : new Color(222, 216, 202, 255), textColor: usable ? CuteTheme.white : CuteTheme.caramel, fontSize: 14, radius: 18, disabled: !skillBook && !usable || usable && !targetPet });
+            const col = index % 4;
+            const rowIndex = Math.floor(index / 4);
+            const type = categoryOf(item);
+            const card = button(area.content, `Item_${item?.id || index}`, safeName(item?.name || item?.itemCode, '道具'), -240 + col * 160, -68 - rowIndex * 148, 146, 132, () => {
+                this.inventoryDetailItem = item; this.renderUtilityModal();
+            }, { fill: type === 'skill' ? new Color(244, 229, 211, 255) : type === 'consumable' ? new Color(226, 242, 218, 255) : CuteTheme.paper, fontSize: 13, radius: 20,
+                subtitle: `拥有 ×${Number(item?.quantity || 0)}` });
+            const face = card.getChildByName('Face');
+            const title = face?.getChildByName('Title');
+            const subtitle = face?.getChildByName('Subtitle');
+            if (title) title.setPosition(0, -22, 0);
+            if (subtitle) subtitle.setPosition(0, -45, 0);
+            drawUiIcon(card, 'ItemIcon', type === 'skill' ? 'skills' : type === 'consumable' ? 'inventory' : 'collection', 0, 27, 38, type === 'skill' ? CuteTheme.peachDark : type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
         });
-        this.scrollHint(bag, 'InventoryHint', targetPet ? `使用类道具将对「${safeName(targetPet?.nickname, '宝宝')}」生效 · 上下滑动查看全部物品` : '请先拥有宝宝再使用培养道具', 0, -405, 560);
+        this.scrollHint(bag, 'InventoryHint', `当前显示 ${items.length} 种物品 · 点击物品查看详情`, 0, -412, 560);
     }
 
     private renderShop() {
@@ -2416,13 +2442,42 @@ export class MainUI extends Component {
         if (!this.utilityLayer) return;
         this.captureScrollOffsets(this.utilityLayer);
         clearNode(this.utilityLayer);
-        const active = this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
+        const active = Boolean(this.inventoryDetailItem) || this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
         this.utilityLayer.active = active;
         if (!active) return;
         if (!this.utilityLayer.getComponent(BlockInputEvents)) this.utilityLayer.addComponent(BlockInputEvents);
 
         const dim = panel(this.utilityLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 118), 0, false, CuteTheme.transparent, 0);
         dim.on(Node.EventType.TOUCH_END, () => this.closeUtilityModal());
+
+        if (this.inventoryDetailItem) {
+            const item = this.inventoryDetailItem;
+            const skillBook = this.isSkillBook(item);
+            const usable = Boolean(item?.usable) && !skillBook;
+            const targetPet = this.inventoryTargetPet();
+            const card = panel(this.utilityLayer, 'ItemDetailDialog', 0, 0, 560, 560, new Color(255, 250, 235, 255), 34, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', '物品详情', 0, 232, 160, CuteTheme.mint);
+            drawUiIcon(card, 'ItemIcon', skillBook ? 'skills' : usable ? 'inventory' : 'collection', 0, 142, 66, skillBook ? CuteTheme.peachDark : usable ? CuteTheme.mintDark : CuteTheme.honeyDark);
+            text(card, 'Name', safeName(item?.name || item?.itemCode, '道具'), 0, 78, 450, 42, 24, CuteTheme.caramel, 'center', true);
+            tag(card, 'Count', `拥有 ×${Number(item?.quantity || 0)}`, 0, 34, 120, CuteTheme.paperWarm);
+            text(card, 'Description', safeName(item?.description, '暂无详细说明'), 0, -42, 450, 96, 16, CuteTheme.muted, 'center');
+            text(card, 'Target', usable
+                ? `使用对象：${targetPet ? safeName(targetPet?.nickname, '宠物') : '暂无宠物'}`
+                : skillBook ? '该物品需要前往技能页面使用' : '材料类物品不能直接使用', 0, -118, 440, 38, 14, usable ? CuteTheme.mintDark : CuteTheme.muted, 'center', true);
+            button(card, 'Cancel', '关闭', -100, -214, 170, 54, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 22 });
+            button(card, 'Confirm', skillBook ? '前往打书' : usable ? '确认使用' : '暂不可用', 105, -214, 180, 54, () => {
+                if (skillBook) {
+                    this.selectedSkillBookCode = String(item?.itemCode || '');
+                    this.closeUtilityModal();
+                    this.showPage('skills');
+                } else if (usable) {
+                    this.inventoryDetailItem = null;
+                    this.renderUtilityModal();
+                    void this.useInventoryItem(item);
+                }
+            }, { fill: skillBook ? CuteTheme.honey : usable ? CuteTheme.mint : new Color(216, 211, 199, 255), fontSize: 15, radius: 22, disabled: !skillBook && (!usable || !targetPet) });
+            return;
+        }
 
         if (this.homePetPickerOpen) {
             const card = panel(this.utilityLayer, 'HomePetPicker', 0, 0, 640, 900, new Color(255, 250, 232, 255), 38, true, CuteTheme.caramelSoft, 4);
@@ -2525,6 +2580,7 @@ export class MainUI extends Component {
         this.hatchAcceleratorOpen=false;
         this.hatchAcceleratorEggId=0;
         this.homePetPickerOpen=false;
+        this.inventoryDetailItem=null;
         this.fusionPickerSide=null;
         this.pendingIncubation=null;
         this.fusionConfirmOpen=false;
