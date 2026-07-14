@@ -99,12 +99,13 @@ assert('adventure map keeps a dedicated region page state', mainUi.includes('pri
 assert('adventure region nodes open their matching region page', mainUi.includes('this.selectedRegionCode=String(item.code);this.adventureRegionOpen=true'));
 assert('adventure region page preserves real explore and nest battles', mainUi.includes("this.startRegionBattle('explore',region)") && mainUi.includes("this.startRegionBattle('nest',region)"));
 assert('adventure side cards route to crisis and tower pages', mainUi.includes("this.adventureMode='pve'") && mainUi.includes("this.adventureMode='tower'"));
+assert('adventure main page uses illustrated map artwork', mainUi.includes("'ui/adventure-v3/adventure-map-page-v3'"));
 assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
 const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
-assert('home page composes generated room and transparent overlay', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v3/home-overlay-v3'"));
+assert('home page composes generated room and independently scaled controls', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v4/activity-sign-v4'"));
 assert('home generated buttons preserve original activity and shortcut callbacks', homePageUi.includes('options.onActivity(activity)') && homePageUi.includes('options.onShortcut(shortcut)'));
 const handPaintedUi = read('client/PetVerseClient/assets/scripts/ui/v2/HandPaintedUi.ts');
-assert('bottom navigation uses generated five-tab artwork', handPaintedUi.includes("'ui/home-v3/bottom-navigation-v3'") && handPaintedUi.includes("item.key === 'adventure'"));
+assert('bottom navigation uses tightly cropped five-tab artwork', handPaintedUi.includes("'ui/home-v4/bottom-navigation-v4'") && handPaintedUi.includes("item.key === 'adventure'"));
 for (const legacyPanel of [
     'FriendPanel', 'HatcheryPanel', 'MarriagePanel', 'PetPanel', 'ProfilePanel',
     'RankingPanel', 'ShopPanel', 'SkillPanel', 'TowerPanel',
@@ -127,6 +128,8 @@ const requiredResources = [
     'cute-ui/player_avatar.jpg', 'pet-art/home_empty_room.jpg',
     'ui/home-v3/home-room-v3.png', 'ui/home-v3/home-overlay-v3.png',
     'ui/home-v3/top-overlay-v3.png', 'ui/home-v3/bottom-navigation-v3.png',
+    'ui/adventure-v3/adventure-map-page-v3.png',
+    ...['activity-sign', 'activity-newcomer', 'activity-daily', 'activity-events', 'shortcut-adventure', 'shortcut-hatchery', 'shortcut-formation', 'pet-nameplate', 'bottom-navigation'].map((name) => `ui/home-v4/${name}-v4.png`),
     ...Array.from({ length: 10 }, (_, index) => `egg-art/PET${String(index + 1).padStart(3, '0')}.png`),
     ...Array.from({ length: 10 }, (_, index) => ['home', 'portrait', 'thumb'].map((usage) => `pet-art/PET${String(index + 1).padStart(3, '0')}/${usage}.png`)).flat(),
     'audio/home_bgm.wav', 'audio/battle_bgm.wav', 'audio/boss_bgm.wav',

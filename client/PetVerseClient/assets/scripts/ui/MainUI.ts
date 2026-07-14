@@ -648,17 +648,21 @@ export class MainUI extends Component {
         if (!this.topBar) return;
         clearNode(this.topBar);
 
-        if (this.currentPage === 'home') {
-            image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -290, 2, 92, 92, CuteTheme.paperWarm);
+        if (this.currentPage === 'home' || this.currentPage === 'adventure') {
+            image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -294, 2, 82, 82, CuteTheme.paperWarm);
             artImage(this.topBar, 'HomeTopArt', 'ui/home-v3/top-overlay-v3', 0, -5, 720, 140);
-            text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -236, 20, 166, 30, 20, CuteTheme.caramel, 'left', true);
-            text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -236, -13, 68, 22, 13, CuteTheme.honeyDark, 'left', true);
-            text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -170, -13, 58, 22, 11, CuteTheme.mintDark, 'left', true);
+            if (this.currentPage === 'adventure') {
+                panel(this.topBar, 'AdventureTitleBack', 6, -5, 214, 76, new Color(255, 246, 219, 252), 22, true, CuteTheme.caramelSoft, 2);
+                text(this.topBar, 'AdventureTitle', '绘本冒险', 6, -3, 174, 36, 23, CuteTheme.caramel, 'center', true);
+            }
+            text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -238, 18, 150, 28, 17, CuteTheme.caramel, 'left', true);
+            text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -238, -13, 62, 20, 12, CuteTheme.honeyDark, 'left', true);
+            text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -176, -13, 52, 20, 10, CuteTheme.mintDark, 'left', true);
             const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
             const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
-            progress(this.topBar, 'PlayerExp', -188, -39, 120, 8, currentExp / nextExp, CuteTheme.honey);
-            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), 248, 24, 128, 30, 17, CuteTheme.caramel, 'center', true);
-            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), 248, -28, 128, 30, 17, CuteTheme.caramel, 'center', true);
+            progress(this.topBar, 'PlayerExp', -191, -39, 108, 8, currentExp / nextExp, CuteTheme.honey);
+            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), 244, 24, 116, 28, 15, CuteTheme.caramel, 'center', true);
+            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), 244, -28, 116, 28, 15, CuteTheme.caramel, 'center', true);
             hitArea(this.topBar, 'Gold', 248, 24, 184, 46, () => this.showPage('shop'));
             hitArea(this.topBar, 'Diamond', 248, -28, 184, 46, () => this.showPage('shop'));
             if (!GameStore.online) {
@@ -1575,6 +1579,10 @@ export class MainUI extends Component {
     private renderAdventure() {
         if (!this.pageRoot) return;
         const root=this.pageRoot;
+        if(this.adventureMode==='world'&&!this.teamEditing&&!this.adventureRegionOpen){
+            this.renderWorldExploration(root);
+            return;
+        }
         const frame=panel(root,'AdventurePage',0,0,692,905,new Color(151,105,62,255),32,true,new Color(104,70,42,255),4);
         const page=panel(frame,'AdventurePaper',0,-2,654,865,new Color(255,249,231,255),24,false,new Color(220,188,145,255),3);
         if(this.teamEditing){this.renderTeamEditor(page);return;}
@@ -1607,50 +1615,43 @@ export class MainUI extends Component {
         const region=regions.find((item:any)=>String(item?.code)===this.selectedRegionCode)||regions.find((item:any)=>item?.unlocked)||regions[0];
         if(this.adventureRegionOpen){this.renderAdventureRegionPage(parent,region,world);return;}
 
-        const map=panel(parent,'WorldMap',-91,-31,430,694,new Color(199,225,217,255),24,true,new Color(126,154,123,255),3);
-        headingTag(map,'WorldTitle',safeName(world?.title,'PetVerse生态大陆'),0,316,224,CuteTheme.paperWarm);
-        text(map,'WorldLoop','沿着足迹探索生态大陆',0,282,340,24,11,CuteTheme.caramel,'center',true);
-        const canvas=panel(map,'MapCanvas',0,-4,400,548,new Color(205,230,222,255),26,false,CuteTheme.white,2);
-        panel(canvas,'NorthLand',-58,112,242,238,new Color(190,218,154,255),86,false,CuteTheme.mintDark,2);
-        panel(canvas,'EastLand',72,-68,204,250,new Color(216,221,166,255),80,false,CuteTheme.honey,2);
-        panel(canvas,'SouthLand',-70,-174,214,180,new Color(178,213,166,255),70,false,CuteTheme.mintDark,2);
-        panel(canvas,'Mountain',92,112,112,130,new Color(218,226,223,255),42,false,CuteTheme.sky,2);
-        text(canvas,'MapMarks','▲  ▲\n  ▲',92,124,100,80,24,new Color(125,151,151,255),'center',true);
-        const positions=[[-92,190],[62,94],[-78,-10],[68,-108],[-66,-205],[82,-230]];
-        for(let index=0;index<Math.min(regions.length-1,positions.length-1);index+=1){
-            const [x1,y1]=positions[index];const [x2,y2]=positions[index+1];
-            const dx=x2-x1;const dy=y2-y1;const route=panel(canvas,`Route_${index}`,(x1+x2)/2,(y1+y2)/2,Math.sqrt(dx*dx+dy*dy),7,new Color(235,211,161,255),4,false,CuteTheme.white,1);
-            route.angle=Math.atan2(dy,dx)*180/Math.PI;
-        }
+        artImage(parent,'AdventureMapArt','ui/adventure-v3/adventure-map-page-v3',0,0,720,1010);
+        const positions=[[-210,300],[-8,170],[-135,-198],[-205,30],[-140,-392]];
         regions.slice(0,positions.length).forEach((item:any,index:number)=>{
             const [x,y]=positions[index];
-            button(canvas,`Region_${item?.code||index}`,`${index+1}. ${safeName(item?.name,'未知地区')}`,x,y,138,64,()=>{
+            const selected=String(item?.code)===this.selectedRegionCode;
+            if(selected)panel(parent,`RegionSelected_${item?.code||index}`,x,y,144,72,new Color(255,236,166,18),15,true,new Color(229,164,67,220),3);
+            text(parent,`RegionName_${item?.code||index}`,`${index+1}. ${safeName(item?.name,'未知地区')}`,x,y+9,128,25,12,item?.unlocked?CuteTheme.caramel:CuteTheme.muted,'center',true);
+            text(parent,`RegionProgress_${item?.code||index}`,item?.unlocked?`探索 ${Number(item?.exploration||0)}%`:'尚未解锁',x,y-16,122,20,10,item?.bossCleared?CuteTheme.mintDark:CuteTheme.muted,'center',true);
+            hitArea(parent,`Region_${item?.code||index}`,x,y,154,84,()=>{
                 if(!item?.unlocked){this.showToast('先击败前一区域的巢穴首领');return;}
                 this.selectedRegionCode=String(item.code);this.adventureRegionOpen=true;this.renderCurrentPage(false);
-            },{selected:String(item?.code)===this.selectedRegionCode,fill:item?.unlocked?(item?.bossCleared?CuteTheme.honey:CuteTheme.paperWarm):new Color(210,210,202,255),fontSize:11,radius:17,disabled:!item?.unlocked,subtitle:item?.unlocked?`探索 ${Number(item?.exploration||0)}%`:'尚未解锁'});
+            });
         });
         const cleared=regions.filter((item:any)=>item?.bossCleared).length;
         const average=Math.round(regions.reduce((sum:number,item:any)=>sum+Number(item?.exploration||0),0)/Math.max(1,regions.length));
-        const footer=panel(map,'StoryProgress',0,-316,394,62,new Color(255,248,222,255),16,true,CuteTheme.caramelSoft,2);
-        text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-176,13,235,22,11,CuteTheme.caramel,'left',true);
-        progress(footer,'Progress',-60,-13,232,12,average/100,CuteTheme.mintDark);
-        button(footer,'Continue','前往',144,0,82,38,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:11,radius:14,disabled:!region?.unlocked});
+        const footer=panel(parent,'StoryProgress',-105,-465,420,58,new Color(255,248,222,238),16,true,CuteTheme.caramelSoft,2);
+        text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-188,12,250,22,11,CuteTheme.caramel,'left',true);
+        progress(footer,'Progress',-72,-13,220,11,average/100,CuteTheme.mintDark);
+        button(footer,'Continue','前往',153,0,82,38,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:11,radius:14,disabled:!region?.unlocked});
 
-        const daily=panel(parent,'DailyCrisis',230,142,174,294,new Color(248,215,214,255),20,true,CuteTheme.peachDark,3);
-        headingTag(daily,'Title','每日区域危机',0,120,146,CuteTheme.peach);
-        drawUiIcon(daily,'BossIcon','adventure',0,48,72,new Color(126,70,78,255));
-        text(daily,'Info','今日主题：生态侵袭\n失败不消耗主线体力',0,-18,142,54,11,CuteTheme.caramel,'center',false);
-        text(daily,'Reward','奖励：金币 · 经验 · 材料',0,-62,150,26,10,CuteTheme.peachDark,'center',true);
-        button(daily,'Challenge','前往挑战',0,-108,132,42,()=>{this.adventureMode='pve';this.renderCurrentPage(false);},{fill:CuteTheme.peach,fontSize:12,radius:16});
+        text(parent,'DailyTitle','每日区域危机',222,390,190,32,18,CuteTheme.peachDark,'center',true);
+        text(parent,'TeamMeta',`五宠战力 ${formatNumber(this.teamPower())} · ${this.teamPetIds.length}/5`,222,357,190,22,10,CuteTheme.muted,'center',true);
+        drawUiIcon(parent,'BossIcon','adventure',222,300,58,new Color(126,70,78,255));
+        text(parent,'DailyInfo','今日主题：生态侵袭\n失败不消耗主线体力',222,246,184,52,11,CuteTheme.caramel,'center',false);
+        text(parent,'DailyReward','奖励：金币 · 经验 · 材料',222,205,184,24,10,CuteTheme.peachDark,'center',true);
+        button(parent,'DailyChallenge','前往挑战',222,164,158,43,()=>{this.adventureMode='pve';this.renderCurrentPage(false);},{fill:CuteTheme.peach,fontSize:12,radius:16});
 
-        const tower=panel(parent,'EcologyTower',230,-157,174,270,new Color(236,239,211,255),20,true,CuteTheme.mintDark,3);
-        headingTag(tower,'Title','生态之塔',0,108,130,CuteTheme.mint);
-        text(tower,'TowerArt','△\n▥\n▥',0,42,80,102,27,CuteTheme.caramel,'center',true);
+        text(parent,'TowerTitle','生态之塔',222,25,174,32,18,CuteTheme.mintDark,'center',true);
+        text(parent,'TowerArt','△\n▥\n▥',222,-52,80,102,27,CuteTheme.caramel,'center',true);
         const floor=Number(GameStore.tower?.currentFloor||GameStore.tower?.record?.currentFloor||1);
-        text(tower,'Floor',`当前第 ${floor} 层`,0,-29,140,28,12,CuteTheme.caramel,'center',true);
-        text(tower,'Power',`队伍战力 ${formatNumber(this.teamPower())}`,0,-56,142,24,10,CuteTheme.muted,'center',true);
-        button(tower,'Challenge','继续挑战',0,-99,132,42,()=>{this.adventureMode='tower';this.renderCurrentPage(false);},{fill:CuteTheme.honey,fontSize:12,radius:16});
-        button(parent,'FriendShortcut','好友协作',230,-350,160,48,()=>{this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:12,radius:16});
+        text(parent,'TowerFloor',`当前第 ${floor} 层`,222,-110,170,28,12,CuteTheme.caramel,'center',true);
+        text(parent,'TowerPower',`队伍战力 ${formatNumber(this.teamPower())}`,222,-138,174,24,10,CuteTheme.muted,'center',true);
+        button(parent,'TowerChallenge','继续挑战',222,-185,158,43,()=>{this.adventureMode='tower';this.renderCurrentPage(false);},{fill:CuteTheme.honey,fontSize:12,radius:16});
+
+        text(parent,'TeamLabel','队伍与协作',222,-380,190,24,12,CuteTheme.caramel,'center',true);
+        button(parent,'EditTeam','编队',178,-424,86,40,()=>this.beginTeamEditing(),{fill:CuteTheme.mint,fontSize:11,radius:15});
+        button(parent,'FriendShortcut','协作',272,-424,86,40,()=>{this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:11,radius:15});
     }
 
     private renderAdventureRegionPage(parent:Node,region:any,world:any) {
