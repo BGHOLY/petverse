@@ -1421,13 +1421,13 @@ export class MainUI extends Component {
     private renderHatchery() {
         if (!this.pageRoot) return;
         const root = this.pageRoot;
-        const frame = panel(root, 'HatcheryResearch', 0, 0, 692, 905, new Color(169, 121, 78, 255), 32, true, new Color(103, 74, 48, 255), 4);
-        const room = panel(frame, 'HatcheryPaper', 0, -2, 654, 865, new Color(255, 249, 231, 255), 24, false, new Color(221, 187, 143, 255), 3);
-        const sign = panel(room, 'TitleBoard', -200, 380, 248, 82, new Color(248, 235, 201, 255), 18, true, CuteTheme.caramelSoft, 3);
+        artImage(root, 'HatcheryPageArt', 'ui/hatchery-v3/hatchery-page-v3', 0, 0, 720, 1010);
+        const room = root;
+        const sign = panel(room, 'TitleBoard', -200, 380, 248, 82, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);
         text(sign, 'Title', '孵化室', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);
         text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);
-        const plan = panel(room, 'PlanBoard', 194, 380, 250, 76, new Color(235, 242, 216, 255), 17, true, CuteTheme.mintDark, 2);
+        const plan = panel(room, 'PlanBoard', 194, 380, 250, 76, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
         text(plan, 'Hint', '每一颗蛋都藏着小小奇迹', -105, 12, 210, 26, 12, CuteTheme.caramel, 'center', true);
         text(plan, 'Rule', '选择蛋仓中的宠物蛋，再放入空闲装置', -105, -15, 210, 22, 10, CuteTheme.muted, 'center');
         const activeEggs = GameStore.eggs
@@ -1440,13 +1440,13 @@ export class MainUI extends Component {
         [-214, 0, 214].forEach((x, index) => {
             const slot = index + 1;
             const egg = slotEgg(slot);
-            const device = panel(room, `Device_${slot}`, x, 164, 202, 300, new Color(191, 202, 184, 255), 30, true, new Color(104, 92, 73, 255), egg?.isMutant ? 5 : 3);
-            panel(device, 'TopCap', 0, 125, 174, 52, egg ? new Color(246, 218, 153, 255) : new Color(205, 224, 199, 255), 24, true, CuteTheme.caramelSoft, 2);
+            const device = panel(room, `Device_${slot}`, x, 164, 202, 300, new Color(255, 255, 255, 0), 30, false, new Color(255, 255, 255, 0), 0);
+            panel(device, 'TopCap', 0, 125, 174, 52, new Color(255, 255, 255, 0), 24, false, new Color(255, 255, 255, 0), 0);
             text(device, 'SlotNumber', `0${slot}`, 0, 126, 70, 30, 17, CuteTheme.caramel, 'center', true);
-            const chamber = panel(device, 'GlassChamber', 0, 34, 174, 190, egg ? new Color(255, 248, 211, 235) : new Color(228, 244, 232, 235), 72, true, egg?.isMutant ? CuteTheme.honeyDark : CuteTheme.sky, 3);
-            panel(device, 'LeftTube', -91, 12, 13, 156, new Color(222, 231, 218, 255), 6, false, CuteTheme.caramelSoft, 2);
-            panel(device, 'RightTube', 91, 12, 13, 156, new Color(222, 231, 218, 255), 6, false, CuteTheme.caramelSoft, 2);
-            panel(device, 'MachineBase', 0, -103, 184, 52, new Color(198, 174, 135, 255), 18, true, new Color(112, 84, 56, 255), 3);
+            const chamber = panel(device, 'GlassChamber', 0, 34, 174, 190, egg ? new Color(255, 248, 211, 42) : new Color(228, 244, 232, 30), 72, false, new Color(255, 255, 255, 0), 0);
+            panel(device, 'LeftTube', -91, 12, 13, 156, new Color(255, 255, 255, 0), 6, false, new Color(255, 255, 255, 0), 0);
+            panel(device, 'RightTube', 91, 12, 13, 156, new Color(255, 255, 255, 0), 6, false, new Color(255, 255, 255, 0), 0);
+            panel(device, 'MachineBase', 0, -103, 184, 52, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
             panel(device, 'StatusLamp', 68, -103, 15, 15, egg ? CuteTheme.honey : CuteTheme.mint, 8, true, CuteTheme.white, 2);
             if (!egg) {
                 drawUiIcon(chamber, 'EggEmpty', 'hatchery', 0, 22, 72, CuteTheme.honeyDark);
@@ -1479,8 +1479,8 @@ export class MainUI extends Component {
             .sort((a, b) => this.hatchEggSort === 'rarity'
                 ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
                 : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
-        const warehouse = panel(room, 'Warehouse', 0, -214, 620, 376, new Color(237, 220, 188, 255), 22, true, new Color(139, 101, 66, 255), 3);
-        const warehouseSign = panel(warehouse, 'WarehouseSign', -210, 158, 178, 46, new Color(255, 248, 222, 255), 14, true, CuteTheme.caramelSoft, 2);
+        const warehouse = panel(room, 'Warehouse', 0, -214, 620, 376, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
+        const warehouseSign = panel(warehouse, 'WarehouseSign', -210, 158, 178, 46, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
         text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 156, 28, 14, CuteTheme.caramel, 'center', true);
         ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-80+index*78,158,70,34,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
         button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',238,158,106,34,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
@@ -1491,7 +1491,7 @@ export class MainUI extends Component {
             const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
             const col = index % 3;
             const row = Math.floor(index / 3);
-            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -66 - row * 142, 188, 130, rarityColor, 16, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 255), egg?.isMutant ? 5 : 3);
+            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -66 - row * 142, 188, 130, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 205), 16, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 190), egg?.isMutant ? 5 : 3);
             panel(card, 'CrateLip', 0, -48, 174, 22, new Color(177, 132, 89, 120), 8, false, CuteTheme.white, 1);
             image(card, 'Icon', getEggArtPath(egg), -54, 12, 70, 86, CuteTheme.paperWarm);
             text(card, 'Name', getEggDisplayName(egg), 35, 31, 102, 34, 13, CuteTheme.caramel, 'center', false);
