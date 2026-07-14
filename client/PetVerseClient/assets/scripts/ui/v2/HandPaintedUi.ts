@@ -1,9 +1,11 @@
 import { Color, Graphics, Node } from 'cc';
 import {
     CuteTheme,
+    artImage,
     button,
     circle,
     clearNode,
+    hitArea,
     panel,
     progress,
     setRect,
@@ -265,23 +267,16 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    panel(parent, 'Shelf', 0, 0, 720, 130, new Color(142, 91, 53, 255), 0, true, new Color(88, 54, 32, 255), 4);
-    panel(parent, 'ShelfInner', 0, -3, 704, 112, new Color(224, 176, 112, 255), 20, false, new Color(255, 215, 145, 255), 3);
-    panel(parent, 'ShelfTop', 0, 57, 720, 14, new Color(248, 204, 125, 255), 4, false, HandPaintedTheme.woodDark, 2);
+    artImage(parent, 'NavigationArt', 'ui/home-v3/bottom-navigation-v3', 0, 75, 720, 280);
 
     MAIN_TABS.forEach((item, index) => {
         const selected = item.key === active;
-        const tab = button(parent, `Tab_${item.key}`, item.title, -286 + index * 143, selected ? 6 : -2, selected ? 132 : 122, selected ? 110 : 92, () => onNavigate(item.key), {
-            fill: selected ? new Color(255, 207, 81, 255) : new Color(205, 146, 87, 255),
-            textColor: selected ? new Color(63, 119, 72, 255) : new Color(79, 50, 31, 255),
-            selected,
-            fontSize: selected ? 17 : 15,
-            radius: selected ? 28 : 20,
-            border: selected ? new Color(255, 235, 151, 255) : HandPaintedTheme.woodDark,
-        });
-        const titleNode = tab.getChildByName('Face')?.getChildByName('Title');
-        if (titleNode) setRect(titleNode, 0, selected ? -30 : -25, 108, 28);
-        drawUiIcon(tab, 'NavIcon', item.icon, 0, selected ? 20 : 16, selected ? 38 : 32, selected ? new Color(63, 119, 72, 255) : HandPaintedTheme.ink);
-        if (item.key === 'more') createNotificationDot(tab, notificationCount, 44, 34);
+        const x = -286 + index * 143;
+        const isAdventure = item.key === 'adventure';
+        if (selected) {
+            panel(parent, `Selected_${item.key}`, x, isAdventure ? 48 : 10, isAdventure ? 158 : 126, isAdventure ? 182 : 116, new Color(255, 245, 184, 18), isAdventure ? 54 : 24, true, isAdventure ? new Color(255, 225, 118, 255) : new Color(104, 166, 103, 255), 3);
+        }
+        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 48 : 10, isAdventure ? 152 : 122, isAdventure ? 178 : 112, () => onNavigate(item.key));
+        if (item.key === 'more') createNotificationDot(tab, notificationCount, 44, 42);
     });
 }

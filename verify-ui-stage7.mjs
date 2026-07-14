@@ -77,6 +77,8 @@ assert('app shell activates one page container', appShell.includes('child.active
 const uiKit = read('client/PetVerseClient/assets/scripts/ui/cute/CuteUiKit.ts');
 assert('shared buttons debounce repeated clicks', uiKit.includes('lastAcceptedClickAt') && uiKit.includes('< 320'));
 assert('button re-render replaces public click binding', uiKit.includes('node.off(Button.EventType.CLICK)'));
+assert('generated artwork loads without runtime panel chrome', uiKit.includes('export function artImage'));
+assert('generated artwork keeps transparent interaction areas', uiKit.includes('export function hitArea'));
 
 const mainUi = read('client/PetVerseClient/assets/scripts/ui/MainUI.ts');
 for (const renderer of [
@@ -97,6 +99,12 @@ assert('adventure map keeps a dedicated region page state', mainUi.includes('pri
 assert('adventure region nodes open their matching region page', mainUi.includes('this.selectedRegionCode=String(item.code);this.adventureRegionOpen=true'));
 assert('adventure region page preserves real explore and nest battles', mainUi.includes("this.startRegionBattle('explore',region)") && mainUi.includes("this.startRegionBattle('nest',region)"));
 assert('adventure side cards route to crisis and tower pages', mainUi.includes("this.adventureMode='pve'") && mainUi.includes("this.adventureMode='tower'"));
+assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
+const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
+assert('home page composes generated room and transparent overlay', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v3/home-overlay-v3'"));
+assert('home generated buttons preserve original activity and shortcut callbacks', homePageUi.includes('options.onActivity(activity)') && homePageUi.includes('options.onShortcut(shortcut)'));
+const handPaintedUi = read('client/PetVerseClient/assets/scripts/ui/v2/HandPaintedUi.ts');
+assert('bottom navigation uses generated five-tab artwork', handPaintedUi.includes("'ui/home-v3/bottom-navigation-v3'") && handPaintedUi.includes("item.key === 'adventure'"));
 for (const legacyPanel of [
     'FriendPanel', 'HatcheryPanel', 'MarriagePanel', 'PetPanel', 'ProfilePanel',
     'RankingPanel', 'ShopPanel', 'SkillPanel', 'TowerPanel',
@@ -117,6 +125,8 @@ assert('battle exposes auto mode', battleUi.includes("'Auto'") && battleUi.inclu
 const resourcesRoot = 'client/PetVerseClient/assets/resources';
 const requiredResources = [
     'cute-ui/player_avatar.jpg', 'pet-art/home_empty_room.jpg',
+    'ui/home-v3/home-room-v3.png', 'ui/home-v3/home-overlay-v3.png',
+    'ui/home-v3/top-overlay-v3.png', 'ui/home-v3/bottom-navigation-v3.png',
     ...Array.from({ length: 10 }, (_, index) => `egg-art/PET${String(index + 1).padStart(3, '0')}.png`),
     ...Array.from({ length: 10 }, (_, index) => ['home', 'portrait', 'thumb'].map((usage) => `pet-art/PET${String(index + 1).padStart(3, '0')}/${usage}.png`)).flat(),
     'audio/home_bgm.wav', 'audio/battle_bgm.wav', 'audio/boss_bgm.wav',

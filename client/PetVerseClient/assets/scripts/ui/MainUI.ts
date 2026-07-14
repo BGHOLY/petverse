@@ -22,12 +22,14 @@ import {
     DESIGN_HEIGHT,
     DESIGN_WIDTH,
     CuteTheme,
+    artImage,
     button,
     capsule,
     clearNode,
     cloudSign,
     formatNumber,
     headingTag,
+    hitArea,
     image,
     panel,
     progress,
@@ -645,6 +647,25 @@ export class MainUI extends Component {
     private renderTopBar() {
         if (!this.topBar) return;
         clearNode(this.topBar);
+
+        if (this.currentPage === 'home') {
+            image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -290, 2, 92, 92, CuteTheme.paperWarm);
+            artImage(this.topBar, 'HomeTopArt', 'ui/home-v3/top-overlay-v3', 0, -5, 720, 140);
+            text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -236, 20, 166, 30, 20, CuteTheme.caramel, 'left', true);
+            text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -236, -13, 68, 22, 13, CuteTheme.honeyDark, 'left', true);
+            text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -170, -13, 58, 22, 11, CuteTheme.mintDark, 'left', true);
+            const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
+            const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
+            progress(this.topBar, 'PlayerExp', -188, -39, 120, 8, currentExp / nextExp, CuteTheme.honey);
+            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), 248, 24, 128, 30, 17, CuteTheme.caramel, 'center', true);
+            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), 248, -28, 128, 30, 17, CuteTheme.caramel, 'center', true);
+            hitArea(this.topBar, 'Gold', 248, 24, 184, 46, () => this.showPage('shop'));
+            hitArea(this.topBar, 'Diamond', 248, -28, 184, 46, () => this.showPage('shop'));
+            if (!GameStore.online) {
+                button(this.topBar, 'Reconnect', '重连', 310, -55, 70, 25, () => void this.bootstrap(), { fill: CuteTheme.peach, fontSize: 10, radius: 11 });
+            }
+            return;
+        }
 
         panel(this.topBar, 'TopBarWood', 0, -2, 710, 122, new Color(187, 126, 69, 255), 26, true, new Color(105, 65, 37, 255), 4);
         panel(this.topBar, 'CloudBack', 0, 0, 696, 106, new Color(255, 246, 216, 255), 24, false, new Color(247, 211, 151, 255), 3);

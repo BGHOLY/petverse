@@ -461,6 +461,63 @@ export function image(
     return node;
 }
 
+export function artImage(
+    parent: Node,
+    name: string,
+    resourcePath: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+) {
+    const node = getOrCreate(parent, name);
+    setRect(node, x, y, width, height);
+    clearNode(node);
+    const sprite = node.getComponent(Sprite) || node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+
+    const apply = (asset: SpriteFrame | null) => {
+        if (!asset || !node.isValid) return;
+        sprite.spriteFrame = asset;
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        setRect(node, x, y, width, height);
+    };
+
+    resources.load(`${resourcePath}/spriteFrame`, SpriteFrame, (error, asset) => {
+        if (!error && asset) {
+            apply(asset);
+            return;
+        }
+        resources.load(resourcePath, SpriteFrame, (fallbackError, fallbackAsset) => {
+            if (!fallbackError && fallbackAsset) apply(fallbackAsset);
+        });
+    });
+    return node;
+}
+
+export function hitArea(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onClick: ClickHandler,
+) {
+    const node = getOrCreate(parent, name);
+    setRect(node, x, y, width, height);
+    clearNode(node);
+    const control = node.getComponent(Button) || node.addComponent(Button);
+    control.transition = Button.Transition.NONE;
+    control.interactable = true;
+    node.off(Button.EventType.CLICK);
+    node.on(Button.EventType.CLICK, () => {
+        CuteFeedback.playClick();
+        onClick();
+    });
+    return node;
+}
+
 export function formatNumber(value: any) {
     const number = Number(value || 0);
     if (!Number.isFinite(number)) return '0';
