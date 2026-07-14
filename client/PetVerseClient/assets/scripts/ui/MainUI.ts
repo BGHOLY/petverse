@@ -1125,30 +1125,26 @@ export class MainUI extends Component {
                 ? Number(b?.quantity || 0) - Number(a?.quantity || 0)
                 : categoryOf(a).localeCompare(categoryOf(b)) || String(a?.name || '').localeCompare(String(b?.name || '')));
 
-        const cover = panel(root, 'Bag', 0, 0, 692, 905, new Color(151, 105, 62, 255), 32, true, new Color(104, 70, 42, 255), 4);
-        const bag = panel(cover, 'PaperBook', 10, -2, 650, 865, new Color(255, 250, 234, 255), 25, false, new Color(220, 190, 145, 255), 3);
-        panel(cover, 'BinderSpine', -316, -4, 34, 804, new Color(110, 132, 75, 255), 15, false, new Color(73, 94, 53, 255), 3);
-        [278, 94, -90, -274].forEach((y, index) => {
-            panel(cover, `BinderRing_${index}`, -311, y, 62, 24, new Color(204, 176, 116, 255), 12, false, new Color(101, 75, 47, 255), 3);
-        });
+        artImage(root, 'InventoryPageArt', 'ui/inventory-v3/inventory-page-v3', 0, 0, 720, 1010);
+        const bag = root;
 
-        const titleBoard = panel(bag, 'BagTitleBoard', -150, 371, 270, 78, new Color(248, 239, 207, 255), 22, true, CuteTheme.caramelSoft, 3);
+        const titleBoard = panel(bag, 'BagTitleBoard', -150, 371, 270, 78, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
         drawUiIcon(titleBoard, 'BagIcon', 'inventory', -96, 0, 42, new Color(102, 126, 70, 255));
         text(titleBoard, 'Title', '背包', 28, 5, 150, 42, 29, CuteTheme.caramel, 'center', true);
         text(titleBoard, 'Subtitle', '生活里的每一件小物', 28, -25, 180, 22, 11, CuteTheme.muted, 'center');
         const eggCount = eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
-        const eggNote = panel(bag, 'EggNote', 205, 370, 190, 72, new Color(235, 244, 218, 255), 18, true, CuteTheme.mintDark, 2);
+        const eggNote = panel(bag, 'EggNote', 205, 370, 190, 72, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         text(eggNote, 'Text', eggCount ? `宠物蛋 ${eggCount} 枚` : '宠物蛋仓库', -18, 12, 130, 24, 13, CuteTheme.caramel, 'center', true);
         button(eggNote, 'HatcheryShortcut', '去孵化室', -18, -17, 112, 30, () => this.showPage('hatchery'), { fill: CuteTheme.honey, fontSize: 10, radius: 13 });
         drawUiIcon(eggNote, 'Egg', 'hatchery', 70, 1, 34, CuteTheme.honeyDark);
 
-        const tabs = panel(bag, 'CategoryTabs', 0, 294, 608, 70, new Color(247, 238, 214, 255), 18, false, CuteTheme.caramelSoft, 2);
+        const tabs = panel(bag, 'CategoryTabs', 0, 294, 608, 70, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         const categories: Array<[typeof this.inventoryCategory, string]> = [['all', '全部'], ['consumable', '道具'], ['material', '材料'], ['skill', '技能书']];
         categories.forEach(([key, title], index) => button(tabs, `InventoryCategory_${key}`, title, -222 + index * 148, 0, 136, 52, () => {
             this.inventoryCategory = key; this.renderCurrentPage(false);
         }, { selected: this.inventoryCategory === key, fill: this.inventoryCategory === key ? new Color(181, 196, 119, 255) : CuteTheme.paper, fontSize: 14, radius: 17 }));
 
-        const target = panel(bag, 'UseTarget', 0, 230, 608, 54, new Color(246, 241, 218, 255), 17, false, CuteTheme.white, 2);
+        const target = panel(bag, 'UseTarget', 0, 230, 608, 54, new Color(255, 252, 239, 188), 17, false, new Color(255, 255, 255, 0), 0);
         text(target, 'Title', '使用对象', -258, 0, 76, 28, 13, CuteTheme.caramel, 'left', true);
         if (targetPet) {
             image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -170, 0, 46, 46, CuteTheme.paperWarm);
@@ -1160,7 +1156,7 @@ export class MainUI extends Component {
             text(target, 'NoPet', '暂无可使用道具的宠物', 0, 0, 430, 36, 16, CuteTheme.peachDark, 'center', true);
         }
 
-        const gridPaper = panel(bag, 'InventoryGridPaper', 0, -56, 608, 500, new Color(255, 253, 243, 255), 18, false, new Color(223, 199, 160, 255), 2);
+        const gridPaper = panel(bag, 'InventoryGridPaper', 0, -56, 608, 500, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         const rows = Math.ceil(items.length / 4);
         const area = this.createScrollArea(gridPaper, 'InventoryScroll', 0, 0, 590, 478, 590, Math.max(478, rows * 146 + 12), 'vertical');
         items.forEach((item, index) => {
@@ -1169,7 +1165,7 @@ export class MainUI extends Component {
             const type = categoryOf(item);
             const card = button(area.content, `Item_${item?.id || index}`, safeName(item?.name || item?.itemCode, '道具'), -219 + col * 146, -68 - rowIndex * 146, 134, 132, () => {
                 this.inventoryDetailItem = item; this.renderUtilityModal();
-            }, { fill: type === 'skill' ? new Color(244, 229, 211, 255) : type === 'consumable' ? new Color(231, 242, 214, 255) : CuteTheme.paper, fontSize: 12, radius: 14,
+            }, { fill: type === 'skill' ? new Color(244, 229, 211, 205) : type === 'consumable' ? new Color(231, 242, 214, 205) : new Color(255, 252, 239, 205), fontSize: 12, radius: 14,
                 subtitle: `×${Number(item?.quantity || 0)}` });
             const face = card.getChildByName('Face');
             const title = face?.getChildByName('Title');
@@ -1181,7 +1177,7 @@ export class MainUI extends Component {
         });
         if (!items.length) text(area.content, 'Empty', '当前分类暂无物品', 0, -30, 420, 100, 22, CuteTheme.muted, 'center', true);
 
-        const footer = panel(bag, 'BagFooter', 0, -378, 608, 58, new Color(247, 238, 214, 255), 17, false, CuteTheme.caramelSoft, 2);
+        const footer = panel(bag, 'BagFooter', 0, -378, 608, 58, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
         text(footer, 'Capacity', `容量 ${allItems.length}/${Number(GameStore.user?.inventoryCapacity || 120)}`, -238, 0, 180, 28, 14, CuteTheme.caramel, 'left', true);
         text(footer, 'Count', `当前显示 ${items.length} 种`, 6, 0, 160, 26, 12, CuteTheme.muted, 'center');
         button(footer, 'Sort', this.inventorySort === 'category' ? '按分类整理' : '按数量整理', 222, 0, 150, 40, () => {
