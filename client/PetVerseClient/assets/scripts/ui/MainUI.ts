@@ -969,7 +969,8 @@ export class MainUI extends Component {
         const pets = this.filteredPetList();
         const selected = GameStore.currentPet || allPets[0] || {};
 
-        const book = panel(root, 'PetResearchBook', 0, 0, 706, 904, new Color(255, 246, 218, 255), 24, true, new Color(153, 94, 49, 255), 4);
+        artImage(root, 'PetDetailArt', 'ui/pet-v3/pet-detail-page-v3', 0, 0, 720, 1010);
+        const book = root;
         headingTag(book, 'PetListTitle', `我的宠物 ${pets.length}/${allPets.length}`, -287, 408, 124, CuteTheme.honey);
         const selectorStep = 112;
         const selectorHeight = Math.max(710, pets.length * selectorStep + 12);
@@ -995,7 +996,7 @@ export class MainUI extends Component {
             if (item?.isLocked) tag(card, 'LockBadge', '锁', -36, 36, 38, CuteTheme.paperWarm);
         });
 
-        const profile = panel(book, 'Profile', -143, 42, 168, 720, new Color(255, 250, 229, 255), 22, false, new Color(209, 154, 94, 255), 2);
+        const profile = panel(book, 'Profile', -143, 42, 168, 720, new Color(255, 250, 229, 212), 22, false, new Color(209, 154, 94, 96), 2);
         image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 152, 204, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
         button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 52, 290, 54, 38, () => void this.togglePetLock(selected), {
             fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
@@ -1023,7 +1024,7 @@ export class MainUI extends Component {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
-        const data = panel(book, 'ResearchData', 143, 42, 390, 720, new Color(249, 247, 227, 255), 22, false, new Color(192, 130, 67, 255), 2);
+        const data = panel(book, 'ResearchData', 143, 42, 390, 720, new Color(249, 247, 227, 210), 22, false, new Color(192, 130, 67, 90), 2);
         const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
         tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -144 + index * 96, 274, 88, 42, () => {
             this.petDetailTab = key;
@@ -1099,7 +1100,7 @@ export class MainUI extends Component {
             });
         }
 
-        const toolbar=panel(book,'Toolbar',0,-403,660,62,new Color(255,248,220,255),20,false,new Color(177,112,57,255),2);
+        const toolbar=panel(book,'Toolbar',0,-403,660,62,new Color(255,248,220,205),20,false,new Color(177,112,57,96),2);
         button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
         tag(toolbar,'Sort','编队优先 · 战力降序',205,0,180,CuteTheme.sky);
