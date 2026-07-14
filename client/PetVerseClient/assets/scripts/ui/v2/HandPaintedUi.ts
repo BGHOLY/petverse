@@ -267,16 +267,16 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    artImage(parent, 'NavigationArt', 'ui/home-v3/bottom-navigation-v3', 0, 75, 720, 280);
+    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
 
     MAIN_TABS.forEach((item, index) => {
         const selected = item.key === active;
-        const x = -286 + index * 143;
+        const x = -276 + index * 138;
         const isAdventure = item.key === 'adventure';
         if (selected) {
-            panel(parent, `Selected_${item.key}`, x, isAdventure ? 48 : 10, isAdventure ? 158 : 126, isAdventure ? 182 : 116, new Color(255, 245, 184, 18), isAdventure ? 54 : 24, true, isAdventure ? new Color(255, 225, 118, 255) : new Color(104, 166, 103, 255), 3);
+            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220), 3);
         }
-        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 48 : 10, isAdventure ? 152 : 122, isAdventure ? 178 : 112, () => onNavigate(item.key));
-        if (item.key === 'more') createNotificationDot(tab, notificationCount, 44, 42);
+        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
+        if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });
 }
