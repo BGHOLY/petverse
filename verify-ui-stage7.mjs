@@ -100,6 +100,10 @@ assert('adventure region nodes open their matching region page', mainUi.includes
 assert('adventure region page preserves real explore and nest battles', mainUi.includes("this.startRegionBattle('explore',region)") && mainUi.includes("this.startRegionBattle('nest',region)"));
 assert('adventure side cards route to crisis and tower pages', mainUi.includes("this.adventureMode='pve'") && mainUi.includes("this.adventureMode='tower'"));
 assert('adventure main page uses illustrated map artwork', mainUi.includes("'ui/adventure-v3/adventure-map-page-v3'"));
+assert('pet detail uses illustrated research-book artwork', mainUi.includes("'ui/pet-v3/pet-detail-page-v3'"));
+assert('shop uses illustrated stationery-store artwork', mainUi.includes("'ui/shop-v3/shop-page-v3'"));
+assert('inventory uses illustrated field-journal artwork', mainUi.includes("'ui/inventory-v3/inventory-page-v3'"));
+assert('hatchery uses illustrated workshop artwork', mainUi.includes("'ui/hatchery-v3/hatchery-page-v3'"));
 assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
 const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
 assert('home page composes generated room and independently scaled controls', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v4/activity-sign-v4'"));
@@ -129,6 +133,10 @@ const requiredResources = [
     'ui/home-v3/home-room-v3.png', 'ui/home-v3/home-overlay-v3.png',
     'ui/home-v3/top-overlay-v3.png', 'ui/home-v3/bottom-navigation-v3.png',
     'ui/adventure-v3/adventure-map-page-v3.png',
+    'ui/pet-v3/pet-detail-page-v3.png',
+    'ui/shop-v3/shop-page-v3.png',
+    'ui/inventory-v3/inventory-page-v3.png',
+    'ui/hatchery-v3/hatchery-page-v3.png',
     ...['activity-sign', 'activity-newcomer', 'activity-daily', 'activity-events', 'shortcut-adventure', 'shortcut-hatchery', 'shortcut-formation', 'pet-nameplate', 'bottom-navigation'].map((name) => `ui/home-v4/${name}-v4.png`),
     ...Array.from({ length: 10 }, (_, index) => `egg-art/PET${String(index + 1).padStart(3, '0')}.png`),
     ...Array.from({ length: 10 }, (_, index) => ['home', 'portrait', 'thumb'].map((usage) => `pet-art/PET${String(index + 1).padStart(3, '0')}/${usage}.png`)).flat(),
