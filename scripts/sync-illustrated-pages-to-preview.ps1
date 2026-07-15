@@ -200,5 +200,103 @@ Replace-ExactLayout "new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, 
 $script:previewScript += "`r`n$syncMarker`r`n"
 }
 
+$refinementMarker = '/* petverse illustrated preview sync v4.4 */'
+if (-not $script:previewScript.Contains($refinementMarker)) {
+    function Replace-PreviewRefinement([string]$Old, [string]$New) {
+        if ($script:previewScript.Contains($Old)) {
+            $script:previewScript = $script:previewScript.Replace($Old, $New)
+        }
+    }
+
+    $selectedOverlay = @'
+          var selected = item.key === active;
+          var x = -276 + index * 138;
+          var isAdventure = item.key === 'adventure';
+          if (selected) {
+            panel(parent, "Selected_" + item.key, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 248, 205, isAdventure ? 30 : 42), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 214, 90, 245) : new Color(67, 153, 102, 245), 4);
+            panel(parent, "SelectedMark_" + item.key, x, -48, isAdventure ? 82 : 68, 8, isAdventure ? new Color(246, 174, 42, 255) : new Color(43, 159, 104, 255), 4);
+          }
+'@
+    $cleanHitAreas = @'
+          var x = -276 + index * 138;
+          var isAdventure = item.key === 'adventure';
+'@
+    Replace-PreviewRefinement $selectedOverlay $cleanHitAreas
+    Replace-PreviewRefinement 'panel(parent, "Selected_" + item.key, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 248, 205, isAdventure ? 30 : 42), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 214, 90, 245) : new Color(67, 153, 102, 245), 4);' 'void 0;'
+    Replace-PreviewRefinement 'panel(parent, "SelectedMark_" + item.key, x, -48, isAdventure ? 82 : 68, 8, isAdventure ? new Color(246, 174, 42, 255) : new Color(43, 159, 104, 255), 4);' 'void 0;'
+
+    Replace-PreviewRefinement "var survival = panel(data, 'Survival', 0, 137, 384, 120, new Color(255, 250, 232, 255), 22, false, CuteTheme.white, 1);" "var survival = panel(data, 'Survival', 0, 137, 304, 112, new Color(255, 250, 232, 228), 20, false, CuteTheme.white, 1);"
+    Replace-PreviewRefinement "headingTag(survival, 'Title', '生存', -137, 38, 90, CuteTheme.mint);" "headingTag(survival, 'Title', '生存', -98, 35, 82, CuteTheme.mint);"
+    Replace-PreviewRefinement "attrs.hp, -88, -10);" "attrs.hp, -70, -9);"
+    Replace-PreviewRefinement "attrs.defense, 88, -10);" "attrs.defense, 70, -9);"
+    Replace-PreviewRefinement "var output = panel(data, 'Output', 0, -4, 384, 120, new Color(255, 245, 238, 255), 22, false, CuteTheme.white, 1);" "var output = panel(data, 'Output', 0, 4, 304, 112, new Color(255, 245, 238, 228), 20, false, CuteTheme.white, 1);"
+    Replace-PreviewRefinement "headingTag(output, 'Title', '输出', -137, 38, 90, CuteTheme.peach);" "headingTag(output, 'Title', '输出', -98, 35, 82, CuteTheme.peach);"
+    Replace-PreviewRefinement "attrs.attack, -88, -10);" "attrs.attack, -70, -9);"
+    Replace-PreviewRefinement "attrs.magic, 88, -10);" "attrs.magic, 70, -9);"
+    Replace-PreviewRefinement "var develop = panel(data, 'Develop', 0, -174, 384, 184, new Color(242, 249, 238, 255), 22, false, CuteTheme.white, 1);" "var develop = panel(data, 'Develop', 0, -166, 304, 174, new Color(242, 249, 238, 228), 20, false, CuteTheme.white, 1);"
+    Replace-PreviewRefinement "headingTag(develop, 'Title', '速度与培养', -118, 70, 140, CuteTheme.sky);" "headingTag(develop, 'Title', '速度与培养', -78, 65, 134, CuteTheme.sky);"
+    Replace-PreviewRefinement "attrs.speed, -88, 20);" "attrs.speed, -70, 18);"
+    Replace-PreviewRefinement "toFixed(3), 88, 20);" "toFixed(3), 70, 18);"
+    Replace-PreviewRefinement "|| 100), -88, -52);" "|| 100), -70, -50);"
+    Replace-PreviewRefinement "skills.length : 0, 88, -52);" "skills.length : 0, 70, -50);"
+    Replace-PreviewRefinement "var card = panel(parent, name, x, y, 142, 56, new Color(255, 252, 239, 255), 18, false, CuteTheme.white, 2);" "var card = panel(parent, name, x, y, 124, 54, new Color(255, 252, 239, 236), 17, false, CuteTheme.white, 1);"
+    Replace-PreviewRefinement "text(card, 'Icon', icon, -56, 0, 28, 30, 18, CuteTheme.honeyDark, 'left', true);" "text(card, 'Icon', icon, -48, 0, 24, 28, 16, CuteTheme.honeyDark, 'left', true);"
+    Replace-PreviewRefinement "text(card, 'Title', title, -22, 8, 60, 24, 13, CuteTheme.muted, 'left', true);" "text(card, 'Title', title, -18, 8, 54, 22, 12, CuteTheme.muted, 'left', true);"
+    Replace-PreviewRefinement "text(card, 'Value', String(value), -22, -12, 92, 26, 16, CuteTheme.caramel, 'left', true);" "text(card, 'Value', String(value), -18, -12, 78, 24, 14, CuteTheme.caramel, 'left', true);"
+
+    Replace-PreviewRefinement "var welcome = panel(page, 'WelcomeNote', 18, 260, 390, 58, new Color(255, 252, 239, 255), 16, false, new Color(220, 190, 145, 255), 2);" "var welcome = panel(page, 'WelcomeNote', 100, 294, 300, 48, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);"
+    Replace-PreviewRefinement "text(welcome, 'Text', '欢迎光临手账屋～\n这里会刷新宠物成长需要的好东西。', -168, 0, 336, 52, 13, CuteTheme.caramel, 'left', false);" "text(welcome, 'Text', '欢迎光临，今天也有适合宝宝的好东西。', 0, 0, 270, 34, 12, CuteTheme.caramel, 'center', true);"
+    Replace-PreviewRefinement "var ledger = panel(page, 'ProductLedger', 69, 15, 492, 426" "var ledger = panel(page, 'ProductLedger', 69, 38, 492, 350"
+    Replace-PreviewRefinement "this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 410, 476, Math.max(410, rows * 132 + 12)" "this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 334, 476, Math.max(334, rows * 108 + 8)"
+    Replace-PreviewRefinement "-156 + col * 156, -58 - rowIndex * 132, 138, 118" "-156 + col * 156, -48 - rowIndex * 108, 138, 96"
+    Replace-PreviewRefinement "if (title) title.setPosition(0, -24, 0);" "if (title) title.setPosition(0, -17, 0);"
+    Replace-PreviewRefinement "if (subtitle) subtitle.setPosition(0, -48, 0);" "if (subtitle) subtitle.setPosition(0, -36, 0);"
+    Replace-PreviewRefinement "0, 28, 40, selected ? CuteTheme.honeyDark : CuteTheme.caramel);" "0, 20, 32, selected ? CuteTheme.honeyDark : CuteTheme.caramel);"
+    Replace-PreviewRefinement "-42, 49, 54, CuteTheme.mint);" "-40, 31, 50, CuteTheme.mint);"
+    Replace-PreviewRefinement "[23, -3, -29]" "[17, -1, -19]"
+    Replace-PreviewRefinement "-66, y, 7, 7" "-62, y, 6, 6"
+    Replace-PreviewRefinement "45, 49, 56, CuteTheme.peach);" "42, 31, 52, CuteTheme.peach);"
+    Replace-PreviewRefinement "var detail = panel(page, 'ShopDetail', 69, -322, 492, 158, new Color(255, 252, 239, 182), 18, false, new Color(219, 180, 130, 74), 1);" "var detail = panel(page, 'ShopDetail', 69, -286, 492, 138, new Color(255, 252, 239, 236), 18, false, new Color(219, 180, 130, 112), 1);"
+    Replace-PreviewRefinement "-205, 32, 52, CuteTheme.honeyDark);" "-205, 22, 42, CuteTheme.honeyDark);"
+    Replace-PreviewRefinement "-166, 58, 246, 30, 18, CuteTheme.caramel" "-166, 36, 246, 28, 16, CuteTheme.caramel"
+    Replace-PreviewRefinement "-166, 15, 264, 54, 12, CuteTheme.muted" "-166, 2, 264, 36, 10, CuteTheme.muted"
+    Replace-PreviewRefinement "-166, -54, 180, 26, 12, CuteTheme.mintDark" "-166, -42, 180, 24, 11, CuteTheme.mintDark"
+    Replace-PreviewRefinement "43, -39, 40, 40" "43, -35, 34, 34"
+    Replace-PreviewRefinement "91, -39, 52, 30, 15" "86, -35, 42, 28, 13"
+    Replace-PreviewRefinement "139, -39, 40, 40" "129, -35, 34, 34"
+    Replace-PreviewRefinement "140, 48, 182, 54" "140, 30, 182, 44"
+
+    Replace-PreviewRefinement "          drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);`r`n" ''
+    Replace-PreviewRefinement "          text(sign, 'Title', '孵化室', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);`r`n" ''
+    Replace-PreviewRefinement "          text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);`r`n" ''
+    Replace-PreviewRefinement "          text(plan, 'Hint', '每一颗蛋都藏着小小奇迹', 0, 12, 238, 26, 12, CuteTheme.caramel, 'center', true);`r`n" ''
+    Replace-PreviewRefinement "          text(plan, 'Rule', '选择蛋仓中的宠物蛋，再放入空闲装置', 0, -15, 238, 22, 10, CuteTheme.muted, 'center');`r`n" ''
+    $script:previewScript = [regex]::Replace($script:previewScript, "(?m)^\s*text\(welcome, 'Text'.*;$", '          void 0;')
+    $script:previewScript = [regex]::Replace($script:previewScript, "(?m)^\s*drawUiIcon\(sign, 'EggIcon'.*;$", '          void 0;')
+    $script:previewScript = [regex]::Replace($script:previewScript, "(?m)^\s*text\(sign, '(Title|Subtitle)'.*;$", '          void 0;')
+    $script:previewScript = [regex]::Replace($script:previewScript, "(?m)^\s*text\(plan, '(Hint|Rule)'.*;$", '          void 0;')
+    $emptyHatcheryTitle = @'
+          var sign = panel(room, 'TitleBoard', -200, 380, 248, 82, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+          void 0;
+          void 0;
+          void 0;
+'@
+    $visibleHatcheryTitle = @'
+          var sign = panel(room, 'TitleBoard', -200, 380, 248, 82, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+          drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);
+          text(sign, 'Title', '\u5B75\u5316\u5BA4', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);
+          text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);
+'@
+    Replace-PreviewRefinement $emptyHatcheryTitle $visibleHatcheryTitle
+    Replace-PreviewRefinement "var warehouseSign = panel(warehouse, 'WarehouseSign', -210, 140, 178, 42" "var warehouseSign = panel(warehouse, 'WarehouseSign', 0, 166, 220, 36"
+    Replace-PreviewRefinement "0, 0, 156, 28, 14, CuteTheme.caramel" "0, 0, 198, 28, 14, CuteTheme.caramel"
+    Replace-PreviewRefinement "title, -70 + index * 76, 140, 68, 32" "title, -130 + index * 76, 120, 68, 32"
+    Replace-PreviewRefinement "238, 140, 106, 32" "208, 120, 106, 32"
+    Replace-PreviewRefinement "this.createScrollArea(warehouse, 'EggScroll', 0, -14, 594, 250, 594, Math.max(250, rows * 116 + 8)" "this.createScrollArea(warehouse, 'EggScroll', 0, -32, 594, 230, 594, Math.max(230, rows * 108 + 8)"
+    Replace-PreviewRefinement "-198 + col * 198, -50 - row * 116, 184, 104" "-198 + col * 198, -46 - row * 108, 184, 96"
+
+    $script:previewScript += "`r`n$refinementMarker`r`n"
+}
+
 [System.IO.File]::WriteAllText($mainScriptPath, $script:previewScript, (New-Object System.Text.UTF8Encoding($false)))
 Write-Output 'Illustrated pages synchronized to web-mobile preview.'

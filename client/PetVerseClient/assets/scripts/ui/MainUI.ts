@@ -1124,20 +1124,20 @@ export class MainUI extends Component {
         const detailView = this.petDetailTab === 'attributes' ? this.petAttributeView : this.petDetailTab;
         if (detailView === 'overview') {
             text(data, 'Explain', '核心战斗属性', -180, 226, 360, 34, 19, CuteTheme.caramel, 'left', true);
-            const survival = panel(data, 'Survival', 0, 137, 384, 120, new Color(255, 250, 232, 255), 22, false, CuteTheme.white, 1);
-            headingTag(survival, 'Title', '生存', -137, 38, 90, CuteTheme.mint);
-            this.battleStat(survival, 'Hp', '❤', '生命', attrs.hp, -88, -10);
-            this.battleStat(survival, 'Def', '◆', '防御', attrs.defense, 88, -10);
-            const output = panel(data, 'Output', 0, -4, 384, 120, new Color(255, 245, 238, 255), 22, false, CuteTheme.white, 1);
-            headingTag(output, 'Title', '输出', -137, 38, 90, CuteTheme.peach);
-            this.battleStat(output, 'Atk', '⚔', '物攻', attrs.attack, -88, -10);
-            this.battleStat(output, 'Magic', '✦', '法攻', attrs.magic, 88, -10);
-            const develop = panel(data, 'Develop', 0, -174, 384, 184, new Color(242, 249, 238, 255), 22, false, CuteTheme.white, 1);
-            headingTag(develop, 'Title', '速度与培养', -118, 70, 140, CuteTheme.sky);
-            this.battleStat(develop, 'Speed', '➤', '速度', attrs.speed, -88, 20);
-            this.battleStat(develop, 'Growth', '成', '成长', this.growthValue(selected).toFixed(3), 88, 20);
-            this.battleStat(develop, 'Quality', '◇', '品质', Number(selected?.quality || 100), -88, -52);
-            this.battleStat(develop, 'Skills', '技', '技能数', Array.isArray(selected?.skills) ? selected.skills.length : 0, 88, -52);
+            const survival = panel(data, 'Survival', 0, 137, 304, 112, new Color(255, 250, 232, 228), 20, false, CuteTheme.white, 1);
+            headingTag(survival, 'Title', '生存', -98, 35, 82, CuteTheme.mint);
+            this.battleStat(survival, 'Hp', '❤', '生命', attrs.hp, -70, -9);
+            this.battleStat(survival, 'Def', '◆', '防御', attrs.defense, 70, -9);
+            const output = panel(data, 'Output', 0, 4, 304, 112, new Color(255, 245, 238, 228), 20, false, CuteTheme.white, 1);
+            headingTag(output, 'Title', '输出', -98, 35, 82, CuteTheme.peach);
+            this.battleStat(output, 'Atk', '⚔', '物攻', attrs.attack, -70, -9);
+            this.battleStat(output, 'Magic', '✦', '法攻', attrs.magic, 70, -9);
+            const develop = panel(data, 'Develop', 0, -166, 304, 174, new Color(242, 249, 238, 228), 20, false, CuteTheme.white, 1);
+            headingTag(develop, 'Title', '速度与培养', -78, 65, 134, CuteTheme.sky);
+            this.battleStat(develop, 'Speed', '➤', '速度', attrs.speed, -70, 18);
+            this.battleStat(develop, 'Growth', '成', '成长', this.growthValue(selected).toFixed(3), 70, 18);
+            this.battleStat(develop, 'Quality', '◇', '品质', Number(selected?.quality || 100), -70, -50);
+            this.battleStat(develop, 'Skills', '技', '技能数', Array.isArray(selected?.skills) ? selected.skills.length : 0, 70, -50);
         } else if (detailView === 'aptitudes') {
             const apt=this.aptitudesOf(selected);
             text(data,'Explain','资质决定升级后转化出的实际属性',0,226,380,34,16,CuteTheme.muted,'center',true);
@@ -1290,9 +1290,6 @@ export class MainUI extends Component {
         const refreshTag = panel(page, 'RefreshTag', 272, 268, 88, 92, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
         text(refreshTag, 'Time', '每日刷新\n05:00', 0, 20, 74, 42, 11, CuteTheme.muted, 'center', true);
         button(refreshTag, 'Refresh', '刷新', 0, -25, 70, 30, () => void this.refreshPageData('shop'), { fill: CuteTheme.honey, fontSize: 10, radius: 12 });
-        const welcome = panel(page, 'WelcomeNote', 18, 260, 390, 58, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        text(welcome, 'Text', '欢迎光临，今天也有适合宝宝的好东西。', -168, 0, 336, 34, 13, CuteTheme.caramel, 'left', true);
-
         const categories: Array<[typeof this.shopCategory, string]> = [
             ['featured', '精选'], ['nurture', '养成'], ['skills', '技能书'], ['materials', '材料'], ['hatch', '孵化'], ['special', '特殊'],
         ];
@@ -1305,48 +1302,48 @@ export class MainUI extends Component {
         if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 82, 80, 470, 100, 21, CuteTheme.muted, 'center', true); return; }
         this.ensureSelectedShopItem();
         const rows = Math.ceil(items.length / 3);
-        const ledger = panel(page, 'ProductLedger', 69, 15, 492, 426, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        const area = this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 410, 476, Math.max(410, rows * 132 + 12), 'vertical');
+        const ledger = panel(page, 'ProductLedger', 69, 38, 492, 350, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
+        const area = this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 334, 476, Math.max(334, rows * 108 + 8), 'vertical');
         items.forEach((item, index) => {
             const col = index % 3;
             const rowIndex = Math.floor(index / 3);
             const selected = Number(item?.id || 0) === this.selectedShopItemId;
             const owned = GameStore.inventory.find((ownedItem) => String(ownedItem?.itemCode || '') === String(item?.itemCode || ''));
             const baseColor = selected ? new Color(255, 239, 187, 205) : this.shopItemColor(item);
-            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -156 + col * 156, -58 - rowIndex * 132, 138, 118, () => {
+            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -156 + col * 156, -48 - rowIndex * 108, 138, 96, () => {
                 this.selectedShopItemId = Number(item?.id || 0); this.shopBuyCount = 1; this.renderCurrentPage(false);
             }, { fill: new Color(baseColor.r, baseColor.g, baseColor.b, 190), fontSize: 11, radius: 14, selected,
                 subtitle: `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}` });
             const face = card.getChildByName('Face');
             const title = face?.getChildByName('Title');
             const subtitle = face?.getChildByName('Subtitle');
-            if (title) title.setPosition(0, -20, 0);
-            if (subtitle) subtitle.setPosition(0, -42, 0);
-            if (this.isSkillBook(item)) image(card, 'ProductArt', this.skillBookIconPath(item), 0, 23, 42, 42, CuteTheme.paperWarm);
-            else if (String(item?.type || '').toLowerCase() === 'egg') image(card, 'ProductArt', getEggArtPath(item), 0, 22, 42, 52, CuteTheme.paperWarm);
-            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 23, 36, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
-            tag(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -40, 40, 50, CuteTheme.mint);
-            [20, -2, -24].forEach((y, holeIndex) => panel(card, `Hole_${holeIndex}`, -62, y, 6, 6, new Color(218, 184, 139, 255), 3));
+            if (title) title.setPosition(0, -17, 0);
+            if (subtitle) subtitle.setPosition(0, -36, 0);
+            if (this.isSkillBook(item)) image(card, 'ProductArt', this.skillBookIconPath(item), 0, 20, 36, 36, CuteTheme.paperWarm);
+            else if (String(item?.type || '').toLowerCase() === 'egg') image(card, 'ProductArt', getEggArtPath(item), 0, 19, 36, 44, CuteTheme.paperWarm);
+            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 20, 32, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
+            tag(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -40, 31, 50, CuteTheme.mint);
+            [17, -1, -19].forEach((y, holeIndex) => panel(card, `Hole_${holeIndex}`, -62, y, 6, 6, new Color(218, 184, 139, 255), 3));
             const limit = Number(item?.purchaseLimit || item?.limit || 0);
-            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 42, 40, 52, CuteTheme.peach);
+            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 42, 31, 52, CuteTheme.peach);
         });
 
         const selected = this.selectedShopItem();
-        const detail = panel(page, 'ShopDetail', 69, -322, 492, 158, new Color(255, 252, 239, 182), 18, false, new Color(219, 180, 130, 74), 1);
+        const detail = panel(page, 'ShopDetail', 69, -286, 492, 138, new Color(255, 252, 239, 236), 18, false, new Color(219, 180, 130, 112), 1);
         if (!selected) { text(detail, 'NoSelection', '请选择商品', 0, 0, 300, 50, 20, CuteTheme.muted, 'center', true); return; }
-        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -205, 25, 46, CuteTheme.honeyDark);
-        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -166, 43, 246, 30, 17, CuteTheme.caramel, 'left', true);
-        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -166, 4, 264, 44, 11, CuteTheme.muted, 'left', false);
+        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -205, 22, 42, CuteTheme.honeyDark);
+        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -166, 36, 246, 28, 16, CuteTheme.caramel, 'left', true);
+        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -166, 2, 264, 36, 10, CuteTheme.muted, 'left', false);
         const owned = GameStore.inventory.find((item) => String(item?.itemCode || '') === String(selected?.itemCode || ''));
-        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -166, -48, 180, 26, 12, CuteTheme.mintDark, 'left', true);
-        button(detail, 'Minus', '－', 43, -39, 36, 36, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 18, radius: 14 });
-        text(detail, 'Count', `×${this.shopBuyCount}`, 87, -39, 44, 30, 14, CuteTheme.caramel, 'center', true);
-        button(detail, 'Plus', '＋', 131, -39, 36, 36, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 18, radius: 14 });
+        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -166, -42, 180, 24, 11, CuteTheme.mintDark, 'left', true);
+        button(detail, 'Minus', '－', 43, -35, 34, 34, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 17, radius: 13 });
+        text(detail, 'Count', `×${this.shopBuyCount}`, 86, -35, 42, 28, 13, CuteTheme.caramel, 'center', true);
+        button(detail, 'Plus', '＋', 129, -35, 34, 34, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 17, radius: 13 });
         const total = Number(selected?.price || 0) * this.shopBuyCount;
         const balance = selected?.currencyType === 'diamond' ? Number(GameStore.user?.diamond || 0) : Number(GameStore.user?.gold || 0);
         const soldOut = Boolean(selected?.soldOut) || (selected?.stock !== undefined && Number(selected?.stock || 0) <= 0);
         const insufficient = total > balance;
-        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 140, 36, 182, 48, () => void this.buySelectedShopItem(), {
+        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 140, 30, 182, 44, () => void this.buySelectedShopItem(), {
             fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 13, radius: 20, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
         text(page, 'ShopHint', '购买后仍停留在当前账页 · 宠物蛋进入孵化室 · 技能书进入背包', 65, -420, 500, 24, 11, CuteTheme.muted, 'center', true);
     }
@@ -1518,9 +1515,6 @@ export class MainUI extends Component {
         drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);
         text(sign, 'Title', '孵化室', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);
         text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);
-        const plan = panel(room, 'PlanBoard', 180, 380, 270, 76, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
-        text(plan, 'Hint', '每一颗蛋都藏着小小奇迹', 0, 12, 238, 26, 12, CuteTheme.caramel, 'center', true);
-        text(plan, 'Rule', '从蛋仓选择宠物蛋，放入空闲装置', 0, -15, 238, 22, 10, CuteTheme.muted, 'center');
         const activeEggs = GameStore.eggs
             .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
             .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
@@ -1571,18 +1565,18 @@ export class MainUI extends Component {
                 ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
                 : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
         const warehouse = panel(room, 'Warehouse', 0, -210, 620, 348, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
-        const warehouseSign = panel(warehouse, 'WarehouseSign', -210, 140, 178, 42, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
-        text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 156, 28, 14, CuteTheme.caramel, 'center', true);
-        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-70+index*76,140,68,32,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
-        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',238,140,106,32,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
+        const warehouseSign = panel(warehouse, 'WarehouseSign', 0, 166, 220, 36, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
+        text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 198, 28, 14, CuteTheme.caramel, 'center', true);
+        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-130+index*76,120,68,32,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
+        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',208,120,106,32,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
         const rows = Math.max(1, Math.ceil(storedEggs.length / 3));
-        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -14, 594, 250, 594, Math.max(250, rows * 116 + 8), 'vertical');
+        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -32, 594, 230, 594, Math.max(230, rows * 108 + 8), 'vertical');
         storedEggs.forEach((egg, index) => {
             const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
             const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
             const col = index % 3;
             const row = Math.floor(index / 3);
-            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -50 - row * 116, 184, 104, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 184), 15, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 165), egg?.isMutant ? 4 : 2);
+            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -46 - row * 108, 184, 96, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 184), 15, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 165), egg?.isMutant ? 4 : 2);
             panel(card, 'CrateLip', 0, -40, 170, 18, new Color(177, 132, 89, 105), 7, false, CuteTheme.white, 1);
             image(card, 'Icon', getEggArtPath(egg), -55, 8, 58, 72, CuteTheme.paperWarm);
             text(card, 'Name', getEggDisplayName(egg), 34, 26, 102, 30, 12, CuteTheme.caramel, 'center', false);
@@ -4569,10 +4563,10 @@ export class MainUI extends Component {
     }
 
     private battleStat(parent: Node, name: string, icon: string, title: string, value: string | number, x: number, y: number) {
-        const card = panel(parent, name, x, y, 142, 56, new Color(255, 252, 239, 255), 18, false, CuteTheme.white, 2);
-        text(card, 'Icon', icon, -56, 0, 28, 30, 18, CuteTheme.honeyDark, 'left', true);
-        text(card, 'Title', title, -22, 8, 60, 24, 13, CuteTheme.muted, 'left', true);
-        text(card, 'Value', String(value), -22, -12, 92, 26, 16, CuteTheme.caramel, 'left', true);
+        const card = panel(parent, name, x, y, 124, 54, new Color(255, 252, 239, 236), 17, false, CuteTheme.white, 1);
+        text(card, 'Icon', icon, -48, 0, 24, 28, 16, CuteTheme.honeyDark, 'left', true);
+        text(card, 'Title', title, -18, 8, 54, 22, 12, CuteTheme.muted, 'left', true);
+        text(card, 'Value', String(value), -18, -12, 78, 24, 14, CuteTheme.caramel, 'left', true);
     }
 
     private aptitudeRow(parent: Node, name: string, icon: string, title: string, value: number, y: number) {

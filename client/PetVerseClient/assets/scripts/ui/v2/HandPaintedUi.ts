@@ -262,7 +262,7 @@ export function createLoadingOverlay(parent: Node, message = '正在整理手账
 
 export function renderBottomNavigation(
     parent: Node,
-    active: MainTab,
+    _active: MainTab,
     onNavigate: (page: MainTab) => void,
     notificationCount = 0,
 ) {
@@ -270,13 +270,8 @@ export function renderBottomNavigation(
     artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
 
     MAIN_TABS.forEach((item, index) => {
-        const selected = item.key === active;
         const x = -276 + index * 138;
         const isAdventure = item.key === 'adventure';
-        if (selected) {
-            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 248, 205, isAdventure ? 30 : 42), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 214, 90, 245) : new Color(67, 153, 102, 245), 4);
-            panel(parent, `SelectedMark_${item.key}`, x, -48, isAdventure ? 82 : 68, 8, isAdventure ? new Color(246, 174, 42, 255) : new Color(43, 159, 104, 255), 4);
-        }
         const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });

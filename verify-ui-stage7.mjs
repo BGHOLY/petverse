@@ -51,6 +51,8 @@ assert('client type check ignores engine declaration churn', clientTypeConfig?.c
 
 const mainScene = verifyCanvas('client/PetVerseClient/assets/scenes/MainScene.scene');
 verifyCanvas('client/PetVerseClient/assets/scenes/LoginScene.scene');
+assert('legacy scene backup stays outside Cocos assets', !existsSync(join(root, 'client/PetVerseClient/assets/scenes/MainScene.scene.bak')));
+assert('legacy scene backup is retained in documentation', existsSync(join(root, 'docs/legacy-scenes/MainScene.scene.bak')));
 const sceneNodes = mainScene.map((entry, id) => ({ entry, id })).filter(({ entry }) => entry?.__type__ === 'cc.Node');
 const sceneNodeNames = new Set(sceneNodes.map(({ entry }) => entry?._name));
 for (const name of [
@@ -132,12 +134,16 @@ assert('inventory uses illustrated field-journal artwork', mainUi.includes("'ui/
 assert('hatchery uses illustrated workshop artwork', mainUi.includes("'ui/hatchery-v3/hatchery-page-v3'"));
 assert('illustrated pages expose Cocos editor preview controls', mainUi.includes('editorPreviewPage') && mainUi.includes('petPageOffset') && mainUi.includes('hatcheryPageScale'));
 assert('illustrated pages use compact non-overlapping grids', mainUi.includes('rows * 116 + 8') && mainUi.includes("'InventoryScroll', 0, 0, 590, 464"));
+assert('pet overview cards stay inside the research column', mainUi.includes("'Survival', 0, 137, 304, 112") && mainUi.includes('parent, name, x, y, 124, 54'));
+assert('shop ledger and purchase strip use separate vertical bands', mainUi.includes("'ProductLedger', 69, 38, 492, 350") && mainUi.includes("'ShopDetail', 69, -286, 492, 138"));
+assert('hatchery title is singular and warehouse controls use separate rows', !mainUi.includes("'PlanBoard'") && mainUi.includes("'WarehouseSign', 0, 166, 220, 36") && mainUi.includes("'EggScroll', 0, -32, 594, 230"));
 assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
 const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
 assert('home page composes generated room and independently scaled controls', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v4/activity-sign-v4'"));
 assert('home generated buttons preserve original activity and shortcut callbacks', homePageUi.includes('options.onActivity(activity)') && homePageUi.includes('options.onShortcut(shortcut)'));
 const handPaintedUi = read('client/PetVerseClient/assets/scripts/ui/v2/HandPaintedUi.ts');
 assert('bottom navigation uses tightly cropped five-tab artwork', handPaintedUi.includes("'ui/home-v4/bottom-navigation-v4'") && handPaintedUi.includes("item.key === 'adventure'"));
+assert('bottom navigation does not draw a green active outline', !handPaintedUi.includes('SelectedMark_') && !handPaintedUi.includes('Selected_${item.key}'));
 for (const legacyPanel of [
     'FriendPanel', 'HatcheryPanel', 'MarriagePanel', 'PetPanel', 'ProfilePanel',
     'RankingPanel', 'ShopPanel', 'SkillPanel', 'TowerPanel',
