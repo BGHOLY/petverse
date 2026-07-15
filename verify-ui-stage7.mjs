@@ -51,7 +51,8 @@ assert('client type check ignores engine declaration churn', clientTypeConfig?.c
 
 const mainScene = verifyCanvas('client/PetVerseClient/assets/scenes/MainScene.scene');
 verifyCanvas('client/PetVerseClient/assets/scenes/LoginScene.scene');
-const sceneNodeNames = new Set(mainScene.filter((entry) => entry?.__type__ === 'cc.Node').map((entry) => entry?._name));
+const sceneNodes = mainScene.map((entry, id) => ({ entry, id })).filter(({ entry }) => entry?.__type__ === 'cc.Node');
+const sceneNodeNames = new Set(sceneNodes.map(({ entry }) => entry?._name));
 for (const name of [
     'PetVerseUIRoot', 'GlobalBackground', 'TopBar', 'PageRoot', 'BottomNavigation',
     'DrawerLayer', 'ModalLayer', 'UtilityLayer', 'BattleLayer', 'RevealLayer',
@@ -60,6 +61,28 @@ for (const name of [
 ]) {
     assert(`MainScene contains ${name}`, sceneNodeNames.has(name));
 }
+const canvasRecord = sceneNodes.find(({ entry }) => entry?._name === 'Canvas');
+const editorRoot = sceneNodes.find(({ entry }) => entry?._name === 'PetVerseUIRoot' && entry?._parent?.__id__ === canvasRecord?.id);
+const editorNodeIds = new Set();
+const collectEditorNodes = (id) => {
+    if (editorNodeIds.has(id)) return;
+    editorNodeIds.add(id);
+    for (const child of mainScene[id]?._children || []) collectEditorNodes(child.__id__);
+};
+if (editorRoot) collectEditorNodes(editorRoot.id);
+assert('Cocos editor preview root is active', editorRoot?.entry?._active === true);
+assert('Cocos editor preview uses UI_2D on every generated node', [...editorNodeIds].every((id) => mainScene[id]?._layer === canvasRecord?.entry?._layer));
+for (const name of ['bg', 'HomeLayer', 'PageLayer', 'ToastLayer']) {
+    const legacy = sceneNodes.find(({ entry }) => entry?._name === name && entry?._parent?.__id__ === canvasRecord?.id);
+    assert(`legacy Cocos editor layer is disabled: ${name}`, legacy?.entry?._active === false);
+}
+for (const name of ['HomeTopArt', 'RoomArt', 'HomePetArt', 'PetNameplateArt', 'NavigationArt']) {
+    const artNode = sceneNodes.find(({ entry, id }) => editorNodeIds.has(id) && entry?._name === name);
+    const sprite = (artNode?.entry?._components || []).map((reference) => mainScene[reference.__id__]).find((component) => component?.__type__ === 'cc.Sprite');
+    assert(`Cocos editor scene serializes ${name} SpriteFrame`, Boolean(sprite?._spriteFrame?.__uuid__));
+}
+const serializedMainUi = mainScene.find((entry) => entry?.apiBaseUrl && entry?.node?.__id__ === canvasRecord?.id);
+assert('Cocos editor scene serializes page tuning controls', serializedMainUi?.editorPreviewPage === 0 && serializedMainUi?.pageContentScale === 1 && serializedMainUi?.petPageOffset?.__type__ === 'cc.Vec2');
 
 const routes = read('client/PetVerseClient/assets/scripts/ui/v2/AppRoutes.ts');
 const tabBlock = routes.match(/MAIN_TABS:[\s\S]*?=\s*\[([\s\S]*?)\];/)?.[1] || '';
@@ -73,12 +96,15 @@ assert(
 const appShell = read('client/PetVerseClient/assets/scripts/ui/v2/AppShell.ts');
 assert('app shell applies device safe area', appShell.includes('getSafeAreaRect') && appShell.includes('safe.bottom - safe.top'));
 assert('app shell activates one page container', appShell.includes('child.active = child === target'));
+assert('app shell disables legacy scene layers', appShell.includes('LEGACY_CANVAS_LAYERS') && appShell.includes('legacyLayer.active = false'));
+assert('app shell normalizes generated node layers', appShell.includes('applyLayerRecursively(root, canvas.layer)'));
 
 const uiKit = read('client/PetVerseClient/assets/scripts/ui/cute/CuteUiKit.ts');
 assert('shared buttons debounce repeated clicks', uiKit.includes('lastAcceptedClickAt') && uiKit.includes('< 320'));
 assert('button re-render replaces public click binding', uiKit.includes('node.off(Button.EventType.CLICK)'));
 assert('generated artwork loads without runtime panel chrome', uiKit.includes('export function artImage'));
 assert('generated artwork keeps transparent interaction areas', uiKit.includes('export function hitArea'));
+assert('generated UI inherits the parent Cocos layer', uiKit.includes('node.layer = parent.layer'));
 
 const mainUi = read('client/PetVerseClient/assets/scripts/ui/MainUI.ts');
 for (const renderer of [

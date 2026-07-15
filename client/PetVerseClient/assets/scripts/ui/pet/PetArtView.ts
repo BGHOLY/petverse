@@ -14,6 +14,7 @@ export function createPetArtSprite(
 
     const node = new Node(name);
     parent.addChild(node);
+    node.layer = parent.layer;
     const transform = node.addComponent(UITransform);
     transform.setContentSize(width, height);
     transform.setAnchorPoint(0.5, 0.5);

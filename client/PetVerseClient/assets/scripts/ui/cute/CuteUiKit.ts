@@ -56,10 +56,12 @@ export function getOrCreate(parent: Node, name: string) {
         node = new Node(name);
         parent.addChild(node);
     }
+    node.layer = parent.layer;
     return node;
 }
 
 export function setRect(node: Node, x: number, y: number, width: number, height: number) {
+    if (node.parent) node.layer = node.parent.layer;
     node.setPosition(new Vec3(x, y, 0));
     const transform = node.getComponent(UITransform) || node.addComponent(UITransform);
     transform.setAnchorPoint(0.5, 0.5);

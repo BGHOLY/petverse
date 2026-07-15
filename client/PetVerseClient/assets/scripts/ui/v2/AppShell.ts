@@ -19,6 +19,12 @@ export type AppShellLayers = {
 };
 
 const PAGE_CONTAINERS = ['HomePage', 'PetPage', 'AdventurePage', 'ShopPage', 'MorePage', 'SecondaryPage'];
+const LEGACY_CANVAS_LAYERS = ['bg', 'HomeLayer', 'PageLayer', 'ToastLayer'];
+
+function applyLayerRecursively(node: Node, layerValue: number) {
+    node.layer = layerValue;
+    for (const child of node.children) applyLayerRecursively(child, layerValue);
+}
 
 function safeAreaInsets() {
     try {
@@ -86,6 +92,11 @@ export function resolveAppShell(canvas: Node): AppShellLayers {
     setRect(root, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
     if (!root.getComponent(BlockInputEvents)) root.addComponent(BlockInputEvents);
 
+    for (const name of LEGACY_CANVAS_LAYERS) {
+        const legacyLayer = canvas.getChildByName(name);
+        if (legacyLayer && legacyLayer !== root) legacyLayer.active = false;
+    }
+
     const result: AppShellLayers = {
         root,
         globalBackground: layer(root, 'GlobalBackground', ['BackgroundLayer', 'Background']),
@@ -123,6 +134,7 @@ export function resolveAppShell(canvas: Node): AppShellLayers {
         result.loadingLayer,
     ];
     ordered.forEach((node, index) => node.setSiblingIndex(index));
+    applyLayerRecursively(root, canvas.layer);
 
     result.drawerLayer.active = false;
     result.revealLayer.active = false;
