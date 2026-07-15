@@ -3,6 +3,7 @@ import {
     BlockInputEvents,
     Color,
     Component,
+    Enum,
     find,
     Mask,
     Node,
@@ -74,6 +75,17 @@ type SecondaryConfirmation = {
     action: () => void | Promise<void>;
 };
 
+enum EditorPreviewPage {
+    Home,
+    Pet,
+    Shop,
+    Inventory,
+    Hatchery,
+    Adventure,
+}
+
+Enum(EditorPreviewPage);
+
 @ccclass('MainUI')
 @executeInEditMode(true)
 export class MainUI extends Component {
@@ -81,6 +93,42 @@ export class MainUI extends Component {
 
     @property
     apiBaseUrl = 'http://127.0.0.1:3000/api';
+
+    @property({ type: EditorPreviewPage, displayName: '编辑器预览页面', tooltip: '在 Cocos 编辑器中切换需要微调的页面。' })
+    editorPreviewPage = EditorPreviewPage.Home;
+
+    @property({ displayName: '页面整体 X', tooltip: '所有页面内容的水平微调。' })
+    pageContentOffsetX = 0;
+
+    @property({ displayName: '页面整体 Y', tooltip: '所有页面内容的垂直微调。' })
+    pageContentOffsetY = 0;
+
+    @property({ displayName: '页面整体缩放', tooltip: '建议保持在 0.95 至 1.02。' })
+    pageContentScale = 1;
+
+    @property({ type: Vec2, displayName: '宠物页偏移' })
+    petPageOffset = new Vec2(0, 0);
+
+    @property({ displayName: '宠物页缩放' })
+    petPageScale = 1;
+
+    @property({ type: Vec2, displayName: '商店页偏移' })
+    shopPageOffset = new Vec2(0, 0);
+
+    @property({ displayName: '商店页缩放' })
+    shopPageScale = 1;
+
+    @property({ type: Vec2, displayName: '背包页偏移' })
+    inventoryPageOffset = new Vec2(0, 0);
+
+    @property({ displayName: '背包页缩放' })
+    inventoryPageScale = 1;
+
+    @property({ type: Vec2, displayName: '孵化室偏移' })
+    hatcheryPageOffset = new Vec2(0, 0);
+
+    @property({ displayName: '孵化室缩放' })
+    hatcheryPageScale = 1;
 
     private canvas: Node | null = null;
     private root: Node | null = null;
@@ -201,6 +249,7 @@ export class MainUI extends Component {
     private countdownAccumulator = 0;
     private toastToken = 0;
     private unsubscribeStore: (() => void) | null = null;
+    private editorLayoutSignature = '';
 
     onLoad() {
         MainUI.instance = this;
@@ -212,6 +261,7 @@ export class MainUI extends Component {
         this.unsubscribeStore = GameStore.subscribe(this.onStoreChanged);
 
         if (EDITOR && !GameStore.pets.length) GameStore.seedPreview();
+        if (EDITOR) this.currentPage = this.editorPreviewPageName();
 
         this.buildShell();
         if (this.root) {
@@ -237,6 +287,22 @@ export class MainUI extends Component {
     }
 
     update(dt: number) {
+        if (EDITOR) {
+            const signature = [
+                this.editorPreviewPage, this.pageContentOffsetX, this.pageContentOffsetY, this.pageContentScale,
+                this.petPageOffset.x, this.petPageOffset.y, this.petPageScale,
+                this.shopPageOffset.x, this.shopPageOffset.y, this.shopPageScale,
+                this.inventoryPageOffset.x, this.inventoryPageOffset.y, this.inventoryPageScale,
+                this.hatcheryPageOffset.x, this.hatcheryPageOffset.y, this.hatcheryPageScale,
+            ].join(':');
+            if (signature !== this.editorLayoutSignature) {
+                this.editorLayoutSignature = signature;
+                this.currentPage = this.editorPreviewPageName();
+                this.renderTopBar();
+                this.renderBottomNav();
+                this.renderCurrentPage(false);
+            }
+        }
         this.countdownAccumulator += dt;
         if (this.countdownAccumulator < 1) return;
         this.countdownAccumulator = 0;
@@ -741,6 +807,10 @@ export class MainUI extends Component {
         this.captureScrollOffsets(this.pageRoot);
         this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
         clearNode(this.pageRoot);
+        const pageTuning = this.currentPageTuning();
+        this.pageRoot.setPosition(this.pageContentOffsetX + pageTuning.offset.x, this.pageContentOffsetY + pageTuning.offset.y, 0);
+        const contentScale = Math.max(0.9, Math.min(1.05, this.pageContentScale * pageTuning.scale));
+        this.pageRoot.setScale(contentScale, contentScale, 1);
 
         switch (this.currentPage) {
             case 'home':
@@ -806,6 +876,25 @@ export class MainUI extends Component {
         }
 
         if (animatePage) this.playPageEnter();
+    }
+
+    private editorPreviewPageName(): PageName {
+        switch (this.editorPreviewPage) {
+            case EditorPreviewPage.Pet: return 'pet';
+            case EditorPreviewPage.Shop: return 'shop';
+            case EditorPreviewPage.Inventory: return 'inventory';
+            case EditorPreviewPage.Hatchery: return 'hatchery';
+            case EditorPreviewPage.Adventure: return 'adventure';
+            default: return 'home';
+        }
+    }
+
+    private currentPageTuning() {
+        if (this.currentPage === 'pet') return { offset: this.petPageOffset, scale: this.petPageScale };
+        if (this.currentPage === 'shop') return { offset: this.shopPageOffset, scale: this.shopPageScale };
+        if (this.currentPage === 'inventory') return { offset: this.inventoryPageOffset, scale: this.inventoryPageScale };
+        if (this.currentPage === 'hatchery') return { offset: this.hatcheryPageOffset, scale: this.hatcheryPageScale };
+        return { offset: Vec2.ZERO, scale: 1 };
     }
 
     private renderHome() {
@@ -971,14 +1060,14 @@ export class MainUI extends Component {
 
         artImage(root, 'PetDetailArt', 'ui/pet-v3/pet-detail-page-v3', 0, 0, 720, 1010);
         const book = root;
-        headingTag(book, 'PetListTitle', `我的宠物 ${pets.length}/${allPets.length}`, -287, 408, 124, CuteTheme.honey);
-        const selectorStep = 112;
+        headingTag(book, 'PetListTitle', `我的宠物 ${pets.length}/${allPets.length}`, -280, 408, 138, CuteTheme.honey);
+        const selectorStep = 104;
         const selectorHeight = Math.max(710, pets.length * selectorStep + 12);
-        const selector = this.createScrollArea(book, 'PetSelectorScroll', -288, 24, 122, 714, 122, selectorHeight, 'vertical');
+        const selector = this.createScrollArea(book, 'PetSelectorScroll', -280, 24, 144, 714, 144, selectorHeight, 'vertical');
         pets.forEach((item, index) => {
             const id = Number(item?.id || 0);
             const selectedCard = id === Number(GameStore.currentPetId);
-            const card = button(selector.content, `PetTab_${id || index}`, '', 0, -51 - index * selectorStep, 110, 100, () => {
+            const card = button(selector.content, `PetTab_${id || index}`, '', 0, -47 - index * selectorStep, 132, 92, () => {
                 GameStore.selectPet(id);
                 this.petDetailTab = 'attributes';
                 this.petAttributeView = 'overview';
@@ -989,32 +1078,32 @@ export class MainUI extends Component {
                 fontSize: 12, radius: 18,
                 border: selectedCard ? new Color(195, 119, 42, 255) : new Color(221, 181, 124, 255),
             });
-            image(card, 'PetThumb', getPetArtPath(item, 'thumb'), 0, 14, 64, 64, selectedCard ? CuteTheme.honey : CuteTheme.paperWarm);
-            text(card, 'PetName', safeName(item?.nickname, `宝宝${index + 1}`), 0, -32, 102, 22, 12, CuteTheme.caramel, 'center', true);
+            image(card, 'PetThumb', getPetArtPath(item, 'thumb'), -28, 8, 56, 56, selectedCard ? CuteTheme.honey : CuteTheme.paperWarm);
+            text(card, 'PetName', safeName(item?.nickname, `宝宝${index + 1}`), 22, -2, 78, 42, 11, CuteTheme.caramel, 'center', true);
             const teamIndex = this.teamPetIds.indexOf(id);
-            if (teamIndex >= 0) tag(card, 'TeamBadge', `编${teamIndex + 1}`, 34, 36, 42, CuteTheme.mint);
-            if (item?.isLocked) tag(card, 'LockBadge', '锁', -36, 36, 38, CuteTheme.paperWarm);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `编${teamIndex + 1}`, 43, 31, 38, CuteTheme.mint);
+            if (item?.isLocked) tag(card, 'LockBadge', '锁', -46, 31, 34, CuteTheme.paperWarm);
         });
 
-        const profile = panel(book, 'Profile', -143, 42, 168, 720, new Color(255, 250, 229, 212), 22, false, new Color(209, 154, 94, 96), 2);
-        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 152, 204, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
-        button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 52, 290, 54, 38, () => void this.togglePetLock(selected), {
+        const profile = panel(book, 'Profile', -105, 42, 192, 720, new Color(255, 250, 229, 142), 22, false, new Color(209, 154, 94, 68), 1);
+        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 176, 224, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 63, 290, 54, 38, () => void this.togglePetLock(selected), {
             fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
             fontSize: 12, radius: 18,
         });
-        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 67, 154, 38, 22, CuteTheme.caramel, 'center', true);
-        text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 32, 154, 28, 13, CuteTheme.muted, 'center', true);
+        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 65, 178, 38, 22, CuteTheme.caramel, 'center', true);
+        text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 30, 178, 28, 13, CuteTheme.muted, 'center', true);
         tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -40 : 0, -30, selected?.isMutant ? 74 : 108, CuteTheme.lilac);
         if (selected?.isMutant) tag(profile, 'Mutant', '变异', 42, -30, 66, CuteTheme.peach);
         const attrs = this.battleAttributesOf(selected);
-        text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -70, 154, 38, 18, CuteTheme.honeyDark, 'center', true);
+        text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -70, 178, 38, 18, CuteTheme.honeyDark, 'center', true);
         const role = (selected?.speciesConfig?.roleTags || [getPetSpeciesMeta(selected).role || '综合']).slice(0, 2).map((value:any)=>this.petRoleLabel(value)).join(' / ');
         const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
-        const identity = panel(profile, 'Identity', 0, -150, 154, 112, new Color(248, 239, 211, 255), 18, false, CuteTheme.white, 1);
-        text(identity, 'Role', `◆ ${role}`, -68, 31, 136, 26, 12, CuteTheme.caramel, 'left', true);
-        text(identity, 'Marriage', `♥ ${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'} · 蛋${Number(selected?.breedCount || 0)}`, -68, 0, 136, 26, 12, CuteTheme.caramel, 'left', true);
-        text(identity, 'Team', `编队 ${teamIndex >= 0 ? `${teamIndex + 1}号位` : '未上阵'}`, -68, -31, 136, 26, 12, CuteTheme.caramel, 'left', true);
-        button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -238, 144, 46, () => this.setHomePet(Number(selected?.id || 0)), {
+        const identity = panel(profile, 'Identity', 0, -150, 174, 112, new Color(248, 239, 211, 208), 18, false, CuteTheme.white, 1);
+        text(identity, 'Role', `◆ ${role}`, -78, 31, 156, 26, 12, CuteTheme.caramel, 'left', true);
+        text(identity, 'Marriage', `♥ ${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'} · 蛋${Number(selected?.breedCount || 0)}`, -78, 0, 156, 26, 12, CuteTheme.caramel, 'left', true);
+        text(identity, 'Team', `编队 ${teamIndex >= 0 ? `${teamIndex + 1}号位` : '未上阵'}`, -78, -31, 156, 26, 12, CuteTheme.caramel, 'left', true);
+        button(profile, 'Home', Number(selected?.id || 0) === this.homePetId ? '当前心仪' : '设为心仪', 0, -238, 164, 46, () => this.setHomePet(Number(selected?.id || 0)), {
             fill: CuteTheme.peach, fontSize: 14, radius: 20,
         });
         button(profile, 'StatPoints', '加点', -39, -290, 70, 38, () => {
@@ -1024,9 +1113,9 @@ export class MainUI extends Component {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
-        const data = panel(book, 'ResearchData', 143, 42, 390, 720, new Color(249, 247, 227, 210), 22, false, new Color(192, 130, 67, 90), 2);
+        const data = panel(book, 'ResearchData', 174, 42, 332, 720, new Color(249, 247, 227, 148), 22, false, new Color(192, 130, 67, 64), 1);
         const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
-        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -144 + index * 96, 274, 88, 42, () => {
+        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -120 + index * 80, 274, 74, 42, () => {
             this.petDetailTab = key;
             if (key === 'attributes') this.petAttributeView = 'overview';
             this.renderCurrentPage(false);
@@ -1133,18 +1222,16 @@ export class MainUI extends Component {
         text(titleBoard, 'Title', '背包', 28, 5, 150, 42, 29, CuteTheme.caramel, 'center', true);
         text(titleBoard, 'Subtitle', '生活里的每一件小物', 28, -25, 180, 22, 11, CuteTheme.muted, 'center');
         const eggCount = eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
-        const eggNote = panel(bag, 'EggNote', 205, 370, 190, 72, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        text(eggNote, 'Text', eggCount ? `宠物蛋 ${eggCount} 枚` : '宠物蛋仓库', -18, 12, 130, 24, 13, CuteTheme.caramel, 'center', true);
-        button(eggNote, 'HatcheryShortcut', '去孵化室', -18, -17, 112, 30, () => this.showPage('hatchery'), { fill: CuteTheme.honey, fontSize: 10, radius: 13 });
-        drawUiIcon(eggNote, 'Egg', 'hatchery', 70, 1, 34, CuteTheme.honeyDark);
+        const eggNote = panel(bag, 'EggNote', 205, 326, 190, 42, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+        button(eggNote, 'HatcheryShortcut', eggCount ? `宠物蛋 ${eggCount} · 去孵化室` : '前往孵化室', 0, 0, 176, 36, () => this.showPage('hatchery'), { fill: CuteTheme.honey, fontSize: 11, radius: 14 });
 
-        const tabs = panel(bag, 'CategoryTabs', 0, 294, 608, 70, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+        const tabs = panel(bag, 'CategoryTabs', 0, 270, 608, 62, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         const categories: Array<[typeof this.inventoryCategory, string]> = [['all', '全部'], ['consumable', '道具'], ['material', '材料'], ['skill', '技能书']];
         categories.forEach(([key, title], index) => button(tabs, `InventoryCategory_${key}`, title, -222 + index * 148, 0, 136, 52, () => {
             this.inventoryCategory = key; this.renderCurrentPage(false);
         }, { selected: this.inventoryCategory === key, fill: this.inventoryCategory === key ? new Color(181, 196, 119, 255) : CuteTheme.paper, fontSize: 14, radius: 17 }));
 
-        const target = panel(bag, 'UseTarget', 0, 230, 608, 54, new Color(255, 252, 239, 188), 17, false, new Color(255, 255, 255, 0), 0);
+        const target = panel(bag, 'UseTarget', 0, 214, 608, 48, new Color(255, 252, 239, 138), 17, false, new Color(255, 255, 255, 0), 0);
         text(target, 'Title', '使用对象', -258, 0, 76, 28, 13, CuteTheme.caramel, 'left', true);
         if (targetPet) {
             image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -170, 0, 46, 46, CuteTheme.paperWarm);
@@ -1156,24 +1243,25 @@ export class MainUI extends Component {
             text(target, 'NoPet', '暂无可使用道具的宠物', 0, 0, 430, 36, 16, CuteTheme.peachDark, 'center', true);
         }
 
-        const gridPaper = panel(bag, 'InventoryGridPaper', 0, -56, 608, 500, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+        const gridPaper = panel(bag, 'InventoryGridPaper', 0, -66, 608, 490, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         const rows = Math.ceil(items.length / 4);
-        const area = this.createScrollArea(gridPaper, 'InventoryScroll', 0, 0, 590, 478, 590, Math.max(478, rows * 146 + 12), 'vertical');
+        const area = this.createScrollArea(gridPaper, 'InventoryScroll', 0, 0, 590, 464, 590, Math.max(464, rows * 116 + 8), 'vertical');
         items.forEach((item, index) => {
             const col = index % 4;
             const rowIndex = Math.floor(index / 4);
             const type = categoryOf(item);
-            const card = button(area.content, `Item_${item?.id || index}`, safeName(item?.name || item?.itemCode, '道具'), -219 + col * 146, -68 - rowIndex * 146, 134, 132, () => {
+            const card = button(area.content, `Item_${item?.id || index}`, safeName(item?.name || item?.itemCode, '道具'), -219 + col * 146, -52 - rowIndex * 116, 128, 106, () => {
                 this.inventoryDetailItem = item; this.renderUtilityModal();
             }, { fill: type === 'skill' ? new Color(244, 229, 211, 205) : type === 'consumable' ? new Color(231, 242, 214, 205) : new Color(255, 252, 239, 205), fontSize: 12, radius: 14,
                 subtitle: `×${Number(item?.quantity || 0)}` });
             const face = card.getChildByName('Face');
             const title = face?.getChildByName('Title');
             const subtitle = face?.getChildByName('Subtitle');
-            if (title) title.setPosition(0, -26, 0);
-            if (subtitle) subtitle.setPosition(43, -47, 0);
-            drawUiIcon(card, 'ItemIcon', type === 'skill' ? 'skills' : type === 'consumable' ? 'inventory' : 'collection', 0, 27, 42, type === 'skill' ? CuteTheme.peachDark : type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
-            panel(card, 'Pin', -53, 49, 8, 8, new Color(210, 177, 125, 255), 4);
+            if (title) title.setPosition(0, -24, 0);
+            if (subtitle) subtitle.setPosition(39, -40, 0);
+            if (type === 'skill') image(card, 'ItemArt', this.skillBookIconPath(item), 0, 20, 44, 44, CuteTheme.paperWarm);
+            else drawUiIcon(card, 'ItemIcon', type === 'consumable' ? 'inventory' : 'collection', 0, 20, 38, type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
+            panel(card, 'Pin', -50, 38, 7, 7, new Color(210, 177, 125, 255), 4);
         });
         if (!items.length) text(area.content, 'Empty', '当前分类暂无物品', 0, -30, 420, 100, 22, CuteTheme.muted, 'center', true);
 
@@ -1196,20 +1284,20 @@ export class MainUI extends Component {
         text(sign, 'Title', '手账屋', 20, 8, 150, 38, 27, CuteTheme.caramel, 'center', true);
         text(sign, 'Sub', 'S H O P', 20, -23, 150, 20, 10, CuteTheme.muted, 'center', true);
         const wallet = panel(page, 'WalletBoard', 95, 385, 314, 58, new Color(255, 255, 255, 0), 20, false, new Color(255, 255, 255, 0), 0);
-        text(wallet, 'Gold', `金币 ${formatNumber(GameStore.user?.gold)}`, -76, 0, 130, 28, 13, CuteTheme.caramel, 'center', true);
-        text(wallet, 'Diamond', `钻石 ${formatNumber(GameStore.user?.diamond)}`, 76, 0, 130, 28, 13, CuteTheme.caramel, 'center', true);
+        text(wallet, 'Gold', `● ${formatNumber(GameStore.user?.gold)}`, -76, 0, 130, 28, 14, CuteTheme.caramel, 'center', true);
+        text(wallet, 'Diamond', `◆ ${formatNumber(GameStore.user?.diamond)}`, 76, 0, 130, 28, 14, CuteTheme.caramel, 'center', true);
         panel(wallet, 'Divider', 0, 0, 2, 34, new Color(220, 195, 156, 255), 1);
         const refreshTag = panel(page, 'RefreshTag', 272, 268, 88, 92, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
         text(refreshTag, 'Time', '每日刷新\n05:00', 0, 20, 74, 42, 11, CuteTheme.muted, 'center', true);
         button(refreshTag, 'Refresh', '刷新', 0, -25, 70, 30, () => void this.refreshPageData('shop'), { fill: CuteTheme.honey, fontSize: 10, radius: 12 });
-        const welcome = panel(page, 'WelcomeNote', 18, 256, 390, 72, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        text(welcome, 'Text', '欢迎光临手账屋～\n这里会刷新宠物成长需要的好东西。', -168, 0, 336, 52, 13, CuteTheme.caramel, 'left', false);
+        const welcome = panel(page, 'WelcomeNote', 18, 260, 390, 58, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
+        text(welcome, 'Text', '欢迎光临，今天也有适合宝宝的好东西。', -168, 0, 336, 34, 13, CuteTheme.caramel, 'left', true);
 
         const categories: Array<[typeof this.shopCategory, string]> = [
             ['featured', '精选'], ['nurture', '养成'], ['skills', '技能书'], ['materials', '材料'], ['hatch', '孵化'], ['special', '特殊'],
         ];
-        const rail = panel(page, 'ShopCategoryRail', -263, -95, 112, 606, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        categories.forEach(([key, title], index) => button(rail, `ShopCategory_${key}`, title, 0, 248 - index * 98, 96, 70, () => {
+        const rail = panel(page, 'ShopCategoryRail', -263, -78, 112, 572, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
+        categories.forEach(([key, title], index) => button(rail, `ShopCategory_${key}`, title, 0, 214 - index * 84, 96, 58, () => {
             this.shopCategory = key; this.shopBuyCount = 1; this.ensureSelectedShopItem(); this.renderCurrentPage(false);
         }, { selected: this.shopCategory === key, fill: this.shopCategory === key ? CuteTheme.honey : CuteTheme.paper, fontSize: 13, radius: 16 }));
 
@@ -1217,46 +1305,49 @@ export class MainUI extends Component {
         if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 82, 80, 470, 100, 21, CuteTheme.muted, 'center', true); return; }
         this.ensureSelectedShopItem();
         const rows = Math.ceil(items.length / 3);
-        const ledger = panel(page, 'ProductLedger', 69, 8, 492, 402, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        const area = this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 386, 476, Math.max(386, rows * 150 + 16), 'vertical');
+        const ledger = panel(page, 'ProductLedger', 69, 15, 492, 426, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
+        const area = this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 410, 476, Math.max(410, rows * 132 + 12), 'vertical');
         items.forEach((item, index) => {
             const col = index % 3;
             const rowIndex = Math.floor(index / 3);
             const selected = Number(item?.id || 0) === this.selectedShopItemId;
             const owned = GameStore.inventory.find((ownedItem) => String(ownedItem?.itemCode || '') === String(item?.itemCode || ''));
-            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -156 + col * 156, -68 - rowIndex * 150, 146, 136, () => {
+            const baseColor = selected ? new Color(255, 239, 187, 205) : this.shopItemColor(item);
+            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -156 + col * 156, -58 - rowIndex * 132, 138, 118, () => {
                 this.selectedShopItemId = Number(item?.id || 0); this.shopBuyCount = 1; this.renderCurrentPage(false);
-            }, { fill: selected ? new Color(255, 239, 187, 220) : this.shopItemColor(item), fontSize: 12, radius: 14, selected,
+            }, { fill: new Color(baseColor.r, baseColor.g, baseColor.b, 190), fontSize: 11, radius: 14, selected,
                 subtitle: `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}` });
             const face = card.getChildByName('Face');
             const title = face?.getChildByName('Title');
             const subtitle = face?.getChildByName('Subtitle');
-            if (title) title.setPosition(0, -24, 0);
-            if (subtitle) subtitle.setPosition(0, -48, 0);
-            drawUiIcon(card, 'ProductIcon', this.isSkillBook(item) ? 'skills' : String(item?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', 0, 28, 40, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
-            tag(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -42, 49, 54, CuteTheme.mint);
-            [23, -3, -29].forEach((y, holeIndex) => panel(card, `Hole_${holeIndex}`, -66, y, 7, 7, new Color(218, 184, 139, 255), 4));
+            if (title) title.setPosition(0, -20, 0);
+            if (subtitle) subtitle.setPosition(0, -42, 0);
+            if (this.isSkillBook(item)) image(card, 'ProductArt', this.skillBookIconPath(item), 0, 23, 42, 42, CuteTheme.paperWarm);
+            else if (String(item?.type || '').toLowerCase() === 'egg') image(card, 'ProductArt', getEggArtPath(item), 0, 22, 42, 52, CuteTheme.paperWarm);
+            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 23, 36, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
+            tag(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -40, 40, 50, CuteTheme.mint);
+            [20, -2, -24].forEach((y, holeIndex) => panel(card, `Hole_${holeIndex}`, -62, y, 6, 6, new Color(218, 184, 139, 255), 3));
             const limit = Number(item?.purchaseLimit || item?.limit || 0);
-            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 45, 49, 56, CuteTheme.peach);
+            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 42, 40, 52, CuteTheme.peach);
         });
 
         const selected = this.selectedShopItem();
-        const detail = panel(page, 'ShopDetail', 69, -310, 492, 190, new Color(255, 252, 239, 205), 18, false, new Color(219, 180, 130, 85), 2);
+        const detail = panel(page, 'ShopDetail', 69, -322, 492, 158, new Color(255, 252, 239, 182), 18, false, new Color(219, 180, 130, 74), 1);
         if (!selected) { text(detail, 'NoSelection', '请选择商品', 0, 0, 300, 50, 20, CuteTheme.muted, 'center', true); return; }
-        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -205, 32, 52, CuteTheme.honeyDark);
-        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -166, 58, 246, 30, 18, CuteTheme.caramel, 'left', true);
-        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -166, 15, 264, 54, 12, CuteTheme.muted, 'left', false);
+        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -205, 25, 46, CuteTheme.honeyDark);
+        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -166, 43, 246, 30, 17, CuteTheme.caramel, 'left', true);
+        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -166, 4, 264, 44, 11, CuteTheme.muted, 'left', false);
         const owned = GameStore.inventory.find((item) => String(item?.itemCode || '') === String(selected?.itemCode || ''));
-        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -166, -54, 180, 26, 12, CuteTheme.mintDark, 'left', true);
-        button(detail, 'Minus', '－', 43, -39, 40, 40, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 19, radius: 15 });
-        text(detail, 'Count', `×${this.shopBuyCount}`, 91, -39, 52, 30, 15, CuteTheme.caramel, 'center', true);
-        button(detail, 'Plus', '＋', 139, -39, 40, 40, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 19, radius: 15 });
+        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -166, -48, 180, 26, 12, CuteTheme.mintDark, 'left', true);
+        button(detail, 'Minus', '－', 43, -39, 36, 36, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 18, radius: 14 });
+        text(detail, 'Count', `×${this.shopBuyCount}`, 87, -39, 44, 30, 14, CuteTheme.caramel, 'center', true);
+        button(detail, 'Plus', '＋', 131, -39, 36, 36, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 18, radius: 14 });
         const total = Number(selected?.price || 0) * this.shopBuyCount;
         const balance = selected?.currencyType === 'diamond' ? Number(GameStore.user?.diamond || 0) : Number(GameStore.user?.gold || 0);
         const soldOut = Boolean(selected?.soldOut) || (selected?.stock !== undefined && Number(selected?.stock || 0) <= 0);
         const insufficient = total > balance;
-        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 140, 48, 182, 54, () => void this.buySelectedShopItem(), {
-            fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 14, radius: 22, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
+        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 140, 36, 182, 48, () => void this.buySelectedShopItem(), {
+            fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 13, radius: 20, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
         text(page, 'ShopHint', '购买后仍停留在当前账页 · 宠物蛋进入孵化室 · 技能书进入背包', 65, -420, 500, 24, 11, CuteTheme.muted, 'center', true);
     }
 
@@ -1427,9 +1518,9 @@ export class MainUI extends Component {
         drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);
         text(sign, 'Title', '孵化室', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);
         text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);
-        const plan = panel(room, 'PlanBoard', 194, 380, 250, 76, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
-        text(plan, 'Hint', '每一颗蛋都藏着小小奇迹', -105, 12, 210, 26, 12, CuteTheme.caramel, 'center', true);
-        text(plan, 'Rule', '选择蛋仓中的宠物蛋，再放入空闲装置', -105, -15, 210, 22, 10, CuteTheme.muted, 'center');
+        const plan = panel(room, 'PlanBoard', 180, 380, 270, 76, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
+        text(plan, 'Hint', '每一颗蛋都藏着小小奇迹', 0, 12, 238, 26, 12, CuteTheme.caramel, 'center', true);
+        text(plan, 'Rule', '从蛋仓选择宠物蛋，放入空闲装置', 0, -15, 238, 22, 10, CuteTheme.muted, 'center');
         const activeEggs = GameStore.eggs
             .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
             .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
@@ -1479,24 +1570,24 @@ export class MainUI extends Component {
             .sort((a, b) => this.hatchEggSort === 'rarity'
                 ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
                 : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
-        const warehouse = panel(room, 'Warehouse', 0, -214, 620, 376, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
-        const warehouseSign = panel(warehouse, 'WarehouseSign', -210, 158, 178, 46, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
+        const warehouse = panel(room, 'Warehouse', 0, -210, 620, 348, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
+        const warehouseSign = panel(warehouse, 'WarehouseSign', -210, 140, 178, 42, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
         text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 156, 28, 14, CuteTheme.caramel, 'center', true);
-        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-80+index*78,158,70,34,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
-        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',238,158,106,34,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
+        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-70+index*76,140,68,32,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
+        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',238,140,106,32,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
         const rows = Math.max(1, Math.ceil(storedEggs.length / 3));
-        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -18, 594, 286, 594, Math.max(286, rows * 142 + 12), 'vertical');
+        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -14, 594, 250, 594, Math.max(250, rows * 116 + 8), 'vertical');
         storedEggs.forEach((egg, index) => {
             const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
             const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
             const col = index % 3;
             const row = Math.floor(index / 3);
-            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -66 - row * 142, 188, 130, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 205), 16, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 190), egg?.isMutant ? 5 : 3);
-            panel(card, 'CrateLip', 0, -48, 174, 22, new Color(177, 132, 89, 120), 8, false, CuteTheme.white, 1);
-            image(card, 'Icon', getEggArtPath(egg), -54, 12, 70, 86, CuteTheme.paperWarm);
-            text(card, 'Name', getEggDisplayName(egg), 35, 31, 102, 34, 13, CuteTheme.caramel, 'center', false);
-            text(card, 'Time', this.formatEggDuration(egg), 35, 5, 100, 24, 10, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'center', true);
-            button(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '放入装置', 35, -30, 102, 32, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 10, radius: 12, disabled: activeEggs.length >= 3 });
+            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -50 - row * 116, 184, 104, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 184), 15, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 165), egg?.isMutant ? 4 : 2);
+            panel(card, 'CrateLip', 0, -40, 170, 18, new Color(177, 132, 89, 105), 7, false, CuteTheme.white, 1);
+            image(card, 'Icon', getEggArtPath(egg), -55, 8, 58, 72, CuteTheme.paperWarm);
+            text(card, 'Name', getEggDisplayName(egg), 34, 26, 102, 30, 12, CuteTheme.caramel, 'center', false);
+            text(card, 'Time', this.formatEggDuration(egg), 34, 3, 100, 22, 10, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'center', true);
+            button(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '放入装置', 34, -25, 100, 28, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 10, radius: 11, disabled: activeEggs.length >= 3 });
             card.on(Node.EventType.TOUCH_END, () => this.requestIncubation(egg, 0));
         });
         if (!storedEggs.length) text(area.content, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);

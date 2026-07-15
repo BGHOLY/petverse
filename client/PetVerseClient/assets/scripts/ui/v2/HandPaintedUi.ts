@@ -274,7 +274,8 @@ export function renderBottomNavigation(
         const x = -276 + index * 138;
         const isAdventure = item.key === 'adventure';
         if (selected) {
-            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220), 3);
+            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 248, 205, isAdventure ? 30 : 42), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 214, 90, 245) : new Color(67, 153, 102, 245), 4);
+            panel(parent, `SelectedMark_${item.key}`, x, -48, isAdventure ? 82 : 68, 8, isAdventure ? new Color(246, 174, 42, 255) : new Color(43, 159, 104, 255), 4);
         }
         const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);

@@ -104,6 +104,8 @@ assert('pet detail uses illustrated research-book artwork', mainUi.includes("'ui
 assert('shop uses illustrated stationery-store artwork', mainUi.includes("'ui/shop-v3/shop-page-v3'"));
 assert('inventory uses illustrated field-journal artwork', mainUi.includes("'ui/inventory-v3/inventory-page-v3'"));
 assert('hatchery uses illustrated workshop artwork', mainUi.includes("'ui/hatchery-v3/hatchery-page-v3'"));
+assert('illustrated pages expose Cocos editor preview controls', mainUi.includes('editorPreviewPage') && mainUi.includes('petPageOffset') && mainUi.includes('hatcheryPageScale'));
+assert('illustrated pages use compact non-overlapping grids', mainUi.includes('rows * 116 + 8') && mainUi.includes("'InventoryScroll', 0, 0, 590, 464"));
 assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
 const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
 assert('home page composes generated room and independently scaled controls', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v4/activity-sign-v4'"));
