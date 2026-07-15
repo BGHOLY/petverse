@@ -1,138 +1,134 @@
 {
-    "ver":  "1.0.27",
-    "importer":  "image",
-    "imported":  true,
-    "uuid":  "a6135d39-a504-4d97-b613-707cd2bc8fe6",
-    "files":  [
-                  ".json",
-                  ".png"
-              ],
-    "subMetas":  {
-                     "6c48a":  {
-                                   "importer":  "texture",
-                                   "uuid":  "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a",
-                                   "displayName":  "bottom-navigation-v3",
-                                   "id":  "6c48a",
-                                   "name":  "texture",
-                                   "userData":  {
-                                                    "wrapModeS":  "clamp-to-edge",
-                                                    "wrapModeT":  "clamp-to-edge",
-                                                    "imageUuidOrDatabaseUri":  "a6135d39-a504-4d97-b613-707cd2bc8fe6",
-                                                    "isUuid":  true,
-                                                    "visible":  false,
-                                                    "minfilter":  "linear",
-                                                    "magfilter":  "linear",
-                                                    "mipfilter":  "none",
-                                                    "anisotropy":  0
-                                                },
-                                   "ver":  "1.0.22",
-                                   "imported":  true,
-                                   "files":  [
-                                                 ".json"
-                                             ],
-                                   "subMetas":  {
-
-                                                }
-                               },
-                     "f9941":  {
-                                   "importer":  "sprite-frame",
-                                   "uuid":  "a6135d39-a504-4d97-b613-707cd2bc8fe6@f9941",
-                                   "displayName":  "bottom-navigation-v3",
-                                   "id":  "f9941",
-                                   "name":  "spriteFrame",
-                                   "userData":  {
-                                                    "trimThreshold":  1,
-                                                    "rotated":  false,
-                                                    "offsetX":  0,
-                                                    "offsetY":  0,
-                                                    "trimX":  0,
-                                                    "trimY":  0,
-                                                    "width":  720,
-                                                    "height":  280,
-                                                    "rawWidth":  720,
-                                                    "rawHeight":  280,
-                                                    "borderTop":  0,
-                                                    "borderBottom":  0,
-                                                    "borderLeft":  0,
-                                                    "borderRight":  0,
-                                                    "packable":  true,
-                                                    "pixelsToUnit":  100,
-                                                    "pivotX":  0.5,
-                                                    "pivotY":  0.5,
-                                                    "meshType":  0,
-                                                    "vertices":  {
-                                                                     "rawPosition":  [
-                                                                                         -360,
-                                                                                         -140,
-                                                                                         0,
-                                                                                         360,
-                                                                                         -140,
-                                                                                         0,
-                                                                                         -360,
-                                                                                         140,
-                                                                                         0,
-                                                                                         360,
-                                                                                         140,
-                                                                                         0
-                                                                                     ],
-                                                                     "indexes":  [
-                                                                                     0,
-                                                                                     1,
-                                                                                     2,
-                                                                                     2,
-                                                                                     1,
-                                                                                     3
-                                                                                 ],
-                                                                     "uv":  [
-                                                                                0,
-                                                                                280,
-                                                                                720,
-                                                                                280,
-                                                                                0,
-                                                                                0,
-                                                                                720,
-                                                                                0
-                                                                            ],
-                                                                     "nuv":  [
-                                                                                 0,
-                                                                                 0,
-                                                                                 1,
-                                                                                 0,
-                                                                                 0,
-                                                                                 1,
-                                                                                 1,
-                                                                                 1
-                                                                             ],
-                                                                     "minPos":  [
-                                                                                    -360,
-                                                                                    -140,
-                                                                                    0
-                                                                                ],
-                                                                     "maxPos":  [
-                                                                                    360,
-                                                                                    140,
-                                                                                    0
-                                                                                ]
-                                                                 },
-                                                    "isUuid":  true,
-                                                    "imageUuidOrDatabaseUri":  "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a",
-                                                    "atlasUuid":  "",
-                                                    "trimType":  "auto"
-                                                },
-                                   "ver":  "1.0.12",
-                                   "imported":  true,
-                                   "files":  [
-                                                 ".json"
-                                             ],
-                                   "subMetas":  {
-
-                                                }
-                               }
-                 },
-    "userData":  {
-                     "type":  "sprite-frame",
-                     "fixAlphaTransparencyArtifacts":  false,
-                     "hasAlpha":  true,
-                     "redirect":  "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a"
-                 }
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "a6135d39-a504-4d97-b613-707cd2bc8fe6",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a",
+      "displayName": "bottom-navigation-v3",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "imageUuidOrDatabaseUri": "a6135d39-a504-4d97-b613-707cd2bc8fe6",
+        "isUuid": true,
+        "visible": false,
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "a6135d39-a504-4d97-b613-707cd2bc8fe6@f9941",
+      "displayName": "bottom-navigation-v3",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": -3,
+        "offsetY": -7.5,
+        "trimX": 11,
+        "trimY": 52,
+        "width": 692,
+        "height": 191,
+        "rawWidth": 720,
+        "rawHeight": 280,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": true,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "vertices": {
+          "rawPosition": [
+            -346,
+            -95.5,
+            0,
+            346,
+            -95.5,
+            0,
+            -346,
+            95.5,
+            0,
+            346,
+            95.5,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            11,
+            228,
+            703,
+            228,
+            11,
+            37,
+            703,
+            37
+          ],
+          "nuv": [
+            0.015277777777777777,
+            0.13214285714285715,
+            0.9763888888888889,
+            0.13214285714285715,
+            0.015277777777777777,
+            0.8142857142857143,
+            0.9763888888888889,
+            0.8142857142857143
+          ],
+          "minPos": [
+            -346,
+            -95.5,
+            0
+          ],
+          "maxPos": [
+            346,
+            95.5,
+            0
+          ]
+        },
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a",
+        "atlasUuid": "",
+        "trimType": "auto"
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "a6135d39-a504-4d97-b613-707cd2bc8fe6@6c48a"
+  }
 }
