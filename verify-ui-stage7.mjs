@@ -133,10 +133,16 @@ assert('shop uses illustrated stationery-store artwork', mainUi.includes("'ui/sh
 assert('inventory uses illustrated field-journal artwork', mainUi.includes("'ui/inventory-v3/inventory-page-v3'"));
 assert('hatchery uses illustrated workshop artwork', mainUi.includes("'ui/hatchery-v3/hatchery-page-v3'"));
 assert('illustrated pages expose Cocos editor preview controls', mainUi.includes('editorPreviewPage') && mainUi.includes('petPageOffset') && mainUi.includes('hatcheryPageScale'));
-assert('illustrated pages use compact non-overlapping grids', mainUi.includes('rows * 116 + 8') && mainUi.includes("'InventoryScroll', 0, 0, 590, 464"));
+assert('inventory uses a fixed 4x4 paged grid', mainUi.includes('const inventoryPageSize = 16') && !mainUi.includes("'InventoryScroll'"));
+assert('shop uses a fixed 3x3 paged grid', mainUi.includes('const shopPageSize = 9') && !mainUi.includes("'ShopItemsScroll'"));
+assert('pet roster is the only illustrated-page local scroll list', mainUi.includes("'PetSelectorScroll'") && mainUi.includes("'pet-roster::PetSelectorScroll'"));
+assert('inventory and hatchery have dedicated page containers', appShell.includes("'InventoryPage'") && appShell.includes("'HatcheryPage'"));
+for (const nodeName of ['PetDetailArt', 'PetRosterSurface', 'InventoryPageArt', 'InventoryGridPaper', 'ShopPageArt', 'ProductLedger', 'HatcheryPageArt', 'Warehouse']) {
+    assert(`Cocos scene exposes editable ${nodeName}`, sceneNodeNames.has(nodeName));
+}
 assert('pet overview cards stay inside the research column', mainUi.includes("'Survival', 0, 137, 304, 112") && mainUi.includes('parent, name, x, y, 124, 54'));
 assert('shop ledger and purchase strip use separate vertical bands', mainUi.includes("'ProductLedger', 69, 38, 492, 350") && mainUi.includes("'ShopDetail', 69, -286, 492, 138"));
-assert('hatchery title is singular and warehouse controls use separate rows', !mainUi.includes("'PlanBoard'") && mainUi.includes("'WarehouseSign', 0, 166, 220, 36") && mainUi.includes("'EggScroll', 0, -32, 594, 230"));
+assert('hatchery uses a fixed 3x2 paged egg warehouse', !mainUi.includes("'PlanBoard'") && mainUi.includes('const hatchPageSize = 6') && !mainUi.includes("'EggScroll'"));
 assert('home top bar uses generated artwork with dynamic currency values', mainUi.includes("'ui/home-v3/top-overlay-v3'") && mainUi.includes("'GoldValue'"));
 const homePageUi = read('client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts');
 assert('home page composes generated room and independently scaled controls', homePageUi.includes("'ui/home-v3/home-room-v3'") && homePageUi.includes("'ui/home-v4/activity-sign-v4'"));

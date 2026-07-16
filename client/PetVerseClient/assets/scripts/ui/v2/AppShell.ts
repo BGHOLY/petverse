@@ -18,7 +18,16 @@ export type AppShellLayers = {
     loadingLayer: Node;
 };
 
-const PAGE_CONTAINERS = ['HomePage', 'PetPage', 'AdventurePage', 'ShopPage', 'MorePage', 'SecondaryPage'];
+const PAGE_CONTAINERS = [
+    'HomePage',
+    'PetPage',
+    'InventoryPage',
+    'AdventurePage',
+    'ShopPage',
+    'HatcheryPage',
+    'MorePage',
+    'SecondaryPage',
+];
 const LEGACY_CANVAS_LAYERS = ['bg', 'HomeLayer', 'PageLayer', 'ToastLayer'];
 
 function applyLayerRecursively(node: Node, layerValue: number) {
@@ -46,8 +55,10 @@ function safeAreaInsets() {
 function containerName(page: PageName) {
     if (page === 'home') return 'HomePage';
     if (page === 'pet') return 'PetPage';
+    if (page === 'inventory') return 'InventoryPage';
     if (page === 'adventure') return 'AdventurePage';
     if (page === 'shop') return 'ShopPage';
+    if (page === 'hatchery') return 'HatcheryPage';
     if (page === 'more') return 'MorePage';
     return 'SecondaryPage';
 }

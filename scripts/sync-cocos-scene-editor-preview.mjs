@@ -104,6 +104,179 @@ const avatarSprite = avatar && (avatar.entry._children || [])
     .find(({ entry }) => entry?._name === 'Sprite');
 if (avatarSprite) setSpriteFrame(avatarSprite.id, 'cute-ui/player_avatar');
 
+const childByName = (parentId, name) => {
+    const parent = nodeAt(parentId);
+    const reference = (parent?._children || []).find(({ __id__ }) => nodeAt(__id__)?._name === name);
+    return reference?.__id__;
+};
+
+const nodeTemplate = (name, parentId, layer, x, y, active) => ({
+    __type__: 'cc.Node',
+    _name: name,
+    _objFlags: 0,
+    __editorExtras__: {},
+    _parent: { __id__: parentId },
+    _children: [],
+    _active: active,
+    _components: [],
+    _prefab: null,
+    _lpos: { __type__: 'cc.Vec3', x, y, z: 0 },
+    _lrot: { __type__: 'cc.Quat', x: 0, y: 0, z: 0, w: 1 },
+    _lscale: { __type__: 'cc.Vec3', x: 1, y: 1, z: 1 },
+    _mobility: 0,
+    _layer: layer,
+    _euler: { __type__: 'cc.Vec3', x: 0, y: 0, z: 0 },
+    _id: `petverse-scene-node-${data.length}-${name}`,
+});
+
+const transformTemplate = (nodeId, width, height) => ({
+    __type__: 'cc.UITransform',
+    _name: '',
+    _objFlags: 0,
+    __editorExtras__: {},
+    node: { __id__: nodeId },
+    _enabled: true,
+    __prefab: null,
+    _contentSize: { __type__: 'cc.Size', width, height },
+    _anchorPoint: { __type__: 'cc.Vec2', x: 0.5, y: 0.5 },
+    _id: `petverse-scene-transform-${nodeId}`,
+});
+
+const ensureLayoutNode = (parentId, name, x, y, width, height, active = true) => {
+    let nodeId = childByName(parentId, name);
+    if (nodeId === undefined) {
+        nodeId = data.length;
+        const parent = nodeAt(parentId);
+        const node = nodeTemplate(name, parentId, parent?._layer ?? canvasLayer, x, y, active);
+        data.push(node);
+        const transformId = data.length;
+        data.push(transformTemplate(nodeId, width, height));
+        node._components.push({ __id__: transformId });
+        parent._children.push({ __id__: nodeId });
+        changes += 1;
+    }
+    const node = nodeAt(nodeId);
+    assign(node, '_active', active);
+    assign(node, '_layer', nodeAt(parentId)?._layer ?? canvasLayer);
+    assign(node, '_lpos', { __type__: 'cc.Vec3', x, y, z: 0 });
+    let transformReference = (node._components || []).find(({ __id__ }) => nodeAt(__id__)?.__type__ === 'cc.UITransform');
+    if (!transformReference) {
+        const transformId = data.length;
+        data.push(transformTemplate(nodeId, width, height));
+        node._components.push({ __id__: transformId });
+        transformReference = { __id__: transformId };
+        changes += 1;
+    }
+    assign(nodeAt(transformReference.__id__), '_contentSize', { __type__: 'cc.Size', width, height });
+    return nodeId;
+};
+
+const spriteTemplate = (nodeId, resourcePath) => ({
+    __type__: 'cc.Sprite',
+    _name: '',
+    _objFlags: 0,
+    __editorExtras__: {},
+    node: { __id__: nodeId },
+    _enabled: true,
+    __prefab: null,
+    _customMaterial: null,
+    _srcBlendFactor: 2,
+    _dstBlendFactor: 4,
+    _color: { __type__: 'cc.Color', r: 255, g: 255, b: 255, a: 255 },
+    _spriteFrame: { __uuid__: frameUuid(resourcePath), __expectedType__: 'cc.SpriteFrame' },
+    _type: 0,
+    _fillType: 0,
+    _sizeMode: 0,
+    _fillCenter: { __type__: 'cc.Vec2', x: 0, y: 0 },
+    _fillStart: 0,
+    _fillRange: 0,
+    _isTrimmedMode: true,
+    _useGrayscale: false,
+    _atlas: null,
+    _id: `petverse-scene-sprite-${nodeId}`,
+});
+
+const ensureArtNode = (parentId, name, resourcePath) => {
+    const nodeId = ensureLayoutNode(parentId, name, 0, 0, 720, 1010, true);
+    const node = nodeAt(nodeId);
+    let spriteReference = (node._components || []).find(({ __id__ }) => nodeAt(__id__)?.__type__ === 'cc.Sprite');
+    if (!spriteReference) {
+        const spriteId = data.length;
+        data.push(spriteTemplate(nodeId, resourcePath));
+        node._components.push({ __id__: spriteId });
+        spriteReference = { __id__: spriteId };
+        changes += 1;
+    }
+    assign(nodeAt(spriteReference.__id__), '_spriteFrame', {
+        __uuid__: frameUuid(resourcePath),
+        __expectedType__: 'cc.SpriteFrame',
+    });
+    return nodeId;
+};
+
+const pageRootRecord = data
+    .map((entry, id) => ({ entry, id }))
+    .find(({ entry }) => entry?.__type__ === 'cc.Node' && entry._name === 'PageRoot' && entry._parent?.__id__ === rootRecord.id);
+if (!pageRootRecord) throw new Error('PageRoot was not found under PetVerseUIRoot.');
+
+const editorPages = [
+    {
+        name: 'PetPage', artName: 'PetDetailArt', art: 'ui/pet-v3/pet-detail-page-v3',
+        anchors: [
+            ['PetRosterSurface', -280, 18, 136, 790],
+            ['Profile', -105, 42, 192, 720],
+            ['ResearchData', 174, 42, 332, 720],
+            ['Toolbar', 0, -403, 660, 62],
+        ],
+    },
+    {
+        name: 'InventoryPage', artName: 'InventoryPageArt', art: 'ui/inventory-v3/inventory-page-v3',
+        anchors: [
+            ['BagTitleBoard', -150, 371, 270, 78],
+            ['CategoryTabs', 0, 270, 608, 62],
+            ['UseTarget', 0, 214, 608, 48],
+            ['InventoryGridPaper', 0, -66, 608, 490],
+            ['BagFooter', 0, -378, 608, 58],
+        ],
+    },
+    {
+        name: 'ShopPage', artName: 'ShopPageArt', art: 'ui/shop-v3/shop-page-v3',
+        anchors: [
+            ['ShopSign', -193, 378, 244, 82],
+            ['WalletBoard', 95, 385, 314, 58],
+            ['RefreshTag', 272, 268, 88, 92],
+            ['ShopCategoryRail', -263, -78, 112, 572],
+            ['ProductLedger', 69, 38, 492, 350],
+            ['ShopDetail', 69, -286, 492, 138],
+        ],
+    },
+    {
+        name: 'HatcheryPage', artName: 'HatcheryPageArt', art: 'ui/hatchery-v3/hatchery-page-v3',
+        anchors: [
+            ['TitleBoard', -200, 380, 248, 82],
+            ['Device_1', -214, 164, 202, 300],
+            ['Device_2', 0, 164, 202, 300],
+            ['Device_3', 214, 164, 202, 300],
+            ['Warehouse', 0, -210, 620, 348],
+            ['EggPager', 0, -420, 176, 42],
+        ],
+    },
+];
+
+for (const page of editorPages) {
+    const pageId = ensureLayoutNode(pageRootRecord.id, page.name, 0, 0, 720, 1010, false);
+    ensureArtNode(pageId, page.artName, page.art);
+    for (const [name, x, y, width, height] of page.anchors) {
+        ensureLayoutNode(pageId, name, x, y, width, height, true);
+    }
+}
+
+const pageNames = ['HomePage', 'PetPage', 'InventoryPage', 'AdventurePage', 'ShopPage', 'HatcheryPage', 'MorePage', 'SecondaryPage'];
+for (const name of pageNames) {
+    const pageId = childByName(pageRootRecord.id, name);
+    if (pageId !== undefined) assign(nodeAt(pageId), '_active', name === 'HomePage');
+}
+
 if (checkOnly) {
     if (changes) throw new Error(`MainScene editor preview is out of sync (${changes} changes required).`);
     console.log('MainScene editor preview is synchronized.');

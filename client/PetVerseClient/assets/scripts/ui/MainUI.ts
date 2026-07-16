@@ -166,6 +166,7 @@ export class MainUI extends Component {
     private hatchAcceleratorEggId = 0;
     private hatchEggFilter: 'all' | 'rare' | 'mutant' = 'all';
     private hatchEggSort: 'rarity' | 'time' = 'rarity';
+    private hatchEggPageIndex = 0;
     private homePetPickerOpen = false;
     private pendingHomePetId = 0;
     private fusionPickerSide: 'A' | 'B' | null = null;
@@ -177,6 +178,7 @@ export class MainUI extends Component {
     private inventoryTargetPetId = 0;
     private inventoryCategory: 'all' | 'consumable' | 'material' | 'skill' = 'all';
     private inventorySort: 'category' | 'quantity' = 'category';
+    private inventoryPageIndex = 0;
     private inventoryDetailItem: any | null = null;
     private secondaryConfirmation: SecondaryConfirmation | null = null;
     private petFilter = loadPetFilter();
@@ -232,6 +234,7 @@ export class MainUI extends Component {
     private shopCategory: 'featured' | 'nurture' | 'skills' | 'materials' | 'hatch' | 'special' = 'featured';
     private selectedShopItemId = 0;
     private shopBuyCount = 1;
+    private shopPageIndex = 0;
 
     private benefitMode: 'sign' | 'daily' | 'achievement' | 'month' | 'pass' = 'sign';
     private signInfo: any = null;
@@ -806,7 +809,9 @@ export class MainUI extends Component {
         if (!this.pageHost) return;
         this.captureScrollOffsets(this.pageRoot);
         this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
-        clearNode(this.pageRoot);
+        if (!['home', 'pet', 'inventory', 'shop', 'hatchery'].includes(this.currentPage)) {
+            clearNode(this.pageRoot);
+        }
         const pageTuning = this.currentPageTuning();
         this.pageRoot.setPosition(this.pageContentOffsetX + pageTuning.offset.x, this.pageContentOffsetY + pageTuning.offset.y, 0);
         const contentScale = Math.max(0.9, Math.min(1.05, this.pageContentScale * pageTuning.scale));
@@ -932,6 +937,11 @@ export class MainUI extends Component {
         contentHeight: number,
         direction: 'horizontal' | 'vertical',
     ) {
+        const previous = parent.getChildByName(name);
+        if (previous) {
+            previous.removeFromParent();
+            previous.destroy();
+        }
         const view = new Node(name);
         parent.addChild(view);
         setRect(view, x, y, width, height);
@@ -964,10 +974,12 @@ export class MainUI extends Component {
         scroll.bounceDuration = 0.22;
         scroll.cancelInnerEvents = true;
 
-        const key = `${this.currentScrollScope()}::${name}`;
+        const key = name === 'PetSelectorScroll'
+            ? 'pet-roster::PetSelectorScroll'
+            : `${this.currentScrollScope()}::${name}`;
         (view as any).__petVerseScrollKey = key;
         const saved = this.scrollOffsets.get(key);
-        if (saved && name !== 'PetSelectorScroll') {
+        if (saved) {
             const maxX = Math.max(0, realWidth - width);
             const maxY = Math.max(0, realHeight - height);
             const target = new Vec2(
@@ -1009,7 +1021,7 @@ export class MainUI extends Component {
         if (!root?.isValid) return;
         for (const scroll of root.getComponentsInChildren(ScrollView)) {
             const key = String((scroll.node as any).__petVerseScrollKey || '');
-            if (!key || scroll.node.name === 'PetSelectorScroll' || !scroll.isValid || !scroll.content?.isValid) continue;
+            if (!key || !scroll.isValid || !scroll.content?.isValid) continue;
             try {
                 const offset = scroll.getScrollOffset();
                 if (Number.isFinite(offset?.x) && Number.isFinite(offset?.y)) {
@@ -1021,6 +1033,45 @@ export class MainUI extends Component {
 
     private scrollHint(parent: Node, name: string, value: string, x: number, y: number, width = 240) {
         text(parent, name, value, x, y, width, 24, 12, CuteTheme.muted, 'center', true);
+    }
+
+    private flatArtControl(
+        parent: Node,
+        name: string,
+        title: string,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        onClick: () => void,
+        selected = false,
+        fontSize = 13,
+    ) {
+        const fill = selected ? new Color(255, 207, 89, 92) : CuteTheme.transparent;
+        const control = panel(parent, name, x, y, width, height, fill, 14, false, CuteTheme.transparent, 0);
+        text(control, 'Title', title, 0, 0, width - 10, height - 6, fontSize, CuteTheme.caramel, 'center', true);
+        hitArea(control, 'HitArea', 0, 0, width, height, onClick);
+        return control;
+    }
+
+    private renderFixedPager(
+        parent: Node,
+        name: string,
+        pageIndex: number,
+        pageCount: number,
+        x: number,
+        y: number,
+        onChange: (pageIndex: number) => void,
+    ) {
+        const pager = panel(parent, name, x, y, 176, 42, CuteTheme.transparent, 14, false, CuteTheme.transparent, 0);
+        button(pager, 'Previous', '‹', -66, 0, 38, 34, () => onChange(Math.max(0, pageIndex - 1)), {
+            fill: CuteTheme.paperWarm, fontSize: 20, radius: 13, disabled: pageIndex <= 0,
+        });
+        text(pager, 'Page', `${pageIndex + 1} / ${pageCount}`, 0, 0, 78, 30, 12, CuteTheme.caramel, 'center', true);
+        button(pager, 'Next', '›', 66, 0, 38, 34, () => onChange(Math.min(pageCount - 1, pageIndex + 1)), {
+            fill: CuteTheme.honey, fontSize: 20, radius: 13, disabled: pageIndex >= pageCount - 1,
+        });
+        return pager;
     }
 
     private capturePetSelectorOffset(scroll: ScrollView) {
@@ -1060,10 +1111,11 @@ export class MainUI extends Component {
 
         artImage(root, 'PetDetailArt', 'ui/pet-v3/pet-detail-page-v3', 0, 0, 720, 1010);
         const book = root;
-        headingTag(book, 'PetListTitle', `我的宠物 ${pets.length}/${allPets.length}`, -280, 408, 138, CuteTheme.honey);
+        const rosterSurface = panel(book, 'PetRosterSurface', -280, 18, 136, 790, new Color(255, 250, 232, 252), 18, false, CuteTheme.transparent, 0);
+        text(rosterSurface, 'Title', `我的宠物 ${pets.length}/${allPets.length}`, 0, 372, 124, 32, 13, CuteTheme.caramel, 'center', true);
         const selectorStep = 104;
         const selectorHeight = Math.max(710, pets.length * selectorStep + 12);
-        const selector = this.createScrollArea(book, 'PetSelectorScroll', -280, 24, 144, 714, 144, selectorHeight, 'vertical');
+        const selector = this.createScrollArea(rosterSurface, 'PetSelectorScroll', 0, -18, 132, 710, 132, selectorHeight, 'vertical');
         pets.forEach((item, index) => {
             const id = Number(item?.id || 0);
             const selectedCard = id === Number(GameStore.currentPetId);
@@ -1085,7 +1137,7 @@ export class MainUI extends Component {
             if (item?.isLocked) tag(card, 'LockBadge', '锁', -46, 31, 34, CuteTheme.paperWarm);
         });
 
-        const profile = panel(book, 'Profile', -105, 42, 192, 720, new Color(255, 250, 229, 142), 22, false, new Color(209, 154, 94, 68), 1);
+        const profile = panel(book, 'Profile', -105, 42, 192, 720, CuteTheme.transparent, 22, false, CuteTheme.transparent, 0);
         image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 176, 224, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
         button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 63, 290, 54, 38, () => void this.togglePetLock(selected), {
             fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
@@ -1099,7 +1151,7 @@ export class MainUI extends Component {
         text(profile, 'Power', `战力 ${formatNumber(attrs.power)}`, 0, -70, 178, 38, 18, CuteTheme.honeyDark, 'center', true);
         const role = (selected?.speciesConfig?.roleTags || [getPetSpeciesMeta(selected).role || '综合']).slice(0, 2).map((value:any)=>this.petRoleLabel(value)).join(' / ');
         const teamIndex = this.teamPetIds.indexOf(Number(selected?.id || 0));
-        const identity = panel(profile, 'Identity', 0, -150, 174, 112, new Color(248, 239, 211, 208), 18, false, CuteTheme.white, 1);
+        const identity = panel(profile, 'Identity', 0, -150, 174, 112, new Color(255, 250, 232, 78), 18, false, CuteTheme.transparent, 0);
         text(identity, 'Role', `◆ ${role}`, -78, 31, 156, 26, 12, CuteTheme.caramel, 'left', true);
         text(identity, 'Marriage', `♥ ${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'} · 蛋${Number(selected?.breedCount || 0)}`, -78, 0, 156, 26, 12, CuteTheme.caramel, 'left', true);
         text(identity, 'Team', `编队 ${teamIndex >= 0 ? `${teamIndex + 1}号位` : '未上阵'}`, -78, -31, 156, 26, 12, CuteTheme.caramel, 'left', true);
@@ -1113,26 +1165,26 @@ export class MainUI extends Component {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
-        const data = panel(book, 'ResearchData', 174, 42, 332, 720, new Color(249, 247, 227, 148), 22, false, new Color(192, 130, 67, 64), 1);
+        const data = panel(book, 'ResearchData', 174, 42, 332, 720, CuteTheme.transparent, 22, false, CuteTheme.transparent, 0);
         const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
-        tabs.forEach(([key,label], index) => button(data, `Tab_${key}`, label, -120 + index * 80, 274, 74, 42, () => {
+        tabs.forEach(([key,label], index) => this.flatArtControl(data, `Tab_${key}`, label, -120 + index * 80, 274, 74, 42, () => {
             this.petDetailTab = key;
             if (key === 'attributes') this.petAttributeView = 'overview';
             this.renderCurrentPage(false);
-        }, { selected: this.petDetailTab === key, fill: this.petDetailTab === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 18 }));
+        }, this.petDetailTab === key, 13));
 
         const detailView = this.petDetailTab === 'attributes' ? this.petAttributeView : this.petDetailTab;
         if (detailView === 'overview') {
             text(data, 'Explain', '核心战斗属性', -180, 226, 360, 34, 19, CuteTheme.caramel, 'left', true);
-            const survival = panel(data, 'Survival', 0, 137, 304, 112, new Color(255, 250, 232, 228), 20, false, CuteTheme.white, 1);
+            const survival = panel(data, 'Survival', 0, 137, 304, 112, new Color(255, 250, 232, 54), 20, false, CuteTheme.transparent, 0);
             headingTag(survival, 'Title', '生存', -98, 35, 82, CuteTheme.mint);
             this.battleStat(survival, 'Hp', '❤', '生命', attrs.hp, -70, -9);
             this.battleStat(survival, 'Def', '◆', '防御', attrs.defense, 70, -9);
-            const output = panel(data, 'Output', 0, 4, 304, 112, new Color(255, 245, 238, 228), 20, false, CuteTheme.white, 1);
+            const output = panel(data, 'Output', 0, 4, 304, 112, new Color(255, 245, 238, 54), 20, false, CuteTheme.transparent, 0);
             headingTag(output, 'Title', '输出', -98, 35, 82, CuteTheme.peach);
             this.battleStat(output, 'Atk', '⚔', '物攻', attrs.attack, -70, -9);
             this.battleStat(output, 'Magic', '✦', '法攻', attrs.magic, 70, -9);
-            const develop = panel(data, 'Develop', 0, -166, 304, 174, new Color(242, 249, 238, 228), 20, false, CuteTheme.white, 1);
+            const develop = panel(data, 'Develop', 0, -166, 304, 174, new Color(242, 249, 238, 54), 20, false, CuteTheme.transparent, 0);
             headingTag(develop, 'Title', '速度与培养', -78, 65, 134, CuteTheme.sky);
             this.battleStat(develop, 'Speed', '➤', '速度', attrs.speed, -70, 18);
             this.battleStat(develop, 'Growth', '成', '成长', this.growthValue(selected).toFixed(3), 70, 18);
@@ -1189,7 +1241,7 @@ export class MainUI extends Component {
             });
         }
 
-        const toolbar=panel(book,'Toolbar',0,-403,660,62,new Color(255,248,220,205),20,false,new Color(177,112,57,96),2);
+        const toolbar=panel(book,'Toolbar',0,-403,660,62,CuteTheme.transparent,20,false,CuteTheme.transparent,0);
         button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
         tag(toolbar,'Sort','编队优先 · 战力降序',205,0,180,CuteTheme.sky);
@@ -1227,9 +1279,11 @@ export class MainUI extends Component {
 
         const tabs = panel(bag, 'CategoryTabs', 0, 270, 608, 62, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
         const categories: Array<[typeof this.inventoryCategory, string]> = [['all', '全部'], ['consumable', '道具'], ['material', '材料'], ['skill', '技能书']];
-        categories.forEach(([key, title], index) => button(tabs, `InventoryCategory_${key}`, title, -222 + index * 148, 0, 136, 52, () => {
-            this.inventoryCategory = key; this.renderCurrentPage(false);
-        }, { selected: this.inventoryCategory === key, fill: this.inventoryCategory === key ? new Color(181, 196, 119, 255) : CuteTheme.paper, fontSize: 14, radius: 17 }));
+        categories.forEach(([key, title], index) => this.flatArtControl(tabs, `InventoryCategory_${key}`, title, -222 + index * 148, 0, 136, 52, () => {
+            this.inventoryCategory = key;
+            this.inventoryPageIndex = 0;
+            this.renderCurrentPage(false);
+        }, this.inventoryCategory === key, 14));
 
         const target = panel(bag, 'UseTarget', 0, 214, 608, 48, new Color(255, 252, 239, 138), 17, false, new Color(255, 255, 255, 0), 0);
         text(target, 'Title', '使用对象', -258, 0, 76, 28, 13, CuteTheme.caramel, 'left', true);
@@ -1244,32 +1298,36 @@ export class MainUI extends Component {
         }
 
         const gridPaper = panel(bag, 'InventoryGridPaper', 0, -66, 608, 490, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        const rows = Math.ceil(items.length / 4);
-        const area = this.createScrollArea(gridPaper, 'InventoryScroll', 0, 0, 590, 464, 590, Math.max(464, rows * 116 + 8), 'vertical');
-        items.forEach((item, index) => {
+        const inventoryPageSize = 16;
+        const inventoryPageCount = Math.max(1, Math.ceil(items.length / inventoryPageSize));
+        this.inventoryPageIndex = Math.max(0, Math.min(inventoryPageCount - 1, this.inventoryPageIndex));
+        const visibleItems = items.slice(this.inventoryPageIndex * inventoryPageSize, (this.inventoryPageIndex + 1) * inventoryPageSize);
+        visibleItems.forEach((item, index) => {
             const col = index % 4;
             const rowIndex = Math.floor(index / 4);
             const type = categoryOf(item);
-            const card = button(area.content, `Item_${item?.id || index}`, safeName(item?.name || item?.itemCode, '道具'), -219 + col * 146, -52 - rowIndex * 116, 128, 106, () => {
-                this.inventoryDetailItem = item; this.renderUtilityModal();
-            }, { fill: type === 'skill' ? new Color(244, 229, 211, 205) : type === 'consumable' ? new Color(231, 242, 214, 205) : new Color(255, 252, 239, 205), fontSize: 12, radius: 14,
-                subtitle: `×${Number(item?.quantity || 0)}` });
-            const face = card.getChildByName('Face');
-            const title = face?.getChildByName('Title');
-            const subtitle = face?.getChildByName('Subtitle');
-            if (title) title.setPosition(0, -24, 0);
-            if (subtitle) subtitle.setPosition(39, -40, 0);
-            if (type === 'skill') image(card, 'ItemArt', this.skillBookIconPath(item), 0, 20, 44, 44, CuteTheme.paperWarm);
-            else drawUiIcon(card, 'ItemIcon', type === 'consumable' ? 'inventory' : 'collection', 0, 20, 38, type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
-            panel(card, 'Pin', -50, 38, 7, 7, new Color(210, 177, 125, 255), 4);
+            const slot = panel(gridPaper, `Item_${item?.id || index}`, -219 + col * 146, 174 - rowIndex * 116, 128, 106, CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
+            if (type === 'skill') artImage(slot, 'ItemArt', this.skillBookIconPath(item), 0, 20, 46, 46);
+            else drawUiIcon(slot, 'ItemIcon', type === 'consumable' ? 'inventory' : 'collection', 0, 20, 38, type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
+            text(slot, 'Name', safeName(item?.name || item?.itemCode, '道具'), 0, -22, 112, 28, 11, CuteTheme.caramel, 'center', true);
+            text(slot, 'Quantity', `×${Number(item?.quantity || 0)}`, 38, -40, 48, 22, 11, CuteTheme.muted, 'center', true);
+            hitArea(slot, 'HitArea', 0, 0, 128, 106, () => {
+                this.inventoryDetailItem = item;
+                this.renderUtilityModal();
+            });
         });
-        if (!items.length) text(area.content, 'Empty', '当前分类暂无物品', 0, -30, 420, 100, 22, CuteTheme.muted, 'center', true);
+        if (!items.length) text(gridPaper, 'Empty', '当前分类暂无物品', 0, 0, 420, 100, 22, CuteTheme.muted, 'center', true);
 
         const footer = panel(bag, 'BagFooter', 0, -378, 608, 58, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
         text(footer, 'Capacity', `容量 ${allItems.length}/${Number(GameStore.user?.inventoryCapacity || 120)}`, -238, 0, 180, 28, 14, CuteTheme.caramel, 'left', true);
-        text(footer, 'Count', `当前显示 ${items.length} 种`, 6, 0, 160, 26, 12, CuteTheme.muted, 'center');
+        this.renderFixedPager(footer, 'InventoryPager', this.inventoryPageIndex, inventoryPageCount, 8, 0, (pageIndex) => {
+            this.inventoryPageIndex = pageIndex;
+            this.renderCurrentPage(false);
+        });
         button(footer, 'Sort', this.inventorySort === 'category' ? '按分类整理' : '按数量整理', 222, 0, 150, 40, () => {
-            this.inventorySort = this.inventorySort === 'category' ? 'quantity' : 'category'; this.renderCurrentPage(false);
+            this.inventorySort = this.inventorySort === 'category' ? 'quantity' : 'category';
+            this.inventoryPageIndex = 0;
+            this.renderCurrentPage(false);
         }, { fill: CuteTheme.honey, fontSize: 12, radius: 15 });
     }
 
@@ -1294,38 +1352,53 @@ export class MainUI extends Component {
             ['featured', '精选'], ['nurture', '养成'], ['skills', '技能书'], ['materials', '材料'], ['hatch', '孵化'], ['special', '特殊'],
         ];
         const rail = panel(page, 'ShopCategoryRail', -263, -78, 112, 572, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        categories.forEach(([key, title], index) => button(rail, `ShopCategory_${key}`, title, 0, 214 - index * 84, 96, 58, () => {
-            this.shopCategory = key; this.shopBuyCount = 1; this.ensureSelectedShopItem(); this.renderCurrentPage(false);
-        }, { selected: this.shopCategory === key, fill: this.shopCategory === key ? CuteTheme.honey : CuteTheme.paper, fontSize: 13, radius: 16 }));
+        categories.forEach(([key, title], index) => this.flatArtControl(rail, `ShopCategory_${key}`, title, 0, 214 - index * 84, 96, 58, () => {
+            this.shopCategory = key;
+            this.shopPageIndex = 0;
+            this.shopBuyCount = 1;
+            this.ensureSelectedShopItem();
+            this.renderCurrentPage(false);
+        }, this.shopCategory === key, 13));
 
         const items = this.filteredShopItems();
         if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 82, 80, 470, 100, 21, CuteTheme.muted, 'center', true); return; }
         this.ensureSelectedShopItem();
-        const rows = Math.ceil(items.length / 3);
+        const shopPageSize = 9;
+        const shopPageCount = Math.max(1, Math.ceil(items.length / shopPageSize));
+        this.shopPageIndex = Math.max(0, Math.min(shopPageCount - 1, this.shopPageIndex));
+        const visibleItems = items.slice(this.shopPageIndex * shopPageSize, (this.shopPageIndex + 1) * shopPageSize);
+        if (!visibleItems.some((item) => Number(item?.id || 0) === this.selectedShopItemId)) {
+            this.selectedShopItemId = Number(visibleItems[0]?.id || 0);
+        }
         const ledger = panel(page, 'ProductLedger', 69, 38, 492, 350, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        const area = this.createScrollArea(ledger, 'ShopItemsScroll', 0, 0, 476, 334, 476, Math.max(334, rows * 108 + 8), 'vertical');
-        items.forEach((item, index) => {
+        visibleItems.forEach((item, index) => {
             const col = index % 3;
             const rowIndex = Math.floor(index / 3);
             const selected = Number(item?.id || 0) === this.selectedShopItemId;
             const owned = GameStore.inventory.find((ownedItem) => String(ownedItem?.itemCode || '') === String(item?.itemCode || ''));
-            const baseColor = selected ? new Color(255, 239, 187, 205) : this.shopItemColor(item);
-            const card = button(area.content, `ShopItem_${item?.id ?? index}`, safeName(item?.name, item?.itemCode || '商品'), -156 + col * 156, -48 - rowIndex * 108, 138, 96, () => {
-                this.selectedShopItemId = Number(item?.id || 0); this.shopBuyCount = 1; this.renderCurrentPage(false);
-            }, { fill: new Color(baseColor.r, baseColor.g, baseColor.b, 190), fontSize: 11, radius: 14, selected,
-                subtitle: `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}` });
-            const face = card.getChildByName('Face');
-            const title = face?.getChildByName('Title');
-            const subtitle = face?.getChildByName('Subtitle');
-            if (title) title.setPosition(0, -17, 0);
-            if (subtitle) subtitle.setPosition(0, -36, 0);
-            if (this.isSkillBook(item)) image(card, 'ProductArt', this.skillBookIconPath(item), 0, 20, 36, 36, CuteTheme.paperWarm);
-            else if (String(item?.type || '').toLowerCase() === 'egg') image(card, 'ProductArt', getEggArtPath(item), 0, 19, 36, 44, CuteTheme.paperWarm);
-            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 20, 32, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
-            tag(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -40, 31, 50, CuteTheme.mint);
-            [17, -1, -19].forEach((y, holeIndex) => panel(card, `Hole_${holeIndex}`, -62, y, 6, 6, new Color(218, 184, 139, 255), 3));
+            const card = panel(ledger, `ShopItem_${item?.id ?? index}`, -156 + col * 156, 120 - rowIndex * 108, 138, 96, selected ? new Color(255, 207, 89, 44) : CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
+            if (this.isSkillBook(item)) artImage(card, 'ProductArt', this.skillBookIconPath(item), 0, 18, 38, 38);
+            else if (String(item?.type || '').toLowerCase() === 'egg') artImage(card, 'ProductArt', getEggArtPath(item), 0, 19, 38, 46);
+            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 19, 32, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
+            text(card, 'Name', safeName(item?.name, item?.itemCode || '商品'), 0, -14, 122, 24, 10, CuteTheme.caramel, 'center', true);
+            text(card, 'Price', `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}`, 0, -36, 116, 22, 10, CuteTheme.caramel, 'center', true);
+            text(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -41, 34, 52, 20, 10, CuteTheme.mintDark, 'center', true);
+            if (selected) text(card, 'Selected', '✓', 48, 35, 22, 20, 12, CuteTheme.honeyDark, 'center', true);
             const limit = Number(item?.purchaseLimit || item?.limit || 0);
-            if (limit > 0) tag(card, 'Limit', `限购${limit}`, 42, 31, 52, CuteTheme.peach);
+            if (limit > 0) text(card, 'Limit', `限${limit}`, 40, 34, 42, 20, 9, CuteTheme.peachDark, 'center', true);
+            hitArea(card, 'HitArea', 0, 0, 138, 96, () => {
+                this.selectedShopItemId = Number(item?.id || 0);
+                this.shopBuyCount = 1;
+                this.renderCurrentPage(false);
+            });
+        });
+
+        this.renderFixedPager(page, 'ShopPager', this.shopPageIndex, shopPageCount, 69, -164, (pageIndex) => {
+            this.shopPageIndex = pageIndex;
+            const nextItem = items[pageIndex * shopPageSize];
+            this.selectedShopItemId = Number(nextItem?.id || 0);
+            this.shopBuyCount = 1;
+            this.renderCurrentPage(false);
         });
 
         const selected = this.selectedShopItem();
@@ -1567,24 +1640,37 @@ export class MainUI extends Component {
         const warehouse = panel(room, 'Warehouse', 0, -210, 620, 348, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
         const warehouseSign = panel(warehouse, 'WarehouseSign', 0, 166, 220, 36, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
         text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 198, 28, 14, CuteTheme.caramel, 'center', true);
-        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>button(warehouse,`EggFilter_${key}`,title,-130+index*76,120,68,32,()=>{this.hatchEggFilter=key;this.renderCurrentPage(false);},{selected:this.hatchEggFilter===key,fill:this.hatchEggFilter===key?CuteTheme.honey:CuteTheme.paper,fontSize:11,radius:13}));
-        button(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',208,120,106,32,()=>{this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';this.renderCurrentPage(false);},{fill:CuteTheme.mint,fontSize:10,radius:13});
-        const rows = Math.max(1, Math.ceil(storedEggs.length / 3));
-        const area = this.createScrollArea(warehouse, 'EggScroll', 0, -32, 594, 230, 594, Math.max(230, rows * 108 + 8), 'vertical');
-        storedEggs.forEach((egg, index) => {
+        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>this.flatArtControl(warehouse,`EggFilter_${key}`,title,-130+index*76,120,68,32,()=>{
+            this.hatchEggFilter=key;
+            this.hatchEggPageIndex=0;
+            this.renderCurrentPage(false);
+        },this.hatchEggFilter===key,11));
+        this.flatArtControl(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',208,120,106,32,()=>{
+            this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';
+            this.hatchEggPageIndex=0;
+            this.renderCurrentPage(false);
+        },false,10);
+        const hatchPageSize = 6;
+        const hatchPageCount = Math.max(1, Math.ceil(storedEggs.length / hatchPageSize));
+        this.hatchEggPageIndex = Math.max(0, Math.min(hatchPageCount - 1, this.hatchEggPageIndex));
+        const visibleEggs = storedEggs.slice(this.hatchEggPageIndex * hatchPageSize, (this.hatchEggPageIndex + 1) * hatchPageSize);
+        visibleEggs.forEach((egg, index) => {
             const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
-            const rarityColor = [CuteTheme.paperWarm, CuteTheme.mint, CuteTheme.sky, CuteTheme.lilac, CuteTheme.honey, CuteTheme.peach][rarity - 1];
             const col = index % 3;
             const row = Math.floor(index / 3);
-            const card = panel(area.content, `Egg_${egg?.id || index}`, -198 + col * 198, -46 - row * 108, 184, 96, new Color(rarityColor.r, rarityColor.g, rarityColor.b, 184), 15, true, egg?.isMutant ? CuteTheme.honeyDark : new Color(189, 151, 106, 165), egg?.isMutant ? 4 : 2);
-            panel(card, 'CrateLip', 0, -40, 170, 18, new Color(177, 132, 89, 105), 7, false, CuteTheme.white, 1);
-            image(card, 'Icon', getEggArtPath(egg), -55, 8, 58, 72, CuteTheme.paperWarm);
-            text(card, 'Name', getEggDisplayName(egg), 34, 26, 102, 30, 12, CuteTheme.caramel, 'center', false);
-            text(card, 'Time', this.formatEggDuration(egg), 34, 3, 100, 22, 10, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'center', true);
-            button(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '放入装置', 34, -25, 100, 28, () => this.requestIncubation(egg, 0), { fill: CuteTheme.honey, fontSize: 10, radius: 11, disabled: activeEggs.length >= 3 });
-            card.on(Node.EventType.TOUCH_END, () => this.requestIncubation(egg, 0));
+            const card = panel(warehouse, `Egg_${egg?.id || index}`, -198 + col * 198, 69 - row * 108, 184, 96, CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
+            artImage(card, 'Icon', getEggArtPath(egg), -55, 8, 58, 72);
+            text(card, 'Name', getEggDisplayName(egg), 34, 25, 102, 30, 11, CuteTheme.caramel, 'center', false);
+            text(card, 'Time', `${rarity}★ · ${this.formatEggDuration(egg)}`, 34, 2, 100, 22, 10, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'center', true);
+            this.flatArtControl(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '放入装置', 34, -25, 100, 28, () => {
+                if (activeEggs.length < 3) this.requestIncubation(egg, 0);
+            }, false, 10);
         });
-        if (!storedEggs.length) text(area.content, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -86, 500, 90, 18, CuteTheme.muted, 'center', false);
+        if (!storedEggs.length) text(warehouse, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -28, 500, 90, 18, CuteTheme.muted, 'center', false);
+        this.renderFixedPager(room, 'EggPager', this.hatchEggPageIndex, hatchPageCount, 0, -420, (pageIndex) => {
+            this.hatchEggPageIndex = pageIndex;
+            this.renderCurrentPage(false);
+        });
     }
 
     private renderSkillLearning() {

@@ -299,4 +299,6 @@ if (-not $script:previewScript.Contains($refinementMarker)) {
 }
 
 [System.IO.File]::WriteAllText($mainScriptPath, $script:previewScript, (New-Object System.Text.UTF8Encoding($false)))
+& node (Join-Path $PSScriptRoot 'patch-paged-preview.mjs') $mainScriptPath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize fixed-grid preview layout.' }
 Write-Output 'Illustrated pages synchronized to web-mobile preview.'
