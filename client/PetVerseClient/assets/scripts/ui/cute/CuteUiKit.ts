@@ -431,11 +431,16 @@ export function image(
     width: number,
     height: number,
     fallback: Color = CuteTheme.paperWarm,
+    fallbackLabel = '',
 ) {
     const node = getOrCreate(parent, name);
     setRect(node, x, y, width, height);
     clearNode(node);
     rounded(node, width, height, fallback, 20, CuteTheme.white, 3);
+
+    const fallbackNode = fallbackLabel
+        ? text(node, 'FallbackLabel', fallbackLabel, 0, 0, width - 12, height - 12, Math.max(14, Math.round(Math.min(width, height) * 0.42)), CuteTheme.muted, 'center', true)
+        : null;
 
     const spriteNode = new Node('Sprite');
     node.addChild(spriteNode);
@@ -445,6 +450,7 @@ export function image(
 
     const apply = (asset: SpriteFrame | null) => {
         if (!asset || !spriteNode.isValid) return;
+        if (fallbackNode?.isValid) fallbackNode.active = false;
         sprite.spriteFrame = asset;
         sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         setRect(spriteNode, 0, 0, width - 8, height - 8);

@@ -152,6 +152,62 @@ export function drawUiIcon(
             strokeRect(g, -s * 0.56, -s * 0.62, s * 1.12, s * 0.92, 2);
             g.moveTo(-s * 0.7, s * 0.3); g.lineTo(0, s * 0.72); g.lineTo(s * 0.7, s * 0.3); g.stroke();
             break;
+        case 'gold':
+            g.circle(0, 0, s * 0.72); g.fill();
+            g.fillColor = new Color(255, 222, 118, 255);
+            g.circle(0, 0, s * 0.47); g.fill();
+            g.strokeColor = color;
+            g.moveTo(-s * 0.18, s * 0.12); g.lineTo(s * 0.2, s * 0.12);
+            g.moveTo(-s * 0.18, -s * 0.12); g.lineTo(s * 0.2, -s * 0.12); g.stroke();
+            break;
+        case 'diamond':
+            g.moveTo(0, -s * 0.76); g.lineTo(-s * 0.72, s * 0.12); g.lineTo(-s * 0.42, s * 0.62);
+            g.lineTo(s * 0.42, s * 0.62); g.lineTo(s * 0.72, s * 0.12); g.close(); g.fill();
+            g.strokeColor = new Color(255, 255, 255, 210);
+            g.moveTo(-s * 0.42, s * 0.58); g.lineTo(0, -s * 0.7); g.lineTo(s * 0.42, s * 0.58); g.stroke();
+            break;
+        case 'potion':
+            strokeRect(g, -s * 0.22, s * 0.38, s * 0.44, s * 0.3, 2);
+            g.moveTo(-s * 0.2, s * 0.38); g.lineTo(-s * 0.5, -s * 0.16);
+            g.bezierCurveTo(-s * 0.7, -s * 0.58, -s * 0.36, -s * 0.72, 0, -s * 0.72);
+            g.bezierCurveTo(s * 0.36, -s * 0.72, s * 0.7, -s * 0.58, s * 0.5, -s * 0.16);
+            g.lineTo(s * 0.2, s * 0.38); g.stroke();
+            g.moveTo(-s * 0.45, -s * 0.22); g.bezierCurveTo(-s * 0.16, -s * 0.05, s * 0.16, -s * 0.38, s * 0.48, -s * 0.2);
+            g.lineTo(s * 0.36, -s * 0.62); g.lineTo(-s * 0.34, -s * 0.62); g.close(); g.fill();
+            break;
+        case 'hourglass':
+            strokeRect(g, -s * 0.56, -s * 0.7, s * 1.12, s * 0.16, 2);
+            strokeRect(g, -s * 0.56, s * 0.54, s * 1.12, s * 0.16, 2);
+            g.moveTo(-s * 0.42, s * 0.52); g.bezierCurveTo(-s * 0.34, s * 0.12, -s * 0.14, 0, 0, -s * 0.05);
+            g.bezierCurveTo(s * 0.14, 0, s * 0.34, s * 0.12, s * 0.42, s * 0.52);
+            g.moveTo(-s * 0.42, -s * 0.52); g.bezierCurveTo(-s * 0.32, -s * 0.18, -s * 0.12, -s * 0.08, 0, -s * 0.05);
+            g.bezierCurveTo(s * 0.12, -s * 0.08, s * 0.32, -s * 0.18, s * 0.42, -s * 0.52); g.stroke();
+            break;
+        case 'breed-token':
+            strokeRect(g, -s * 0.62, -s * 0.7, s * 1.24, s * 1.4, 4);
+            g.moveTo(0, -s * 0.34); g.bezierCurveTo(-s * 0.62, 0, -s * 0.34, s * 0.42, 0, s * 0.14);
+            g.bezierCurveTo(s * 0.34, s * 0.42, s * 0.62, 0, 0, -s * 0.34); g.stroke();
+            break;
+        case 'core':
+            g.circle(0, 0, s * 0.66); g.stroke();
+            g.circle(0, 0, s * 0.38); g.fill();
+            for (let i = 0; i < 6; i += 1) {
+                const angle = i * Math.PI / 3;
+                g.moveTo(Math.cos(angle) * s * 0.72, Math.sin(angle) * s * 0.72);
+                g.lineTo(Math.cos(angle) * s * 0.9, Math.sin(angle) * s * 0.9);
+            }
+            g.stroke();
+            break;
+        case 'food':
+            g.circle(0, -s * 0.12, s * 0.58); g.stroke();
+            g.moveTo(0, s * 0.44); g.bezierCurveTo(s * 0.02, s * 0.72, s * 0.18, s * 0.78, s * 0.3, s * 0.7); g.stroke();
+            g.moveTo(-s * 0.14, s * 0.5); g.bezierCurveTo(-s * 0.48, s * 0.78, -s * 0.66, s * 0.48, -s * 0.3, s * 0.36); g.fill();
+            break;
+        case 'material':
+            g.moveTo(0, s * 0.72); g.lineTo(s * 0.62, s * 0.08); g.lineTo(s * 0.38, -s * 0.68);
+            g.lineTo(-s * 0.38, -s * 0.68); g.lineTo(-s * 0.62, s * 0.08); g.close(); g.stroke();
+            g.circle(0, -s * 0.08, s * 0.2); g.fill();
+            break;
     }
     return g.node;
 }
@@ -262,17 +318,34 @@ export function createLoadingOverlay(parent: Node, message = '正在整理手账
 
 export function renderBottomNavigation(
     parent: Node,
-    _active: MainTab,
+    active: MainTab,
     onNavigate: (page: MainTab) => void,
     notificationCount = 0,
 ) {
     clearNode(parent);
-    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
+    const bar = panel(parent, 'NavigationBar', 0, -2, 704, 112, new Color(255, 247, 224, 252), 28, true, new Color(132, 84, 47, 255), 4);
+    panel(bar, 'TopStitch', 0, 49, 650, 2, new Color(202, 157, 101, 140), 1, false, CuteTheme.transparent, 0);
 
     MAIN_TABS.forEach((item, index) => {
         const x = -276 + index * 138;
-        const isAdventure = item.key === 'adventure';
-        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
+        const selected = item.key === active;
+        const tab = panel(
+            bar,
+            `Tab_${item.key}`,
+            x,
+            selected ? 8 : 0,
+            126,
+            selected ? 94 : 84,
+            selected ? new Color(255, 222, 136, 255) : new Color(255, 252, 239, 210),
+            24,
+            selected,
+            selected ? HandPaintedTheme.honey : new Color(211, 178, 132, 220),
+            selected ? 3 : 1,
+        );
+        drawUiIcon(tab, 'Icon', item.icon, 0, 18, selected ? 36 : 32, selected ? HandPaintedTheme.woodDark : HandPaintedTheme.mutedInk);
+        text(tab, 'Label', item.title, 0, -23, 108, 28, selected ? 17 : 15, HandPaintedTheme.ink, 'center', true);
+        if (selected) panel(tab, 'SelectedMark', 0, -40, 54, 5, HandPaintedTheme.leaf, 3, false, CuteTheme.transparent, 0);
+        hitArea(tab, 'HitArea', 0, 0, 126, selected ? 94 : 84, () => onNavigate(item.key));
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });
 }

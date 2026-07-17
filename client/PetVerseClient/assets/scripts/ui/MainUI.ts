@@ -27,7 +27,6 @@ import {
     button,
     capsule,
     clearNode,
-    cloudSign,
     formatNumber,
     headingTag,
     hitArea,
@@ -41,6 +40,7 @@ import {
 } from './cute/CuteUiKit';
 import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
+import { calculatePetAptitudeScore, getPetAptitudeGrade, getPetAptitudeProfile } from './pet/PetAptitudeRegistry';
 import { getPetArtPath, getPetSpeciesMeta } from './pet/PetArtRegistry';
 import { showBattlePlayback } from './advanced/BattlePlayback';
 import { loadHomePetId, loadPetFilter, saveHomePetId, savePetFilter } from './advanced/PetExperienceState';
@@ -55,6 +55,12 @@ import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
 import { drawUiIcon, renderBottomNavigation } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
 import { HomeActivity, HomeShortcut, renderHomePage } from './v2/pages/HomePage';
+import { renderInventoryDetailModalV6 } from './v6/pages/InventoryDetailModal';
+import { InventoryCategoryV6, InventoryItemCategoryV6, renderInventoryPageV6 } from './v6/pages/InventoryPage';
+import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
+import { renderPetPageV6 } from './v6/pages/PetPage';
+import { PetAttributeViewV6, PetEquipmentSlotV6, PetTabV6 } from './v6/components/PetTypes';
+import { ShopCategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -166,7 +172,6 @@ export class MainUI extends Component {
     private hatchAcceleratorEggId = 0;
     private hatchEggFilter: 'all' | 'rare' | 'mutant' = 'all';
     private hatchEggSort: 'rarity' | 'time' = 'rarity';
-    private hatchEggPageIndex = 0;
     private homePetPickerOpen = false;
     private pendingHomePetId = 0;
     private fusionPickerSide: 'A' | 'B' | null = null;
@@ -176,10 +181,11 @@ export class MainUI extends Component {
     private formationCandidateNodes = new Map<number, Node>();
     private homePetId = loadHomePetId();
     private inventoryTargetPetId = 0;
-    private inventoryCategory: 'all' | 'consumable' | 'material' | 'skill' = 'all';
+    private inventoryCategory: InventoryCategoryV6 = 'all';
     private inventorySort: 'category' | 'quantity' = 'category';
-    private inventoryPageIndex = 0;
     private inventoryDetailItem: any | null = null;
+    private inventoryDetailOpen = false;
+    private inventoryUseCount = 1;
     private secondaryConfirmation: SecondaryConfirmation | null = null;
     private petFilter = loadPetFilter();
     private readonly router = new AppRouter('home');
@@ -231,10 +237,10 @@ export class MainUI extends Component {
 
     private capacitySummary: any = null;
 
-    private shopCategory: 'featured' | 'nurture' | 'skills' | 'materials' | 'hatch' | 'special' = 'featured';
+    private shopCategory: ShopCategoryV6 = 'featured';
     private selectedShopItemId = 0;
     private shopBuyCount = 1;
-    private shopPageIndex = 0;
+    private shopPurchaseOpen = false;
 
     private benefitMode: 'sign' | 'daily' | 'achievement' | 'month' | 'pass' = 'sign';
     private signInfo: any = null;
@@ -353,6 +359,9 @@ export class MainUI extends Component {
         if (changed && page === 'adventure') this.adventureRegionOpen = false;
         this.detailSkill = null;
         this.inventoryDetailItem = null;
+        this.inventoryDetailOpen = false;
+        this.inventoryUseCount = 1;
+        this.shopPurchaseOpen = false;
         this.hatchAcceleratorOpen = false;
         this.hatchAcceleratorEggId = 0;
         this.homePetPickerOpen = false;
@@ -374,6 +383,15 @@ export class MainUI extends Component {
             this.adventureMode = 'world';
             CuteFeedback.playPage();
             this.renderCurrentPage(true);
+            return;
+        }
+        if (isMainPage(this.currentPage) && this.currentPage !== 'home') {
+            this.currentPage = this.router.reset('home');
+            CuteFeedback.playPage();
+            this.renderTopBar();
+            this.renderBottomNav();
+            this.renderCurrentPage(true);
+            if (!EDITOR) void this.refreshPageData(this.currentPage);
             return;
         }
         this.currentPage = this.router.back(mainTabForPage(this.currentPage));
@@ -740,8 +758,8 @@ export class MainUI extends Component {
             return;
         }
 
-        panel(this.topBar, 'TopBarWood', 0, -2, 710, 122, new Color(187, 126, 69, 255), 26, true, new Color(105, 65, 37, 255), 4);
-        panel(this.topBar, 'CloudBack', 0, 0, 696, 106, new Color(255, 246, 216, 255), 24, false, new Color(247, 211, 151, 255), 3);
+        panel(this.topBar, 'TopBarWood', 0, 0, 710, 108, new Color(187, 126, 69, 255), 24, true, new Color(105, 65, 37, 255), 4);
+        panel(this.topBar, 'CloudBack', 0, 0, 696, 98, new Color(255, 246, 216, 255), 22, false, new Color(247, 211, 151, 255), 3);
 
         image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -300, 1, 88, 88, CuteTheme.paperWarm);
         text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -244, 20, 176, 32, 22, CuteTheme.caramel, 'left', true);
@@ -751,14 +769,14 @@ export class MainUI extends Component {
         const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
         progress(this.topBar, 'PlayerExp', -188, -39, 120, 9, currentExp / nextExp, CuteTheme.honey);
 
-        const secondary = !isMainPage(this.currentPage);
-        const showBack = secondary && this.currentPage !== 'profile';
+        const showBack = this.currentPage !== 'home';
         if (showBack) {
-            button(this.topBar, 'BackPage', '', -92, 3, 48, 48, () => this.goBackPage(), {
-                icon: '‹', fill: CuteTheme.paperWarm, fontSize: 18, radius: 21,
+            button(this.topBar, 'BackPage', '‹', -98, 3, 44, 44, () => this.goBackPage(), {
+                fill: CuteTheme.paperWarm, fontSize: 24, radius: 20,
             });
         }
-        cloudSign(this.topBar, 'SceneTitle', this.titleForPage(this.currentPage), showBack ? 25 : 5, 3, showBack ? 150 : 190, 66);
+        const titlePlate = panel(this.topBar, 'SceneTitlePlate', 8, 3, 158, 58, new Color(255, 252, 239, 255), 22, true, new Color(218, 177, 118, 255), 2);
+        text(titlePlate, 'Title', this.titleForPage(this.currentPage), 0, 0, 142, 34, 20, CuteTheme.caramel, 'center', true);
 
         capsule(
             this.topBar,
@@ -809,9 +827,7 @@ export class MainUI extends Component {
         if (!this.pageHost) return;
         this.captureScrollOffsets(this.pageRoot);
         this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
-        if (!['home', 'pet', 'inventory', 'shop', 'hatchery'].includes(this.currentPage)) {
-            clearNode(this.pageRoot);
-        }
+        clearNode(this.pageRoot);
         const pageTuning = this.currentPageTuning();
         this.pageRoot.setPosition(this.pageContentOffsetX + pageTuning.offset.x, this.pageContentOffsetY + pageTuning.offset.y, 0);
         const contentScale = Math.max(0.9, Math.min(1.05, this.pageContentScale * pageTuning.scale));
@@ -1103,6 +1119,218 @@ export class MainUI extends Component {
 
     private renderPetDetail() {
         if (!this.pageRoot) return;
+        this.ensureExperienceSelections();
+        const allPets = GameStore.pets.filter((item) => !item?.isEgg);
+        const pets = this.filteredPetList();
+        const selected = GameStore.currentPet || allPets[0] || {};
+        const selectedId = Number(selected?.id || 0);
+        const attrs = this.battleAttributesOf(selected);
+        const aptitudes = this.aptitudesOf(selected);
+        const growth = this.growthValue(selected);
+        const teamIndex = this.teamPetIds.indexOf(selectedId);
+        const hasExplicitDeployment = Object.prototype.hasOwnProperty.call(selected, 'isDeployed')
+            || Object.prototype.hasOwnProperty.call(selected, 'deployed')
+            || Object.prototype.hasOwnProperty.call(selected, 'inBattle');
+        const explicitDeployment = Boolean(selected?.isDeployed ?? selected?.deployed ?? selected?.inBattle);
+        const deployed = teamIndex >= 0 && (!hasExplicitDeployment || explicitDeployment);
+        const species = getPetSpeciesMeta(selected);
+        const role = (selected?.speciesConfig?.roleTags || [species.role || '综合'])
+            .slice(0, 2)
+            .map((value: any) => this.petRoleLabel(value))
+            .join(' / ');
+        const genderRaw = String(selected?.gender || selected?.sex || '').toLowerCase();
+        const gender = /female|girl|女/.test(genderRaw) ? '雌性' : /male|boy|男/.test(genderRaw) ? '雄性' : '未知';
+        const skills = Array.isArray(selected?.skills) ? selected.skills : [];
+        const points = selected?.statPoints || {
+            unspent: Number(selected?.unspentStatPoints || 0),
+            constitution: Number(selected?.constitutionPoints || 0),
+            strength: Number(selected?.strengthPoints || 0),
+            spirit: Number(selected?.spiritPoints || 0),
+            endurance: Number(selected?.endurancePoints || 0),
+            speed: Number(selected?.speedStatPoints || 0),
+        };
+        this.ensurePetStatDraft(selectedId);
+        const draftTotal = this.petStatDraftTotal();
+        const remaining = Math.max(0, Number(points.unspent || 0) - draftTotal);
+        const isMutant = Boolean(selected?.isMutant);
+        const aptitudeProfile = getPetAptitudeProfile(selected, isMutant);
+        const aptitudeValues = [aptitudes.hp, aptitudes.attack, aptitudes.defense, aptitudes.magic, aptitudes.speed, growth];
+        const aptitudeRanges = [
+            aptitudeProfile.ranges.hp,
+            aptitudeProfile.ranges.attack,
+            aptitudeProfile.ranges.defense,
+            aptitudeProfile.ranges.magic,
+            aptitudeProfile.ranges.speed,
+            aptitudeProfile.growth,
+        ];
+        const calculatedAptitudeScore = calculatePetAptitudeScore(aptitudeValues, aptitudeRanges);
+        const storedAptitudeScore = Number(selected?.aptitudeScore || selected?.qualificationScore || selected?.quality || 0);
+        const aptitudeScore = storedAptitudeScore > 0 ? Math.round(storedAptitudeScore) : calculatedAptitudeScore;
+        const equipmentSource = selected?.equipment || selected?.equipments || {};
+        const equipmentKeys = ['head', 'necklace', 'amulet', 'accessory', 'emblem', 'spiritStone'];
+        const equipmentNames = ['头部', '项链', '护符', '饰品', '徽记', '灵石'];
+        const equipment: PetEquipmentSlotV6[] = equipmentKeys.map((key, index) => {
+            const value = Array.isArray(equipmentSource) ? equipmentSource[index] : equipmentSource?.[key];
+            return {
+                key,
+                name: equipmentNames[index],
+                locked: false,
+                status: value ? `已装备：${safeName(value?.name || value?.itemName || value, '装备')}` : '功能开发中',
+            };
+        });
+        const lineage = selected?.lineage || {};
+        const scrollKey = `pet|${this.petFilter.rarity}|${this.petFilter.element}|${this.petFilter.sort}::PetRosterScrollV6`;
+
+        renderPetPageV6(this.pageRoot, {
+            pets: pets.map((pet, index) => {
+                const id = Number(pet?.id || 0);
+                return {
+                    id,
+                    name: this.petListDisplayName(pet, getPetSpeciesMeta(pet).name || `宝宝${index + 1}`),
+                    level: Number(pet?.level || 1),
+                    power: this.battleAttributesOf(pet).power,
+                    artPath: getPetArtPath(pet, 'thumb'),
+                    selected: id === selectedId,
+                    teamIndex: this.teamPetIds.indexOf(id),
+                    isLocked: Boolean(pet?.isLocked),
+                    isMutant: Boolean(pet?.isMutant),
+                    isMarried: Boolean(pet?.married || pet?.marriedPetId),
+                };
+            }),
+            totalPets: allPets.length,
+            profile: {
+                id: selectedId,
+                name: this.petDisplayName(selected, species.name || '未命名宝宝'),
+                speciesName: species.name,
+                portraitPath: getPetArtPath(selected, 'portrait'),
+                level: Number(selected?.level || 1),
+                rarity: this.rarityName(selected),
+                power: attrs.power,
+                element: species.element || '未知',
+                role: role || '综合',
+                gender,
+                marriage: selected?.married || selected?.marriedPetId ? '已婚' : '未婚',
+                team: teamIndex >= 0 ? `${teamIndex + 1}号位` : '未上阵',
+                deployment: teamIndex < 0 ? '未编队' : deployed ? '出战中' : '编队待命',
+                favorite: selectedId === this.homePetId,
+                locked: Boolean(selected?.isLocked),
+                mutant: isMutant,
+                formationActionLabel: teamIndex < 0 ? '加入编队' : deployed ? '取消出战' : '设为出战',
+            },
+            attributes: {
+                hp: attrs.hp,
+                defense: attrs.defense,
+                attack: attrs.attack,
+                magic: attrs.magic,
+                speed: attrs.speed,
+                growth,
+                quality: Number(selected?.quality || 100),
+                skillCount: skills.length,
+            },
+            skills: skills.map((skill: any, index: number) => ({
+                key: `${this.skillCode(skill) || index}`,
+                name: this.skillName(skill),
+                description: this.skillDescription(skill),
+                tierLabel: this.skillTierLabel(skill),
+                iconPath: this.skillIconPath(skill),
+                fill: this.skillColor(skill),
+                textColor: this.skillTier(skill) === 'low' ? CuteTheme.caramel : CuteTheme.white,
+                brief: this.skillBrief(skill),
+                slotIndex: index + 1,
+                special: this.isSpecialSkill(skill),
+                raw: skill,
+            })),
+            aptitudes: [
+                { label: '体力资质', value: aptitudes.hp, icon: '❤', minimum: aptitudeProfile.ranges.hp[0], maximum: aptitudeProfile.ranges.hp[1], grade: getPetAptitudeGrade(aptitudes.hp, aptitudeProfile.ranges.hp) },
+                { label: '攻击资质', value: aptitudes.attack, icon: '⚔', minimum: aptitudeProfile.ranges.attack[0], maximum: aptitudeProfile.ranges.attack[1], grade: getPetAptitudeGrade(aptitudes.attack, aptitudeProfile.ranges.attack) },
+                { label: '防御资质', value: aptitudes.defense, icon: '◆', minimum: aptitudeProfile.ranges.defense[0], maximum: aptitudeProfile.ranges.defense[1], grade: getPetAptitudeGrade(aptitudes.defense, aptitudeProfile.ranges.defense) },
+                { label: '法术资质', value: aptitudes.magic, icon: '✦', minimum: aptitudeProfile.ranges.magic[0], maximum: aptitudeProfile.ranges.magic[1], grade: getPetAptitudeGrade(aptitudes.magic, aptitudeProfile.ranges.magic) },
+                { label: '速度资质', value: aptitudes.speed, icon: '➤', minimum: aptitudeProfile.ranges.speed[0], maximum: aptitudeProfile.ranges.speed[1], grade: getPetAptitudeGrade(aptitudes.speed, aptitudeProfile.ranges.speed) },
+                { label: '成长', value: growth, icon: '★', minimum: aptitudeProfile.growth[0], maximum: aptitudeProfile.growth[1], grade: getPetAptitudeGrade(growth, aptitudeProfile.growth), precision: 3 },
+            ],
+            aptitudeScore,
+            aptitudeRange: `${species.name} · ${aptitudeProfile.variantLabel}资质`,
+            equipment,
+            lineage: [
+                `父系：${Number(lineage.fatherId || selected?.fatherId || 0) || '初代'}`,
+                `母系：${Number(lineage.motherId || selected?.motherId || 0) || '初代'}`,
+                `婚姻：${selected?.married || selected?.marriedPetId ? '已婚' : '未婚'}`,
+                `生蛋：${Number(selected?.breedCount || 0)}个`,
+                `代数：${Number(lineage.generation || selected?.generation || 1)}`,
+                `基因：${safeName(selected?.geneCode, 'AAAA')}`,
+                `生育力：${Number(selected?.fertility || 100)}/100`,
+            ],
+            statDraft: {
+                unspent: Number(points.unspent || 0),
+                remaining,
+                total: draftTotal,
+                locked: Boolean(selected?.isLocked),
+                confirming: this.busy.has('pet-stats:confirm'),
+                rows: [
+                    ['constitution', '体质', '❤', '生命 +3/点'],
+                    ['strength', '力量', '⚔', '物攻 +0.35/点'],
+                    ['spirit', '灵力', '✦', '法攻 +0.35/点，提升治疗'],
+                    ['endurance', '耐力', '◆', '双防 +0.25/点'],
+                    ['speed', '敏捷', '➤', '速度 +0.15/点'],
+                ].map(([key, name, icon, description]) => ({
+                    key,
+                    name,
+                    icon,
+                    description,
+                    base: Number(points[key] || 0),
+                    pending: Number(this.petStatDraft[key] || 0),
+                })),
+                onAdd: (key, amount) => this.queuePetStatPoints(key, amount, Number(points.unspent || 0)),
+                onRecommend: () => this.recommendPetStats(selected, Number(points.unspent || 0)),
+                onClear: () => this.clearPetStatDraft(),
+                onReset: () => void this.resetPetStats(),
+                onConfirm: () => void this.confirmPetStats(),
+            },
+            tab: this.petDetailTab as PetTabV6,
+            attributeView: this.petAttributeView as PetAttributeViewV6,
+            rarityFilterLabel: this.petFilter.rarity ? `稀有：${this.rarityName({ rarity: this.petFilter.rarity })}` : '稀有：全部',
+            elementFilterLabel: `属性：${this.petFilter.element === 'all' ? '全部' : this.petFilter.element}`,
+            sortLabel: `编队优先 · ${this.petSortLabel()}降序`,
+            scrollKey,
+            initialOffset: this.scrollOffsets.get(scrollKey),
+            onSelectPet: (id) => {
+                this.captureScrollOffsets(this.pageRoot);
+                this.petDetailTab = 'attributes';
+                this.petAttributeView = 'overview';
+                GameStore.selectPet(id);
+            },
+            onTab: (tab) => {
+                this.petDetailTab = tab;
+                if (tab === 'attributes') this.petAttributeView = 'overview';
+                this.renderCurrentPage(false);
+            },
+            onAttributeView: (view) => {
+                this.petDetailTab = 'attributes';
+                this.petAttributeView = view;
+                this.renderCurrentPage(false);
+            },
+            onSkill: (skill) => this.showSkillDetail(skill),
+            onSkillBook: () => this.showPage('skills'),
+            onFormation: () => this.handlePetFormationAction(selected),
+            onFavorite: () => this.toggleFavoritePet(selectedId),
+            onLock: () => void this.togglePetLock(selected),
+            onRarityFilter: () => {
+                for (const key of [...this.scrollOffsets.keys()]) if (key.startsWith('pet|')) this.scrollOffsets.delete(key);
+                this.cyclePetRarityFilter();
+            },
+            onElementFilter: () => {
+                for (const key of [...this.scrollOffsets.keys()]) if (key.startsWith('pet|')) this.scrollOffsets.delete(key);
+                this.cyclePetElementFilter();
+            },
+            onSort: () => {
+                for (const key of [...this.scrollOffsets.keys()]) if (key.startsWith('pet|')) this.scrollOffsets.delete(key);
+                this.cyclePetSort();
+            },
+        });
+    }
+
+    private renderPetDetailLegacy() {
+        if (!this.pageRoot) return;
         const root = this.pageRoot;
         this.ensureExperienceSelections();
         const allPets = GameStore.pets.filter((item) => !item?.isEgg);
@@ -1111,15 +1339,15 @@ export class MainUI extends Component {
 
         artImage(root, 'PetDetailArt', 'ui/pet-v3/pet-detail-page-v3', 0, 0, 720, 1010);
         const book = root;
-        const rosterSurface = panel(book, 'PetRosterSurface', -280, 18, 136, 790, new Color(255, 250, 232, 252), 18, false, CuteTheme.transparent, 0);
-        text(rosterSurface, 'Title', `我的宠物 ${pets.length}/${allPets.length}`, 0, 372, 124, 32, 13, CuteTheme.caramel, 'center', true);
+        const rosterSurface = panel(book, 'PetRosterSurface', -278, 18, 148, 790, new Color(255, 250, 232, 250), 20, true, new Color(216, 177, 122, 255), 2);
+        text(rosterSurface, 'Title', `宝宝 ${pets.length}/${allPets.length}`, 0, 371, 132, 32, 14, CuteTheme.caramel, 'center', true);
         const selectorStep = 104;
-        const selectorHeight = Math.max(710, pets.length * selectorStep + 12);
-        const selector = this.createScrollArea(rosterSurface, 'PetSelectorScroll', 0, -18, 132, 710, 132, selectorHeight, 'vertical');
+        const selectorHeight = Math.max(706, pets.length * selectorStep + 12);
+        const selector = this.createScrollArea(rosterSurface, 'PetSelectorScroll', 0, -19, 140, 704, 140, selectorHeight, 'vertical');
         pets.forEach((item, index) => {
             const id = Number(item?.id || 0);
             const selectedCard = id === Number(GameStore.currentPetId);
-            const card = button(selector.content, `PetTab_${id || index}`, '', 0, -47 - index * selectorStep, 132, 92, () => {
+            const card = button(selector.content, `PetTab_${id || index}`, '', 0, -47 - index * selectorStep, 136, 94, () => {
                 GameStore.selectPet(id);
                 this.petDetailTab = 'attributes';
                 this.petAttributeView = 'overview';
@@ -1130,20 +1358,23 @@ export class MainUI extends Component {
                 fontSize: 12, radius: 18,
                 border: selectedCard ? new Color(195, 119, 42, 255) : new Color(221, 181, 124, 255),
             });
-            image(card, 'PetThumb', getPetArtPath(item, 'thumb'), -28, 8, 56, 56, selectedCard ? CuteTheme.honey : CuteTheme.paperWarm);
-            text(card, 'PetName', safeName(item?.nickname, `宝宝${index + 1}`), 22, -2, 78, 42, 11, CuteTheme.caramel, 'center', true);
+            image(card, 'PetThumb', getPetArtPath(item, 'thumb'), -39, 8, 50, 50, selectedCard ? CuteTheme.honey : CuteTheme.paperWarm);
+            text(card, 'PetName', this.petDisplayName(item, `宝宝${index + 1}`), 22, 20, 78, 22, 11, CuteTheme.caramel, 'center', true);
+            text(card, 'PetMeta', `Lv.${Number(item?.level || 1)} · ${this.rarityName(item)}`, 22, -2, 80, 18, 9, CuteTheme.muted, 'center', true);
+            text(card, 'PetPower', `战力 ${formatNumber(this.battleAttributesOf(item).power)}`, 22, -22, 80, 18, 9, CuteTheme.honeyDark, 'center', true);
             const teamIndex = this.teamPetIds.indexOf(id);
-            if (teamIndex >= 0) tag(card, 'TeamBadge', `编${teamIndex + 1}`, 43, 31, 38, CuteTheme.mint);
-            if (item?.isLocked) tag(card, 'LockBadge', '锁', -46, 31, 34, CuteTheme.paperWarm);
+            if (teamIndex >= 0) tag(card, 'TeamBadge', `出${teamIndex + 1}`, 45, 35, 38, CuteTheme.mint);
+            if (item?.isLocked) tag(card, 'LockBadge', '锁', -51, 35, 30, CuteTheme.paperWarm);
+            if (item?.isMutant) tag(card, 'MutantBadge', '异', -50, -35, 30, CuteTheme.peach);
         });
 
-        const profile = panel(book, 'Profile', -105, 42, 192, 720, CuteTheme.transparent, 22, false, CuteTheme.transparent, 0);
-        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 176, 224, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
+        const profile = panel(book, 'Profile', -100, 42, 196, 720, new Color(255, 250, 232, 246), 24, true, new Color(216, 177, 122, 230), 2);
+        image(profile, 'Portrait', getPetArtPath(selected, 'portrait'), 0, 194, 166, 216, selected?.isMutant ? CuteTheme.peach : CuteTheme.mint);
         button(profile, 'Lock', selected?.isLocked ? '已锁' : '锁定', 63, 290, 54, 38, () => void this.togglePetLock(selected), {
             fill: selected?.isLocked ? CuteTheme.honey : CuteTheme.paperWarm,
             fontSize: 12, radius: 18,
         });
-        text(profile, 'Name', safeName(selected?.nickname, '未命名宝宝'), 0, 65, 178, 38, 22, CuteTheme.caramel, 'center', true);
+        text(profile, 'Name', this.petDisplayName(selected, '未命名宝宝'), 0, 65, 178, 38, 21, CuteTheme.caramel, 'center', true);
         text(profile, 'Meta', `${safeName(selected?.species, getPetSpeciesMeta(selected).name)} · Lv.${Number(selected?.level || 1)}`, 0, 30, 178, 28, 13, CuteTheme.muted, 'center', true);
         tag(profile, 'Rarity', this.rarityName(selected), selected?.isMutant ? -40 : 0, -30, selected?.isMutant ? 74 : 108, CuteTheme.lilac);
         if (selected?.isMutant) tag(profile, 'Mutant', '变异', 42, -30, 66, CuteTheme.peach);
@@ -1165,7 +1396,7 @@ export class MainUI extends Component {
             this.petDetailTab = 'attributes'; this.petAttributeView = 'lineage'; this.renderCurrentPage(false);
         }, { selected: this.petAttributeView === 'lineage', fill: CuteTheme.lilac, fontSize: 12, radius: 16 });
 
-        const data = panel(book, 'ResearchData', 174, 42, 332, 720, CuteTheme.transparent, 22, false, CuteTheme.transparent, 0);
+        const data = panel(book, 'ResearchData', 174, 42, 332, 720, new Color(255, 250, 232, 248), 24, true, new Color(216, 177, 122, 230), 2);
         const tabs: Array<[typeof this.petDetailTab, string]> = [['attributes','属性'],['skills','技能'],['aptitudes','资质'],['equipment','装备']];
         tabs.forEach(([key,label], index) => this.flatArtControl(data, `Tab_${key}`, label, -120 + index * 80, 274, 74, 42, () => {
             this.petDetailTab = key;
@@ -1241,7 +1472,7 @@ export class MainUI extends Component {
             });
         }
 
-        const toolbar=panel(book,'Toolbar',0,-403,660,62,CuteTheme.transparent,20,false,CuteTheme.transparent,0);
+        const toolbar=panel(book,'Toolbar',0,-403,660,62,new Color(255,250,232,246),20,true,new Color(216,177,122,230),2);
         button(toolbar,'Filter',this.petFilter.rarity?`稀有:${this.rarityName({rarity:this.petFilter.rarity})}`:'稀有:全部',-205,0,180,44,()=>this.cyclePetRarityFilter(),{fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         button(toolbar,'Element',`属性:${this.petFilter.element==='all'?'全部':this.petFilter.element}`,0,0,180,44,()=>this.cyclePetElementFilter(),{fill:CuteTheme.mint,fontSize:13,radius:18});
         tag(toolbar,'Sort','编队优先 · 战力降序',205,0,180,CuteTheme.sky);
@@ -1249,176 +1480,98 @@ export class MainUI extends Component {
 
     private renderInventory() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
         this.ensureExperienceSelections();
         const eggItems = GameStore.inventory.filter((item) => this.isEggItem(item));
         const allItems = GameStore.inventory.filter((item) => !this.isEggItem(item));
         const targetPet = this.inventoryTargetPet();
-
-        const categoryOf = (item: any): typeof this.inventoryCategory => {
-            if (this.isSkillBook(item)) return 'skill';
-            if (Boolean(item?.usable)) return 'consumable';
-            return 'material';
-        };
+        const targetPets = GameStore.pets.filter((pet) => !pet?.isEgg && String(pet?.tradeStatus || '') !== 'listed');
+        const targetIndex = targetPets.findIndex((pet) => Number(pet?.id) === Number(targetPet?.id));
         const items = allItems
-            .filter((item) => this.inventoryCategory === 'all' || categoryOf(item) === this.inventoryCategory)
+            .filter((item) => this.inventoryCategory === 'all' || this.inventoryItemCategory(item) === this.inventoryCategory)
             .sort((a, b) => this.inventorySort === 'quantity'
                 ? Number(b?.quantity || 0) - Number(a?.quantity || 0)
-                : categoryOf(a).localeCompare(categoryOf(b)) || String(a?.name || '').localeCompare(String(b?.name || '')));
-
-        artImage(root, 'InventoryPageArt', 'ui/inventory-v3/inventory-page-v3', 0, 0, 720, 1010);
-        const bag = root;
-
-        const titleBoard = panel(bag, 'BagTitleBoard', -150, 371, 270, 78, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
-        drawUiIcon(titleBoard, 'BagIcon', 'inventory', -96, 0, 42, new Color(102, 126, 70, 255));
-        text(titleBoard, 'Title', '背包', 28, 5, 150, 42, 29, CuteTheme.caramel, 'center', true);
-        text(titleBoard, 'Subtitle', '生活里的每一件小物', 28, -25, 180, 22, 11, CuteTheme.muted, 'center');
+                : this.inventoryItemCategory(a).localeCompare(this.inventoryItemCategory(b))
+                    || String(a?.name || '').localeCompare(String(b?.name || '')));
+        const scrollKey = `inventory|${this.inventoryCategory}|${this.inventorySort}::InventoryItemsScrollV6`;
         const eggCount = eggItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
-        const eggNote = panel(bag, 'EggNote', 205, 326, 190, 42, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        button(eggNote, 'HatcheryShortcut', eggCount ? `宠物蛋 ${eggCount} · 去孵化室` : '前往孵化室', 0, 0, 176, 36, () => this.showPage('hatchery'), { fill: CuteTheme.honey, fontSize: 11, radius: 14 });
 
-        const tabs = panel(bag, 'CategoryTabs', 0, 270, 608, 62, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        const categories: Array<[typeof this.inventoryCategory, string]> = [['all', '全部'], ['consumable', '道具'], ['material', '材料'], ['skill', '技能书']];
-        categories.forEach(([key, title], index) => this.flatArtControl(tabs, `InventoryCategory_${key}`, title, -222 + index * 148, 0, 136, 52, () => {
-            this.inventoryCategory = key;
-            this.inventoryPageIndex = 0;
-            this.renderCurrentPage(false);
-        }, this.inventoryCategory === key, 14));
-
-        const target = panel(bag, 'UseTarget', 0, 214, 608, 48, new Color(255, 252, 239, 138), 17, false, new Color(255, 255, 255, 0), 0);
-        text(target, 'Title', '使用对象', -258, 0, 76, 28, 13, CuteTheme.caramel, 'left', true);
-        if (targetPet) {
-            image(target, 'Pet', getPetArtPath(targetPet, 'thumb'), -170, 0, 46, 46, CuteTheme.paperWarm);
-            text(target, 'PetName', safeName(targetPet?.nickname, '宠物'), -138, 10, 210, 24, 15, CuteTheme.caramel, 'left', true);
-            text(target, 'Meta', `${getPetSpeciesMeta(targetPet).name} · Lv.${Number(targetPet?.level || 1)}`, -138, -12, 220, 20, 11, CuteTheme.muted, 'left');
-            button(target, 'Prev', '‹', 205, 0, 38, 36, () => this.cycleInventoryTarget(-1), { fill: CuteTheme.paperWarm, fontSize: 20, radius: 14 });
-            button(target, 'Next', '›', 254, 0, 38, 36, () => this.cycleInventoryTarget(1), { fill: CuteTheme.honey, fontSize: 20, radius: 14 });
-        } else {
-            text(target, 'NoPet', '暂无可使用道具的宠物', 0, 0, 430, 36, 16, CuteTheme.peachDark, 'center', true);
-        }
-
-        const gridPaper = panel(bag, 'InventoryGridPaper', 0, -66, 608, 490, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        const inventoryPageSize = 16;
-        const inventoryPageCount = Math.max(1, Math.ceil(items.length / inventoryPageSize));
-        this.inventoryPageIndex = Math.max(0, Math.min(inventoryPageCount - 1, this.inventoryPageIndex));
-        const visibleItems = items.slice(this.inventoryPageIndex * inventoryPageSize, (this.inventoryPageIndex + 1) * inventoryPageSize);
-        visibleItems.forEach((item, index) => {
-            const col = index % 4;
-            const rowIndex = Math.floor(index / 4);
-            const type = categoryOf(item);
-            const slot = panel(gridPaper, `Item_${item?.id || index}`, -219 + col * 146, 174 - rowIndex * 116, 128, 106, CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
-            if (type === 'skill') artImage(slot, 'ItemArt', this.skillBookIconPath(item), 0, 20, 46, 46);
-            else drawUiIcon(slot, 'ItemIcon', type === 'consumable' ? 'inventory' : 'collection', 0, 20, 38, type === 'consumable' ? CuteTheme.mintDark : CuteTheme.honeyDark);
-            text(slot, 'Name', safeName(item?.name || item?.itemCode, '道具'), 0, -22, 112, 28, 11, CuteTheme.caramel, 'center', true);
-            text(slot, 'Quantity', `×${Number(item?.quantity || 0)}`, 38, -40, 48, 22, 11, CuteTheme.muted, 'center', true);
-            hitArea(slot, 'HitArea', 0, 0, 128, 106, () => {
+        renderInventoryPageV6(this.pageRoot, {
+            category: this.inventoryCategory,
+            items,
+            totalCount: allItems.length,
+            capacity: Number(GameStore.user?.inventoryCapacity || 20),
+            eggCount,
+            sortLabel: this.inventorySort === 'category' ? '按分类整理' : '按数量整理',
+            selectedItemCode: String(this.inventoryDetailItem?.itemCode || ''),
+            target: targetPet ? {
+                name: this.petDisplayName(targetPet, '宠物'),
+                meta: `${getPetSpeciesMeta(targetPet).name} · Lv.${Number(targetPet?.level || 1)}`,
+                artPath: getPetArtPath(targetPet, 'thumb'),
+            } : null,
+            canPreviousTarget: targetIndex > 0,
+            canNextTarget: targetIndex >= 0 && targetIndex < targetPets.length - 1,
+            scrollKey,
+            initialOffset: this.scrollOffsets.get(scrollKey),
+            onCategory: (category) => {
+                this.scrollOffsets.delete(`inventory|${category}|${this.inventorySort}::InventoryItemsScrollV6`);
+                this.inventoryCategory = category;
+                this.renderCurrentPage(false);
+            },
+            onPreviousTarget: () => this.cycleInventoryTarget(-1),
+            onNextTarget: () => this.cycleInventoryTarget(1),
+            onItem: (item) => {
                 this.inventoryDetailItem = item;
+                this.inventoryUseCount = 1;
+                this.inventoryDetailOpen = true;
                 this.renderUtilityModal();
-            });
+            },
+            onSort: () => {
+                this.inventorySort = this.inventorySort === 'category' ? 'quantity' : 'category';
+                this.scrollOffsets.delete(`inventory|${this.inventoryCategory}|${this.inventorySort}::InventoryItemsScrollV6`);
+                this.renderCurrentPage(false);
+            },
+            onHatchery: () => this.showPage('hatchery'),
+            itemCategory: (item) => this.inventoryItemCategory(item),
+            itemVisual: (item) => this.inventoryItemVisual(item),
         });
-        if (!items.length) text(gridPaper, 'Empty', '当前分类暂无物品', 0, 0, 420, 100, 22, CuteTheme.muted, 'center', true);
-
-        const footer = panel(bag, 'BagFooter', 0, -378, 608, 58, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
-        text(footer, 'Capacity', `容量 ${allItems.length}/${Number(GameStore.user?.inventoryCapacity || 120)}`, -238, 0, 180, 28, 14, CuteTheme.caramel, 'left', true);
-        this.renderFixedPager(footer, 'InventoryPager', this.inventoryPageIndex, inventoryPageCount, 8, 0, (pageIndex) => {
-            this.inventoryPageIndex = pageIndex;
-            this.renderCurrentPage(false);
-        });
-        button(footer, 'Sort', this.inventorySort === 'category' ? '按分类整理' : '按数量整理', 222, 0, 150, 40, () => {
-            this.inventorySort = this.inventorySort === 'category' ? 'quantity' : 'category';
-            this.inventoryPageIndex = 0;
-            this.renderCurrentPage(false);
-        }, { fill: CuteTheme.honey, fontSize: 12, radius: 15 });
     }
 
     private renderShop() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
-
-        artImage(root, 'ShopPageArt', 'ui/shop-v3/shop-page-v3', 0, 0, 720, 1010);
-        const page = root;
-        const sign = panel(page, 'ShopSign', -193, 378, 244, 82, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        drawUiIcon(sign, 'ShopIcon', 'shop', -90, 0, 42, CuteTheme.caramel);
-        text(sign, 'Title', '手账屋', 20, 8, 150, 38, 27, CuteTheme.caramel, 'center', true);
-        text(sign, 'Sub', 'S H O P', 20, -23, 150, 20, 10, CuteTheme.muted, 'center', true);
-        const wallet = panel(page, 'WalletBoard', 95, 385, 314, 58, new Color(255, 255, 255, 0), 20, false, new Color(255, 255, 255, 0), 0);
-        text(wallet, 'Gold', `● ${formatNumber(GameStore.user?.gold)}`, -76, 0, 130, 28, 14, CuteTheme.caramel, 'center', true);
-        text(wallet, 'Diamond', `◆ ${formatNumber(GameStore.user?.diamond)}`, 76, 0, 130, 28, 14, CuteTheme.caramel, 'center', true);
-        panel(wallet, 'Divider', 0, 0, 2, 34, new Color(220, 195, 156, 255), 1);
-        const refreshTag = panel(page, 'RefreshTag', 272, 268, 88, 92, new Color(255, 255, 255, 0), 17, false, new Color(255, 255, 255, 0), 0);
-        text(refreshTag, 'Time', '每日刷新\n05:00', 0, 20, 74, 42, 11, CuteTheme.muted, 'center', true);
-        button(refreshTag, 'Refresh', '刷新', 0, -25, 70, 30, () => void this.refreshPageData('shop'), { fill: CuteTheme.honey, fontSize: 10, radius: 12 });
-        const categories: Array<[typeof this.shopCategory, string]> = [
-            ['featured', '精选'], ['nurture', '养成'], ['skills', '技能书'], ['materials', '材料'], ['hatch', '孵化'], ['special', '特殊'],
-        ];
-        const rail = panel(page, 'ShopCategoryRail', -263, -78, 112, 572, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        categories.forEach(([key, title], index) => this.flatArtControl(rail, `ShopCategory_${key}`, title, 0, 214 - index * 84, 96, 58, () => {
-            this.shopCategory = key;
-            this.shopPageIndex = 0;
-            this.shopBuyCount = 1;
-            this.ensureSelectedShopItem();
-            this.renderCurrentPage(false);
-        }, this.shopCategory === key, 13));
-
-        const items = this.filteredShopItems();
-        if (!items.length) { text(page, 'EmptyShop', '当前分类暂时没有商品', 82, 80, 470, 100, 21, CuteTheme.muted, 'center', true); return; }
         this.ensureSelectedShopItem();
-        const shopPageSize = 9;
-        const shopPageCount = Math.max(1, Math.ceil(items.length / shopPageSize));
-        this.shopPageIndex = Math.max(0, Math.min(shopPageCount - 1, this.shopPageIndex));
-        const visibleItems = items.slice(this.shopPageIndex * shopPageSize, (this.shopPageIndex + 1) * shopPageSize);
-        if (!visibleItems.some((item) => Number(item?.id || 0) === this.selectedShopItemId)) {
-            this.selectedShopItemId = Number(visibleItems[0]?.id || 0);
-        }
-        const ledger = panel(page, 'ProductLedger', 69, 38, 492, 350, new Color(255, 255, 255, 0), 16, false, new Color(255, 255, 255, 0), 0);
-        visibleItems.forEach((item, index) => {
-            const col = index % 3;
-            const rowIndex = Math.floor(index / 3);
-            const selected = Number(item?.id || 0) === this.selectedShopItemId;
-            const owned = GameStore.inventory.find((ownedItem) => String(ownedItem?.itemCode || '') === String(item?.itemCode || ''));
-            const card = panel(ledger, `ShopItem_${item?.id ?? index}`, -156 + col * 156, 120 - rowIndex * 108, 138, 96, selected ? new Color(255, 207, 89, 44) : CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
-            if (this.isSkillBook(item)) artImage(card, 'ProductArt', this.skillBookIconPath(item), 0, 18, 38, 38);
-            else if (String(item?.type || '').toLowerCase() === 'egg') artImage(card, 'ProductArt', getEggArtPath(item), 0, 19, 38, 46);
-            else drawUiIcon(card, 'ProductIcon', 'shop', 0, 19, 32, selected ? CuteTheme.honeyDark : CuteTheme.caramel);
-            text(card, 'Name', safeName(item?.name, item?.itemCode || '商品'), 0, -14, 122, 24, 10, CuteTheme.caramel, 'center', true);
-            text(card, 'Price', `${item?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}`, 0, -36, 116, 22, 10, CuteTheme.caramel, 'center', true);
-            text(card, 'Owned', `有 ${Number(owned?.quantity || 0)}`, -41, 34, 52, 20, 10, CuteTheme.mintDark, 'center', true);
-            if (selected) text(card, 'Selected', '✓', 48, 35, 22, 20, 12, CuteTheme.honeyDark, 'center', true);
-            const limit = Number(item?.purchaseLimit || item?.limit || 0);
-            if (limit > 0) text(card, 'Limit', `限${limit}`, 40, 34, 42, 20, 9, CuteTheme.peachDark, 'center', true);
-            hitArea(card, 'HitArea', 0, 0, 138, 96, () => {
-                this.selectedShopItemId = Number(item?.id || 0);
+        const scrollKey = `shop|${this.shopCategory}::ShopItemsScrollV6`;
+        const shopItems = this.filteredShopItems();
+        renderShopPageV6(this.pageRoot, {
+            category: this.shopCategory,
+            items: shopItems,
+            countLabel: this.shopCategory === 'featured'
+                ? `商店共 ${shopItems.length} 件`
+                : `当前分类 ${shopItems.length} 件`,
+            selectedItemId: this.selectedShopItemId,
+            scrollKey,
+            initialOffset: this.scrollOffsets.get(scrollKey),
+            onCategory: (category) => {
+                this.scrollOffsets.delete(`shop|${category}::ShopItemsScrollV6`);
+                this.shopCategory = category;
                 this.shopBuyCount = 1;
+                this.ensureSelectedShopItem();
                 this.renderCurrentPage(false);
-            });
+            },
+            onRefresh: () => void this.refreshPageData('shop'),
+            onProduct: (item) => {
+                this.selectedShopItemId = Number(item?.id || item?.shopItemId || 0);
+                this.shopBuyCount = 1;
+                this.shopPurchaseOpen = true;
+                this.renderUtilityModal();
+            },
+            ownedCount: (item) => Number(GameStore.inventory.find((entry) => String(entry?.itemCode || '') === String(item?.itemCode || ''))?.quantity || 0),
+            balance: (item) => this.shopCurrencyType(item) === 'diamond' ? Number(GameStore.user?.diamond || 0) : Number(GameStore.user?.gold || 0),
+            productVisual: (item) => {
+                if (this.isSkillBook(item)) return { kind: 'art', value: this.skillBookIconPath(item) };
+                if (String(item?.type || '').toLowerCase() === 'egg') return { kind: 'art', value: getEggArtPath(item) };
+                return { kind: 'icon', value: this.inventoryIcon(item) };
+            },
         });
-
-        this.renderFixedPager(page, 'ShopPager', this.shopPageIndex, shopPageCount, 69, -164, (pageIndex) => {
-            this.shopPageIndex = pageIndex;
-            const nextItem = items[pageIndex * shopPageSize];
-            this.selectedShopItemId = Number(nextItem?.id || 0);
-            this.shopBuyCount = 1;
-            this.renderCurrentPage(false);
-        });
-
-        const selected = this.selectedShopItem();
-        const detail = panel(page, 'ShopDetail', 69, -286, 492, 138, new Color(255, 252, 239, 236), 18, false, new Color(219, 180, 130, 112), 1);
-        if (!selected) { text(detail, 'NoSelection', '请选择商品', 0, 0, 300, 50, 20, CuteTheme.muted, 'center', true); return; }
-        drawUiIcon(detail, 'DetailIcon', this.isSkillBook(selected) ? 'skills' : String(selected?.type || '').toLowerCase() === 'egg' ? 'hatchery' : 'shop', -205, 22, 42, CuteTheme.honeyDark);
-        text(detail, 'Name', safeName(selected?.name, selected?.itemCode || '商品'), -166, 36, 246, 28, 16, CuteTheme.caramel, 'left', true);
-        text(detail, 'Description', safeName(selected?.description, '暂无说明'), -166, 2, 264, 36, 10, CuteTheme.muted, 'left', false);
-        const owned = GameStore.inventory.find((item) => String(item?.itemCode || '') === String(selected?.itemCode || ''));
-        text(detail, 'Owned', `已拥有 ×${Number(owned?.quantity || 0)}`, -166, -42, 180, 24, 11, CuteTheme.mintDark, 'left', true);
-        button(detail, 'Minus', '－', 43, -35, 34, 34, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 17, radius: 13 });
-        text(detail, 'Count', `×${this.shopBuyCount}`, 86, -35, 42, 28, 13, CuteTheme.caramel, 'center', true);
-        button(detail, 'Plus', '＋', 129, -35, 34, 34, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 17, radius: 13 });
-        const total = Number(selected?.price || 0) * this.shopBuyCount;
-        const balance = selected?.currencyType === 'diamond' ? Number(GameStore.user?.diamond || 0) : Number(GameStore.user?.gold || 0);
-        const soldOut = Boolean(selected?.soldOut) || (selected?.stock !== undefined && Number(selected?.stock || 0) <= 0);
-        const insufficient = total > balance;
-        button(detail, 'Buy', soldOut ? '已售罄' : insufficient ? '余额不足' : `${selected?.currencyType === 'diamond' ? '钻石' : '金币'} ${formatNumber(total)} 购买`, 140, 30, 182, 44, () => void this.buySelectedShopItem(), {
-            fill: selected?.currencyType === 'diamond' ? CuteTheme.sky : CuteTheme.honey, fontSize: 13, radius: 20, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
-        text(page, 'ShopHint', '购买后仍停留在当前账页 · 宠物蛋进入孵化室 · 技能书进入背包', 65, -420, 500, 24, 11, CuteTheme.muted, 'center', true);
     }
 
     private renderBenefits() {
@@ -1581,13 +1734,73 @@ export class MainUI extends Component {
 
     private renderHatchery() {
         if (!this.pageRoot) return;
+        const activeEggs = GameStore.eggs
+            .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
+            .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
+        const slotEgg = (slot: number) => activeEggs.find((egg) => Number(egg?.incubatorSlot || 0) === slot)
+            || activeEggs.find((egg, index) => !Number(egg?.incubatorSlot || 0) && index === slot - 1)
+            || null;
+        const allStoredEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
+        const storedEggs = allStoredEggs
+            .filter((egg) => this.hatchEggFilter === 'all'
+                || this.hatchEggFilter === 'mutant' && Boolean(egg?.isMutant)
+                || this.hatchEggFilter === 'rare' && Number(egg?.rarityPotential || 1) >= 4)
+            .sort((a, b) => this.hatchEggSort === 'rarity'
+                ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
+                : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
+        const eggCapacity = Math.max(20, Number(GameStore.user?.eggCapacity || GameStore.user?.hatcheryCapacity || 20));
+        const scrollKey = `hatchery|${this.hatchEggFilter}|${this.hatchEggSort}::HatcheryEggScrollV6`;
+        renderHatcheryPageV6(this.pageRoot, {
+            slots: [1, 2, 3].map((slot) => {
+                const egg = slotEgg(slot);
+                const remaining = Math.max(0, Number(egg?.remainingSeconds || 0));
+                return {
+                    slot,
+                    egg,
+                    remaining,
+                    total: Math.max(1, Number(egg?.hatchDurationSeconds || remaining || 1)),
+                    ready: Boolean(egg?.canHatch) || Boolean(egg) && remaining <= 0,
+                };
+            }),
+            eggs: storedEggs,
+            totalStored: allStoredEggs.length,
+            capacity: eggCapacity,
+            filter: this.hatchEggFilter,
+            sort: this.hatchEggSort,
+            scrollKey,
+            initialOffset: this.scrollOffsets.get(scrollKey),
+            formatDuration: (seconds) => this.formatSeconds(seconds),
+            formatEggDuration: (egg) => this.formatEggDuration(egg),
+            onFilter: (filter) => {
+                this.hatchEggFilter = filter;
+                this.renderCurrentPage(false);
+            },
+            onSort: () => {
+                this.hatchEggSort = this.hatchEggSort === 'rarity' ? 'time' : 'rarity';
+                this.renderCurrentPage(false);
+            },
+            onChooseEgg: (egg) => {
+                if (activeEggs.length >= 3) {
+                    this.showToast('三台孵化装置都在使用中');
+                    return;
+                }
+                this.requestIncubation(egg, 0);
+            },
+            onChooseEmptySlot: () => this.showToast('请先在下方仓库选择一枚宠物蛋'),
+            onAccelerate: (egg) => this.openHatchAccelerator(egg),
+            onCollect: (egg) => void this.hatchEgg(egg),
+        });
+    }
+
+    private renderHatcheryLegacy() {
+        if (!this.pageRoot) return;
         const root = this.pageRoot;
         artImage(root, 'HatcheryPageArt', 'ui/hatchery-v3/hatchery-page-v3', 0, 0, 720, 1010);
         const room = root;
-        const sign = panel(room, 'TitleBoard', -200, 380, 248, 82, new Color(255, 255, 255, 0), 18, false, new Color(255, 255, 255, 0), 0);
-        drawUiIcon(sign, 'EggIcon', 'hatchery', -91, 0, 42, CuteTheme.honeyDark);
-        text(sign, 'Title', '孵化室', 20, 7, 150, 38, 27, CuteTheme.caramel, 'center', true);
-        text(sign, 'Subtitle', 'INCUBATION ROOM', 20, -24, 170, 18, 9, CuteTheme.muted, 'center', true);
+        const sign = panel(room, 'HatcheryHeader', 0, 382, 620, 72, new Color(255, 250, 232, 248), 24, true, new Color(216, 177, 122, 230), 2);
+        drawUiIcon(sign, 'EggIcon', 'hatchery', -268, 0, 40, CuteTheme.honeyDark);
+        text(sign, 'Title', '三槽孵化装置', -232, 10, 210, 30, 21, CuteTheme.caramel, 'left', true);
+        text(sign, 'Subtitle', '选蛋 → 选装置 → 确认 → 倒计时 → 领取', -232, -19, 430, 22, 12, CuteTheme.muted, 'left', true);
         const activeEggs = GameStore.eggs
             .filter((egg) => ['incubating', 'hatching'].includes(String(egg?.status || '')))
             .sort((a, b) => Number(a?.incubatorSlot || 0) - Number(b?.incubatorSlot || 0));
@@ -1608,8 +1821,8 @@ export class MainUI extends Component {
             panel(device, 'StatusLamp', 68, -103, 15, 15, egg ? CuteTheme.honey : CuteTheme.mint, 8, true, CuteTheme.white, 2);
             if (!egg) {
                 drawUiIcon(chamber, 'EggEmpty', 'hatchery', 0, 22, 72, CuteTheme.honeyDark);
-                text(chamber, 'State', '空闲\n等待宠物蛋', 0, -46, 134, 48, 15, CuteTheme.muted, 'center', false);
-                tag(device, 'Free', '可使用', 0, -103, 82, CuteTheme.mint);
+                text(chamber, 'State', '等待选择宠物蛋', 0, -48, 142, 32, 14, CuteTheme.muted, 'center', true);
+                button(device, 'ChooseEgg', '选择宠物蛋', 0, -112, 116, 36, () => this.showToast('请从下方蛋仓选择一枚宠物蛋'), { fill: CuteTheme.mint, fontSize: 12, radius: 15 });
                 return;
             }
             const remaining = Math.max(0, Number(egg?.remainingSeconds || 0));
@@ -1637,40 +1850,36 @@ export class MainUI extends Component {
             .sort((a, b) => this.hatchEggSort === 'rarity'
                 ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
                 : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
-        const warehouse = panel(room, 'Warehouse', 0, -210, 620, 348, new Color(255, 255, 255, 0), 22, false, new Color(255, 255, 255, 0), 0);
-        const warehouseSign = panel(warehouse, 'WarehouseSign', 0, 166, 220, 36, new Color(255, 255, 255, 0), 14, false, new Color(255, 255, 255, 0), 0);
-        text(warehouseSign, 'Title', `宝宝蛋仓库  ${allStoredEggs.length}`, 0, 0, 198, 28, 14, CuteTheme.caramel, 'center', true);
-        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>this.flatArtControl(warehouse,`EggFilter_${key}`,title,-130+index*76,120,68,32,()=>{
+        const warehouse = panel(room, 'Warehouse', 0, -222, 650, 360, new Color(255, 250, 232, 250), 26, true, new Color(216, 177, 122, 235), 3);
+        const eggCapacity = Math.max(20, Number(GameStore.user?.eggCapacity || GameStore.user?.hatcheryCapacity || 20));
+        drawUiIcon(warehouse, 'WarehouseIcon', 'hatchery', -278, 150, 32, CuteTheme.honeyDark);
+        text(warehouse, 'WarehouseTitle', `宝宝蛋仓库  ${allStoredEggs.length}/${eggCapacity}`, -246, 150, 240, 30, 17, CuteTheme.caramel, 'left', true);
+        text(warehouse, 'WarehouseFlow', '点击蛋卡后选择空闲装置', 158, 150, 260, 24, 12, CuteTheme.muted, 'right', true);
+        ([['all','全部'],['rare','稀有'],['mutant','变异']] as Array<[typeof this.hatchEggFilter,string]>).forEach(([key,title],index)=>this.flatArtControl(warehouse,`EggFilter_${key}`,title,-190+index*86,112,76,34,()=>{
             this.hatchEggFilter=key;
-            this.hatchEggPageIndex=0;
             this.renderCurrentPage(false);
         },this.hatchEggFilter===key,11));
-        this.flatArtControl(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度':'孵化时长',208,120,106,32,()=>{
+        this.flatArtControl(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度优先':'时间优先',215,112,128,34,()=>{
             this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';
-            this.hatchEggPageIndex=0;
             this.renderCurrentPage(false);
         },false,10);
-        const hatchPageSize = 6;
-        const hatchPageCount = Math.max(1, Math.ceil(storedEggs.length / hatchPageSize));
-        this.hatchEggPageIndex = Math.max(0, Math.min(hatchPageCount - 1, this.hatchEggPageIndex));
-        const visibleEggs = storedEggs.slice(this.hatchEggPageIndex * hatchPageSize, (this.hatchEggPageIndex + 1) * hatchPageSize);
-        visibleEggs.forEach((egg, index) => {
+        const eggRows = Math.max(1, Math.ceil(storedEggs.length / 2));
+        const eggArea = this.createScrollArea(warehouse, 'EggWarehouseScroll', 0, -34, 620, 240, 620, Math.max(240, eggRows * 120 + 8), 'vertical');
+        storedEggs.forEach((egg, index) => {
             const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
-            const col = index % 3;
-            const row = Math.floor(index / 3);
-            const card = panel(warehouse, `Egg_${egg?.id || index}`, -198 + col * 198, 69 - row * 108, 184, 96, CuteTheme.transparent, 12, false, CuteTheme.transparent, 0);
-            artImage(card, 'Icon', getEggArtPath(egg), -55, 8, 58, 72);
-            text(card, 'Name', getEggDisplayName(egg), 34, 25, 102, 30, 11, CuteTheme.caramel, 'center', false);
-            text(card, 'Time', `${rarity}★ · ${this.formatEggDuration(egg)}`, 34, 2, 100, 22, 10, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.muted, 'center', true);
-            this.flatArtControl(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '放入装置', 34, -25, 100, 28, () => {
+            const col = index % 2;
+            const actualRow = Math.floor(index / 2);
+            const card = panel(eggArea.content, `Egg_${egg?.id || index}`, -154 + col * 308, -55 - actualRow * 120, 294, 108, new Color(255, 252, 239, 255), 18, false, egg?.isMutant ? CuteTheme.peach : new Color(216, 177, 122, 220), egg?.isMutant ? 3 : 2);
+            artImage(card, 'Icon', getEggArtPath(egg), -103, 4, 66, 82);
+            text(card, 'Name', getEggDisplayName(egg), -60, 31, 178, 28, 14, CuteTheme.caramel, 'left', true);
+            text(card, 'Rarity', `${rarity}★ ${egg?.isMutant ? '· 变异' : ''}`, -60, 5, 176, 22, 11, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'left', true);
+            text(card, 'Time', `孵化 ${this.formatEggDuration(egg)}`, -60, -20, 176, 22, 11, CuteTheme.muted, 'left', true);
+            this.flatArtControl(card, 'Put', activeEggs.length >= 3 ? '装置已满' : '选择装置', 79, -30, 104, 34, () => {
                 if (activeEggs.length < 3) this.requestIncubation(egg, 0);
-            }, false, 10);
+            }, false, 11);
         });
-        if (!storedEggs.length) text(warehouse, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -28, 500, 90, 18, CuteTheme.muted, 'center', false);
-        this.renderFixedPager(room, 'EggPager', this.hatchEggPageIndex, hatchPageCount, 0, -420, (pageIndex) => {
-            this.hatchEggPageIndex = pageIndex;
-            this.renderCurrentPage(false);
-        });
+        if (!storedEggs.length) text(eggArea.content, 'Empty', allStoredEggs.length ? '当前筛选没有宠物蛋' : '暂无宠物蛋\n可通过区域巢穴、繁育与活动获得', 0, -110, 500, 90, 18, CuteTheme.muted, 'center', false);
+        this.scrollHint(warehouse, 'EggScrollHint', storedEggs.length > 4 ? '上下滑动查看更多宠物蛋' : '当前宠物蛋已全部显示', 0, -166, 250);
     }
 
     private renderSkillLearning() {
@@ -2775,15 +2984,29 @@ export class MainUI extends Component {
 
         const dim = panel(this.modalLayer, 'Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(73, 45, 30, 110), 0, false, CuteTheme.transparent, 0);
         dim.on(Node.EventType.TOUCH_END, () => this.closeSkillDetail());
-        const skill = this.detailSkill;
-        const card = panel(this.modalLayer, 'SkillDetail', 0, 20, 570, 500, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 4);
-        image(card, 'Icon', this.skillIconPath(skill), 0, 165, 106, 106, this.skillColor(skill));
-        text(card, 'Name', this.skillName(skill), 0, 94, 460, 50, 30, CuteTheme.caramel, 'center', true);
-        tag(card, 'Tier', this.skillTierLabel(skill), 0, 47, 120, this.skillColor(skill), this.skillTier(skill) === 'low' ? CuteTheme.caramel : CuteTheme.white);
-        headingTag(card, 'DescTitle', '技能描述', -175, -10, 132, CuteTheme.paperWarm);
-        text(card, 'Description', this.skillDescription(skill), -235, -82, 470, 150, 18, CuteTheme.caramel, 'left', false);
-        text(card, 'Rule', '高级技能会替换同家族低级技能；特殊技能不能使用技能锁保护。', 0, -165, 500, 54, 14, CuteTheme.peachDark, 'center', true);
-        button(card, 'Close', '关闭', 0, -218, 150, 54, () => this.closeSkillDetail(), {
+        const view = this.detailSkill;
+        const skill = view?.raw || view;
+        const slotIndex = Math.max(1, Number(view?.slotIndex || skill?.slotIndex || 1));
+        const card = panel(this.modalLayer, 'SkillDetail', 0, 10, 590, 650, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 4);
+        image(card, 'Icon', this.skillIconPath(skill), 0, 252, 86, 86, this.skillColor(skill));
+        text(card, 'Name', this.skillName(skill), 0, 190, 470, 42, 27, CuteTheme.caramel, 'center', true);
+        tag(card, 'Tier', this.skillTierLabel(skill), 0, 151, 120, this.skillColor(skill), this.skillTier(skill) === 'low' ? CuteTheme.caramel : CuteTheme.white);
+        button(card, 'CloseX', '×', 250, 282, 44, 44, () => this.closeSkillDetail(), { fill: CuteTheme.paperWarm, fontSize: 23, radius: 20 });
+
+        const facts = panel(card, 'Facts', 0, 85, 520, 104, new Color(255, 252, 239, 245), 18, false, CuteTheme.caramelSoft, 2);
+        text(facts, 'Type', `技能类型　${this.skillTypeLabel(skill)}`, -236, 27, 226, 28, 14, CuteTheme.caramel, 'left', true);
+        text(facts, 'TierFact', `技能品质　${this.skillTierLabel(skill)}`, 10, 27, 226, 28, 14, CuteTheme.caramel, 'left', true);
+        text(facts, 'Trigger', `触发时机　${this.skillTriggerLabel(skill)}`, -236, -5, 226, 28, 14, CuteTheme.caramel, 'left', true);
+        text(facts, 'Slot', `当前槽位　技能槽${slotIndex}`, 10, -5, 226, 28, 14, CuteTheme.caramel, 'left', true);
+        text(facts, 'Replaceable', `技能书替换　${this.skillReplaceableLabel(skill)}`, -236, -37, 226, 28, 13, CuteTheme.muted, 'left', true);
+        text(facts, 'Relation', `版本关系　${this.skillRelationLabel(skill)}`, 10, -37, 226, 28, 13, CuteTheme.muted, 'left', true);
+
+        headingTag(card, 'DescTitle', '完整技能效果', -188, 12, 150, CuteTheme.paperWarm);
+        const description = panel(card, 'DescriptionPanel', 0, -74, 520, 136, new Color(255, 250, 232, 238), 18, false, CuteTheme.caramelSoft, 2);
+        text(description, 'Description', this.skillDescription(skill), -238, 0, 476, 108, 16, CuteTheme.caramel, 'left', false);
+        text(card, 'RelationDetail', `同系列关系：${this.skillRelationLabel(skill)}`, 0, -158, 510, 30, 13, CuteTheme.muted, 'center', true);
+        text(card, 'Rule', '高级技能书可能替换普通低级技能。\n特殊技能不会被普通技能书替换。', 0, -214, 510, 58, 14, CuteTheme.peachDark, 'center', false);
+        button(card, 'Close', '关闭', 0, -286, 150, 54, () => this.closeSkillDetail(), {
             fill: CuteTheme.honey, fontSize: 16, radius: 24,
         });
     }
@@ -2802,7 +3025,14 @@ export class MainUI extends Component {
         if (!this.utilityLayer) return;
         this.captureScrollOffsets(this.utilityLayer);
         clearNode(this.utilityLayer);
-        const active = Boolean(this.secondaryConfirmation) || Boolean(this.inventoryDetailItem) || this.hatchAcceleratorOpen || this.homePetPickerOpen || Boolean(this.fusionPickerSide) || Boolean(this.pendingIncubation) || this.fusionConfirmOpen;
+        const active = Boolean(this.secondaryConfirmation)
+            || (this.inventoryDetailOpen && Boolean(this.inventoryDetailItem))
+            || this.shopPurchaseOpen
+            || this.hatchAcceleratorOpen
+            || this.homePetPickerOpen
+            || Boolean(this.fusionPickerSide)
+            || Boolean(this.pendingIncubation)
+            || this.fusionConfirmOpen;
         this.utilityLayer.active = active;
         if (!active) return;
         if (!this.utilityLayer.getComponent(BlockInputEvents)) this.utilityLayer.addComponent(BlockInputEvents);
@@ -2830,32 +3060,77 @@ export class MainUI extends Component {
             return;
         }
 
-        if (this.inventoryDetailItem) {
+        if (this.inventoryDetailOpen && this.inventoryDetailItem) {
             const item = this.inventoryDetailItem;
             const skillBook = this.isSkillBook(item);
             const usable = Boolean(item?.usable) && !skillBook;
             const targetPet = this.inventoryTargetPet();
-            const card = panel(this.utilityLayer, 'ItemDetailDialog', 0, 0, 560, 560, new Color(255, 250, 235, 255), 34, true, CuteTheme.caramelSoft, 4);
-            headingTag(card, 'Title', '物品详情', 0, 232, 160, CuteTheme.mint);
-            drawUiIcon(card, 'ItemIcon', skillBook ? 'skills' : usable ? 'inventory' : 'collection', 0, 142, 66, skillBook ? CuteTheme.peachDark : usable ? CuteTheme.mintDark : CuteTheme.honeyDark);
-            text(card, 'Name', safeName(item?.name || item?.itemCode, '道具'), 0, 78, 450, 42, 24, CuteTheme.caramel, 'center', true);
-            tag(card, 'Count', `拥有 ×${Number(item?.quantity || 0)}`, 0, 34, 120, CuteTheme.paperWarm);
-            text(card, 'Description', safeName(item?.description, '暂无详细说明'), 0, -42, 450, 96, 16, CuteTheme.muted, 'center');
-            text(card, 'Target', usable
-                ? `使用对象：${targetPet ? safeName(targetPet?.nickname, '宠物') : '暂无宠物'}`
-                : skillBook ? '该物品需要前往技能页面使用' : '材料类物品不能直接使用', 0, -118, 440, 38, 14, usable ? CuteTheme.mintDark : CuteTheme.muted, 'center', true);
-            button(card, 'Cancel', '关闭', -100, -214, 170, 54, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 22 });
-            button(card, 'Confirm', skillBook ? '前往打书' : usable ? '确认使用' : '暂不可用', 105, -214, 180, 54, () => {
-                if (skillBook) {
+            const maxUse = Math.max(1, Number(item?.quantity || 1));
+            const quantity = Math.max(1, Math.min(maxUse, this.inventoryUseCount));
+            renderInventoryDetailModalV6(this.utilityLayer, {
+                item,
+                category: this.inventoryItemCategory(item),
+                visual: this.inventoryItemVisual(item),
+                targetName: targetPet ? this.petDisplayName(targetPet, '宠物') : undefined,
+                useCount: quantity,
+                maxUse,
+                usable,
+                skillBook,
+                busy: this.busy.has(`inventory:${item?.id || item?.itemCode}`),
+                onClose: () => this.closeUtilityModal(),
+                onUseCount: (count) => {
+                    this.inventoryUseCount = count;
+                    this.renderUtilityModal();
+                },
+                onUse: () => {
+                    if (!usable || !targetPet) return;
+                    this.inventoryDetailOpen = false;
+                    this.renderUtilityModal();
+                    void this.useInventoryItem(item, quantity);
+                },
+                onSkill: () => {
                     this.selectedSkillBookCode = String(item?.itemCode || '');
                     this.closeUtilityModal();
                     this.showPage('skills');
-                } else if (usable) {
-                    this.inventoryDetailItem = null;
-                    this.renderUtilityModal();
-                    void this.useInventoryItem(item);
-                }
-            }, { fill: skillBook ? CuteTheme.honey : usable ? CuteTheme.mint : new Color(216, 211, 199, 255), fontSize: 15, radius: 22, disabled: !skillBook && (!usable || !targetPet) });
+                },
+            });
+            return;
+        }
+
+        if (this.shopPurchaseOpen) {
+            const item = this.selectedShopItem();
+            if (!item) { this.shopPurchaseOpen = false; this.renderUtilityModal(); return; }
+            const owned = GameStore.inventory.find((entry) => String(entry?.itemCode || '') === String(item?.itemCode || ''));
+            const currency = this.shopCurrencyType(item);
+            const balance = this.shopBalance(item);
+            const soldOut = Boolean(item?.soldOut) || (item?.stock !== undefined && Number(item?.stock || 0) <= 0);
+            const maximum = soldOut ? 0 : this.maxShopBuyCount(item);
+            this.shopBuyCount = Math.max(1, Math.min(Math.max(1, maximum), this.shopBuyCount));
+            const total = Number(item?.price || 0) * this.shopBuyCount;
+            const insufficient = maximum <= 0 || total > balance;
+            const card = panel(this.utilityLayer, 'ShopPurchaseDialog', 0, 0, 590, 650, new Color(255, 250, 235, 255), 36, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', '商品详情', 0, 282, 170, CuteTheme.honey);
+            button(card, 'CloseX', '×', 252, 280, 46, 46, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 23, radius: 20 });
+            if (this.isSkillBook(item)) artImage(card, 'ProductArt', this.skillBookIconPath(item), 0, 190, 78, 78);
+            else if (String(item?.type || '').toLowerCase() === 'egg') artImage(card, 'ProductArt', getEggArtPath(item), 0, 190, 72, 88);
+            else drawUiIcon(card, 'Icon', this.inventoryIcon(item), 0, 190, 70, CuteTheme.honeyDark);
+            text(card, 'Name', safeName(item?.name, item?.itemCode || '商品'), 0, 120, 480, 42, 25, CuteTheme.caramel, 'center', true);
+            tag(card, 'Owned', `已拥有 ${Number(owned?.quantity || 0)}`, 0, 76, 130, CuteTheme.mint);
+            text(card, 'Description', safeName(item?.description, '暂无商品说明'), 0, 20, 480, 72, 16, CuteTheme.muted, 'center', false);
+            const unitCard = panel(card, 'UnitPrice', 0, -48, 330, 42, currency === 'diamond' ? new Color(224, 240, 249, 255) : new Color(255, 239, 194, 255), 18, false, CuteTheme.white, 2);
+            text(unitCard, 'Label', '单价', -126, 0, 72, 28, 14, CuteTheme.muted, 'left', true);
+            drawUiIcon(unitCard, 'Currency', currency, 40, 0, 24, currency === 'diamond' ? new Color(76, 174, 213, 255) : new Color(216, 157, 45, 255));
+            text(unitCard, 'Value', formatNumber(item?.price || 0), 70, 0, 100, 30, 16, CuteTheme.caramel, 'left', true);
+            text(card, 'QuantityLabel', '购买数量', -112, -108, 110, 30, 15, CuteTheme.caramel, 'center', true);
+            button(card, 'Minus', '－', -28, -108, 44, 44, () => this.changeShopBuyCount(-1), { fill: CuteTheme.paperWarm, fontSize: 20, radius: 18, disabled: this.shopBuyCount <= 1 || maximum <= 0 });
+            text(card, 'Count', `×${this.shopBuyCount}`, 36, -108, 74, 32, 17, CuteTheme.caramel, 'center', true);
+            button(card, 'Plus', '＋', 100, -108, 44, 44, () => this.changeShopBuyCount(1), { fill: CuteTheme.mint, fontSize: 20, radius: 18, disabled: maximum <= 0 || this.shopBuyCount >= maximum });
+            const totalCard = panel(card, 'TotalCard', 0, -174, 490, 62, currency === 'diamond' ? new Color(224, 240, 249, 255) : new Color(255, 239, 194, 255), 22, false, CuteTheme.white, 2);
+            text(totalCard, 'Label', '合计', -194, 0, 90, 30, 15, CuteTheme.caramel, 'left', true);
+            drawUiIcon(totalCard, 'Currency', currency, 48, 0, 28, currency === 'diamond' ? new Color(76, 174, 213, 255) : new Color(216, 157, 45, 255));
+            text(totalCard, 'Value', formatNumber(total), 218, 0, 120, 34, 19, CuteTheme.caramel, 'right', true);
+            button(card, 'Cancel', '关闭', -108, -268, 180, 56, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 24 });
+            button(card, 'Confirm', soldOut ? '已售罄' : insufficient ? `${currency === 'diamond' ? '钻石' : '金币'}不足` : '确认购买', 112, -268, 194, 56, () => void this.buySelectedShopItem(), { fill: CuteTheme.honey, fontSize: 16, radius: 24, disabled: soldOut || insufficient || this.busy.has('shop:buy') });
             return;
         }
 
@@ -2958,15 +3233,19 @@ export class MainUI extends Component {
 
     private closeUtilityModal() {
         if (this.secondaryConfirmation && this.busy.has('secondary:confirm')) return;
+        const shouldRefreshPage = this.inventoryDetailOpen || this.shopPurchaseOpen;
         this.hatchAcceleratorOpen=false;
         this.hatchAcceleratorEggId=0;
         this.homePetPickerOpen=false;
-        this.inventoryDetailItem=null;
+        this.inventoryDetailOpen=false;
+        this.inventoryUseCount=1;
+        this.shopPurchaseOpen=false;
         this.fusionPickerSide=null;
         this.pendingIncubation=null;
         this.fusionConfirmOpen=false;
         this.secondaryConfirmation=null;
         this.renderUtilityModal();
+        if (shouldRefreshPage) this.renderCurrentPage(false);
     }
 
     private openSecondaryConfirmation(confirmation: SecondaryConfirmation) {
@@ -3070,14 +3349,18 @@ export class MainUI extends Component {
         finally{this.busy.delete(key);this.renderCurrentPage(false);}
     }
 
-    private async useInventoryItem(item: any) {
+    private async useInventoryItem(item: any, quantity = 1) {
         const key = `inventory:${item?.id || item?.itemCode}`;
         if (!item?.itemCode || this.busy.has(key)) return;
+        const useCount = Math.max(1, Math.min(Number(item?.quantity || 1), Math.floor(Number(quantity || 1))));
+        const targetBefore = this.inventoryTargetPet();
+        const targetName = targetBefore ? this.petDisplayName(targetBefore, '宝宝') : '宝宝';
+        const beforeExp = Number(targetBefore?.experience ?? targetBefore?.currentExp ?? targetBefore?.exp ?? 0);
         this.busy.add(key);
         try {
             const result = await ApiClient.post('/inventory/use', {
                 itemCode: String(item.itemCode),
-                quantity: 1,
+                quantity: useCount,
                 petId: Number(this.inventoryTargetPet()?.id || 0) || undefined,
             });
             if (result?.success === false) {
@@ -3092,7 +3375,13 @@ export class MainUI extends Component {
                 const refreshed = await ApiClient.get('/inventory');
                 if (refreshed?.success !== false) GameStore.setList('inventory', refreshed);
             }
-            this.showToast(`${safeName(item?.name, '道具')}已对${safeName(this.inventoryTargetPet()?.nickname, '宝宝')}生效`);
+            const afterExp = Number(pet?.experience ?? pet?.currentExp ?? pet?.exp ?? beforeExp);
+            const statedExp = Number(String(item?.description || '').match(/[+＋]\s*(\d+)\s*(?:经验|EXP)/i)?.[1] || 0) * useCount;
+            const gainedExp = Math.max(0, afterExp - beforeExp) || statedExp;
+            const itemName = safeName(item?.name, '道具');
+            this.showToast(gainedExp > 0
+                ? `${targetName}使用${itemName}×${useCount}，获得${gainedExp}经验`
+                : `${targetName}使用${itemName}×${useCount}，效果已生效`);
         } catch (error) {
             console.error('[CuteMainUI] use item failed:', error);
             this.showToast('道具使用失败，请检查后端');
@@ -3857,6 +4146,27 @@ export class MainUI extends Component {
         return (Array.isArray((GameStore as any).shopItems) ? (GameStore as any).shopItems : []).find((item) => Number(item?.id || 0) === this.selectedShopItemId) || null;
     }
 
+    private shopCurrencyType(item: any): 'gold' | 'diamond' {
+        return String(item?.currencyType || item?.currency || '').toLowerCase() === 'diamond' ? 'diamond' : 'gold';
+    }
+
+    private shopBalance(item: any) {
+        return this.shopCurrencyType(item) === 'diamond'
+            ? Number(GameStore.user?.diamond || 0)
+            : Number(GameStore.user?.gold || 0);
+    }
+
+    private maxShopBuyCount(item: any) {
+        const price = Math.max(0, Number(item?.price || 0));
+        const affordable = price > 0 ? Math.floor(this.shopBalance(item) / price) : 99;
+        const rawLimit = Number(item?.purchaseLimit ?? item?.limit ?? 0);
+        const limitValue = item?.remainingPurchaseLimit !== undefined
+            ? Number(item?.remainingPurchaseLimit || 0)
+            : rawLimit > 0 ? rawLimit : 99;
+        const stockValue = item?.stock === undefined ? 99 : Number(item?.stock || 0);
+        return Math.max(0, Math.min(99, affordable, Math.max(0, limitValue), Math.max(0, stockValue)));
+    }
+
     private shopItemColor(item: any) {
         if (this.isSkillBook(item)) return this.itemTier(item) === 'high' ? new Color(255, 224, 224, 255) : new Color(225, 246, 219, 255);
         const type = String(item?.type || '').toLowerCase();
@@ -3868,8 +4178,11 @@ export class MainUI extends Component {
     }
 
     private changeShopBuyCount(delta: number) {
-        this.shopBuyCount = Math.max(1, Math.min(99, this.shopBuyCount + delta));
-        this.renderCurrentPage(false);
+        const item = this.selectedShopItem();
+        const maximum = Math.max(1, this.maxShopBuyCount(item));
+        this.shopBuyCount = Math.max(1, Math.min(maximum, this.shopBuyCount + delta));
+        if (this.shopPurchaseOpen) this.renderUtilityModal();
+        else this.renderCurrentPage(false);
     }
 
     private async buySelectedShopItem() {
@@ -3896,6 +4209,7 @@ export class MainUI extends Component {
             if (inventory?.success !== false) GameStore.setList('inventory', inventory);
             if (eggs?.success !== false) GameStore.setList('eggs', eggs);
             await this.syncEggItemsToHatchery();
+            this.shopPurchaseOpen = false;
         } finally {
             this.busy.delete('shop:buy');
             this.refreshAllVisuals();
@@ -3998,7 +4312,7 @@ export class MainUI extends Component {
             this.homePetId = 0;
             return;
         }
-        if (!pets.some((pet) => Number(pet?.id) === this.homePetId)) {
+        if (this.homePetId > 0 && !pets.some((pet) => Number(pet?.id) === this.homePetId)) {
             this.homePetId = Number(GameStore.currentPet?.id || pets[0]?.id || 0);
             saveHomePetId(this.homePetId);
         }
@@ -4023,6 +4337,52 @@ export class MainUI extends Component {
         this.renderCurrentPage(false);
     }
 
+    private toggleFavoritePet(id: number) {
+        if (!id) return;
+        this.captureScrollOffsets(this.pageRoot);
+        if (this.homePetId === id) {
+            this.homePetId = 0;
+            saveHomePetId(0);
+            this.showToast('已取消心仪宝宝');
+        } else {
+            this.homePetId = id;
+            saveHomePetId(id);
+            this.showToast('已设为心仪宝宝');
+        }
+        this.renderCurrentPage(false);
+    }
+
+    private handlePetFormationAction(pet: any) {
+        const petId = Number(pet?.id || 0);
+        if (!petId) return;
+        this.captureScrollOffsets(this.pageRoot);
+        const teamIndex = this.teamPetIds.indexOf(petId);
+        const hasExplicitDeployment = Object.prototype.hasOwnProperty.call(pet, 'isDeployed')
+            || Object.prototype.hasOwnProperty.call(pet, 'deployed')
+            || Object.prototype.hasOwnProperty.call(pet, 'inBattle');
+        const explicitDeployment = Boolean(pet?.isDeployed ?? pet?.deployed ?? pet?.inBattle);
+
+        if (teamIndex < 0 && this.teamPetIds.length >= 5) {
+            this.formationSelectedCandidateId = petId;
+            this.showToast('编队已满，请在编队管理中选择替换位置');
+            this.showPage('formation');
+            return;
+        }
+        if (teamIndex >= 0 && hasExplicitDeployment && !explicitDeployment) {
+            this.formationSelectedCandidateId = petId;
+            this.showToast('请在编队管理中设置出战位置');
+            this.showPage('formation');
+            return;
+        }
+        if (teamIndex >= 0) {
+            this.toggleTeamPet(petId);
+            this.showToast('已取消出战');
+            return;
+        }
+        this.toggleTeamPet(petId);
+        this.showToast('已加入编队');
+    }
+
     private cycleHomePet() {
         const pets = GameStore.pets.filter((pet) => !pet?.isEgg);
         if (!pets.length) return;
@@ -4041,10 +4401,12 @@ export class MainUI extends Component {
     private cycleInventoryTarget(direction: number) {
         const pets = GameStore.pets.filter((pet) => !pet?.isEgg && String(pet?.tradeStatus || '') !== 'listed');
         if (!pets.length) return;
-        const current = pets.findIndex((pet) => Number(pet?.id) === this.inventoryTargetPetId);
-        const next = pets[(current + direction + pets.length) % pets.length];
+        const current = Math.max(0, pets.findIndex((pet) => Number(pet?.id) === this.inventoryTargetPetId));
+        const nextIndex = Math.max(0, Math.min(pets.length - 1, current + direction));
+        if (nextIndex === current) return;
+        const next = pets[nextIndex];
+        this.captureScrollOffsets(this.pageRoot);
         this.inventoryTargetPetId = Number(next?.id || 0);
-        GameStore.selectPet(this.inventoryTargetPetId);
         this.renderCurrentPage(false);
     }
 
@@ -4059,6 +4421,13 @@ export class MainUI extends Component {
             const ta = teamOrder.has(Number(a?.id)) ? Number(teamOrder.get(Number(a?.id))) : 99;
             const tb = teamOrder.has(Number(b?.id)) ? Number(teamOrder.get(Number(b?.id))) : 99;
             if (ta !== tb) return ta - tb;
+            if (this.petFilter.sort === 'level') return Number(b?.level || 0) - Number(a?.level || 0);
+            if (this.petFilter.sort === 'growth') return this.growthValue(b) - this.growthValue(a);
+            if (this.petFilter.sort === 'skills') {
+                const aSkills = Array.isArray(a?.skills) ? a.skills.length : 0;
+                const bSkills = Array.isArray(b?.skills) ? b.skills.length : 0;
+                return bSkills - aSkills;
+            }
             return this.battleAttributesOf(b).power - this.battleAttributesOf(a).power;
         });
     }
@@ -4091,6 +4460,7 @@ export class MainUI extends Component {
     private async togglePetLock(pet: any) {
         const petId=Number(pet?.id||0);
         if(!petId||this.busy.has(`pet-lock:${petId}`))return;
+        this.captureScrollOffsets(this.pageRoot);
         this.busy.add(`pet-lock:${petId}`);
         try{
             const result=await ApiClient.post('/pet/lock',{petId,locked:!Boolean(pet?.isLocked)});
@@ -4155,11 +4525,14 @@ export class MainUI extends Component {
     }
 
     private petRoleLabel(value:any) {
-        const key=String(value||'').trim().toLowerCase();
+        const key=String(value||'').trim().toLowerCase().replace(/[\s-]+/g, '_');
         const labels:Record<string,string>={
             tank:'肉盾', healer:'治疗', cleanse:'净化', support:'辅助', control:'控制',
             physical:'物伤', physical_damage:'物伤', magic:'法伤', magic_damage:'法伤',
             burst:'爆发', defense:'防御', speed:'先手', balanced:'综合', hybrid:'综合',
+            physical_burst:'物理爆发', magic_burst:'法术爆发', bruiser:'战士', assassin:'刺客',
+            damage:'输出', front:'前排', healer_support:'治疗辅助', cleanse_support:'净化辅助',
+            magic_control:'法术控制', counter_support:'反速辅助', damage_support:'输出辅助',
         };
         return labels[key]||String(value||'综合');
     }
@@ -4416,6 +4789,65 @@ export class MainUI extends Component {
             && Math.abs(point.y-(DESIGN_HEIGHT/2+125+y))<=58);
     }
 
+    private petDisplayName(pet: any, fallback = '宝宝') {
+        const speciesMeta = getPetSpeciesMeta(pet);
+        const speciesFallback = safeName(speciesMeta.name, fallback);
+        const raw = safeName(pet?.nickname || pet?.name || pet?.displayName || pet?.species, speciesFallback).trim();
+        const cleaned = raw
+            .replace(/\b(?:common|uncommon|rare|epic|legendary|mythic)\b/gi, ' ')
+            .replace(/普通|优秀|稀有|史诗|传说|神话/g, ' ')
+            .replace(/\bPET[-_\s]*\d+\b/gi, ' ')
+            .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, ' ')
+            .replace(/(?:^|[\s_#-])(?:[A-Z]{0,3}-?)?\d{6,}(?=$|[\s_#-])/gi, ' ')
+            .replace(/[-_\s]?[A-Z]?-?\d{6,}$/i, '')
+            .replace(/[|｜/\\·]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const normalize = (value: string) => value.toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+        const normalizedCleaned = normalize(cleaned);
+        const speciesAliases = [speciesMeta.name, ...(speciesMeta.aliases || [])].map((value) => normalize(value));
+        const legacySpeciesNames: Record<string, string> = {
+            dog: '灵犬', cat: '月光猫', rabbit: '疾风兔', bunny: '疾风兔', fox: '炎尾狐',
+            wolf: '影刃狼', bear: '森灵熊', dragon: '星辉龙', phoenix: '焰羽凤', turtle: '岩甲龟',
+            otter: '潮汐獭', deer: '森灵鹿', owl: '霜羽鸮',
+        };
+        const legacySpeciesName = legacySpeciesNames[normalizedCleaned];
+        const speciesOnly = speciesAliases.includes(normalizedCleaned) || Boolean(legacySpeciesName) || /(?:\.{2,}|…)$/.test(cleaned);
+        const resolvedSpeciesFallback = legacySpeciesName || speciesFallback;
+        const value = cleaned && !/^\d+$/.test(cleaned) && !speciesOnly ? cleaned : resolvedSpeciesFallback;
+        return value.length > 10 ? `${value.slice(0, 9)}…` : value;
+    }
+
+    private petListDisplayName(pet: any, fallback = '宝宝') {
+        return this.petDisplayName(pet, fallback);
+    }
+
+    private inventoryIcon(item: any): any {
+        const code = String(item?.itemCode || item?.type || '').toLowerCase();
+        if (this.isSkillBook(item)) return 'skills';
+        if (code.includes('sandglass') || code.includes('accelerat') || code.includes('hourglass')) return 'hourglass';
+        if (code.includes('egg') || code.includes('hatch')) return 'hatchery';
+        if (code.includes('fusion_core') || code.includes('merge_core') || code.endsWith('_core')) return 'core';
+        if (code.includes('breed') || code.includes('marriage') || code.includes('voucher') || code.includes('ticket')) return 'breed-token';
+        if (code.includes('fusion') || code.includes('essence') || code.includes('mutation')) return 'core';
+        if (code.includes('potion') || code.includes('exp_') || code.includes('elixir')) return 'potion';
+        if (code.includes('apple') || code.includes('fish') || code.includes('food')) return 'food';
+        if (code.includes('material') || code.includes('stone') || code.includes('crystal')) return 'material';
+        if (Boolean(item?.usable)) return 'inventory';
+        return 'material';
+    }
+
+    private inventoryItemCategory(item: any): InventoryItemCategoryV6 {
+        if (this.isSkillBook(item)) return 'skill';
+        if (Boolean(item?.usable)) return 'consumable';
+        return 'material';
+    }
+
+    private inventoryItemVisual(item: any) {
+        if (this.isSkillBook(item)) return { kind: 'art' as const, value: this.skillBookIconPath(item) };
+        return { kind: 'icon' as const, value: this.inventoryIcon(item) };
+    }
+
     private titleForPage(page: PageName) {
         const titles: Record<PageName, string> = {
             home: '温馨小屋',
@@ -4618,6 +5050,63 @@ export class MainUI extends Component {
         if (direct && direct !== this.skillName(skill)) return direct;
         if (effect.startsWith('special_') && direct) return direct;
         return `${this.skillName(skill)}：该技能的具体战斗效果由服务器配置决定。`;
+    }
+
+    private skillBrief(skill: any) {
+        const value = this.skillDescription(skill).replace(/\s+/g, ' ').trim();
+        let width = 0;
+        let result = '';
+        for (const char of value) {
+            const next = /[\u0000-\u00ff]/.test(char) ? 1 : 2;
+            if (width + next > 38) return `${result}…`;
+            result += char;
+            width += next;
+        }
+        return result;
+    }
+
+    private skillTypeLabel(skill: any) {
+        if (this.isSpecialSkill(skill)) return '特殊';
+        const value = String(skill?.skillType || skill?.type || skill?.activationType || '').toLowerCase();
+        if (/active|主动|cast|spell/.test(value)) return '主动';
+        if (/special|特殊/.test(value)) return '特殊';
+        return '被动';
+    }
+
+    private skillTriggerLabel(skill: any) {
+        const explicit = safeName(skill?.triggerTiming || skill?.triggerText || skill?.triggerCondition, '').trim();
+        if (explicit) return explicit;
+        const effect = String(skill?.effect || '').toLowerCase();
+        const labels: Record<string, string> = {
+            opening_shield: '战斗开始时',
+            energy_gain: '每回合开始时',
+            regen: '每回合结束时',
+            physical_combo: '普通攻击后',
+            magic_combo: '施放法术后',
+            pursuit: '攻击残血目标后',
+            parry: '受到直接伤害时',
+            reflect: '受到直接攻击后',
+            lifesteal: '造成物理伤害时',
+            death_save: '受到致命伤害时',
+            cleanse: '获得负面状态时',
+            guard_ally: '友方受到单体攻击时',
+            healing_echo: '受到治疗时',
+            dispel_on_hit: '造成直接伤害时',
+        };
+        return labels[effect] || (Number(skill?.triggerRate || 0) > 0 ? '满足效果条件时' : '持续生效');
+    }
+
+    private skillReplaceableLabel(skill: any) {
+        if (this.isSpecialSkill(skill)) return '不可替换';
+        if (skill?.replaceable === false || skill?.canReplace === false || skill?.locked === true) return '不可替换';
+        return '可被同类技能书替换';
+    }
+
+    private skillRelationLabel(skill: any) {
+        if (this.isSpecialSkill(skill)) return '特殊专属，无普通替代版本';
+        return this.skillTier(skill) === 'high'
+            ? '同系列高级版本'
+            : '存在同系列高级版本';
     }
 
     private skillIconPath(skill: any) {

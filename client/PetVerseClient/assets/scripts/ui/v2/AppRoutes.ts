@@ -18,7 +18,15 @@ export type PageName =
     | 'settings'
     | 'benefits'
     | 'formation'
-    | 'guild';
+    | 'guild'
+    | 'gold'
+    | 'diamond'
+    | 'potion'
+    | 'hourglass'
+    | 'breed-token'
+    | 'core'
+    | 'food'
+    | 'material';
 
 export type MainTab = 'home' | 'pet' | 'adventure' | 'shop' | 'more';
 

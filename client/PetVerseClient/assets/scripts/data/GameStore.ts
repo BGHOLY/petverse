@@ -23,12 +23,17 @@ export class GameStore {
     private static detailPending = new Set<number>();
 
     static subscribe(listener: StoreListener) {
+        if (typeof listener !== 'function') return () => false;
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
     }
 
     static notify() {
         for (const listener of [...this.listeners]) {
+            if (typeof listener !== 'function') {
+                this.listeners.delete(listener);
+                continue;
+            }
             try {
                 listener();
             } catch (error) {

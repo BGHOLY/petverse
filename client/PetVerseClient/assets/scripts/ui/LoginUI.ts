@@ -1,4 +1,4 @@
-import { _decorator, Component, director } from 'cc';
+import { _decorator, Component, director, profiler } from 'cc';
 import NetworkManager from '../network/NetworkManager';
 import PlayerData from '../data/PlayerData';
 
@@ -6,6 +6,10 @@ const { ccclass } = _decorator;
 
 @ccclass('LoginUI')
 export class LoginUI extends Component {
+    onLoad() {
+        try { profiler.hideStats(); } catch {}
+    }
+
     async onClickLogin() {
         console.log('点击登录');
 
