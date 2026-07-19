@@ -887,7 +887,7 @@ export class PetService {
     };
   }
 
-  async addExp(pet: Pet, exp: number) {
+  async addExp(pet: Pet, exp: number, manager?: EntityManager) {
     pet.exp =
       Number(pet.exp || 0) + Math.max(0, Number(exp || 0));
     pet.nextExp = Number(
@@ -916,7 +916,7 @@ export class PetService {
       pet.nextExp = pet.level * 100;
     }
 
-    return this.petRepository.save(pet);
+    return (manager ? manager.getRepository(Pet) : this.petRepository).save(pet);
   }
 
   async allocateStatPoints(

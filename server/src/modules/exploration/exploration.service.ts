@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { BattleSessionV10 } from '../battle/battle-session.entity';
+import { battleRewardConfig } from '../battle/battle-reward.config';
 import { EconomyService } from '../economy/economy.service';
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
+import { Pet } from '../pet/pet.entity';
+import { PetService } from '../pet/pet.service';
+import { User } from '../user/user.entity';
 import { WorldExplorationProgress } from './world-exploration.entity';
 
 const region = (code: string, name: string, chapter: string, element: string, speciesCode: string, speciesName: string, companionSpecies: string, description: string, difficulty: number, recommendedPower: number, rewardGold: number) => ({
@@ -41,7 +45,9 @@ export class ExplorationService {
     @InjectRepository(BattleSessionV10)
     private readonly sessionRepository: Repository<BattleSessionV10>,
     private readonly eggService: EggService,
+    private readonly petService: PetService,
     private readonly economyService: EconomyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getWorld(userId = DEFAULT_USER_ID) {
@@ -51,109 +57,156 @@ export class ExplorationService {
   }
 
   async settleExplore(userId = DEFAULT_USER_ID, regionCode: string, sessionId: number) {
-    const progress = await this.getProgress(userId);
-    await this.refreshDaily(progress);
-    const region = this.region(regionCode);
-    const state = progress.regions?.[region.code];
-    if (!state?.unlocked) return { ...(await this.toWorldView(progress)), success: false, message: '该地区尚未解锁' };
-
-    const battle = await this.validateBattle(userId, sessionId, false);
-    if (!battle.success) return { ...(await this.toWorldView(progress)), ...battle };
-    if (this.wasSettled(progress, sessionId)) return { success: true, duplicate: true, message: '本场探索已经结算', ...(await this.toWorldView(progress)) };
-    this.markSettled(progress, sessionId);
-
-    if (!battle.won) {
-      await this.progressRepository.save(progress);
-      return { success: true, won: false, message: '探索失败不消耗体力，调整阵法后可再次挑战', ...(await this.toWorldView(progress)) };
-    }
-
-    const event = EXPLORATION_EVENTS[Number(state.exploreWins || 0) % EXPLORATION_EVENTS.length];
-    const firstClear = !state.firstRewardClaimed;
-    const firstRewardGold = firstClear ? Number(region.firstRewards[0]?.amount || 0) : 0;
-    await this.grantGold(userId, event.gold + firstRewardGold);
-    state.exploration = Math.min(100, Number(state.exploration || 0) + event.explorationGain);
-    state.speciesDiscovered = Math.max(Number(state.speciesDiscovered || 0), state.exploration >= 60 ? 2 : 1);
-    state.nestUnlocked = state.exploration >= 100;
-    state.exploreWins = Number(state.exploreWins || 0) + 1;
-    state.firstRewardClaimed = true;
-    state.lastEvent = { ...event, reward: { gold: event.gold + firstRewardGold }, at: new Date().toISOString() };
-    state.eventHistory = [...(Array.isArray(state.eventHistory) ? state.eventHistory : []), state.lastEvent].slice(-7);
-    progress.currentRegionCode = region.code;
-    progress.regions = { ...progress.regions, [region.code]: state };
-    await this.progressRepository.save(progress);
-    return {
-      success: true,
-      won: true,
-      event: state.lastEvent,
-      firstReward: firstClear ? region.firstRewards : [],
-      message: state.nestUnlocked ? `${region.name}探索度已满，首领巢穴开放！` : `${region.name}探索度提升至${state.exploration}%`,
-      ...(await this.toWorldView(progress)),
-    };
+    return this.settleRegionBattle(userId, regionCode, sessionId, false);
   }
 
   async settleNest(userId = DEFAULT_USER_ID, regionCode: string, sessionId: number) {
-    const progress = await this.getProgress(userId);
-    await this.refreshDaily(progress);
-    const region = this.region(regionCode);
-    const state = progress.regions?.[region.code];
-    if (!state?.nestUnlocked) return { ...(await this.toWorldView(progress)), success: false, message: '探索度达到100%后才能挑战首领巢穴' };
+    return this.settleRegionBattle(userId, regionCode, sessionId, true);
+  }
 
-    const battle = await this.validateBattle(userId, sessionId, true);
-    if (!battle.success) return { ...(await this.toWorldView(progress)), ...battle };
-    if (this.wasSettled(progress, sessionId)) return { success: true, duplicate: true, message: '本场巢穴战已经结算', ...(await this.toWorldView(progress)) };
-    this.markSettled(progress, sessionId);
+  private async settleRegionBattle(userId: number, regionCode: string, sessionId: number, boss: boolean) {
+    const outcome = await this.dataSource.transaction(async (manager) => {
+      const progressRepository = manager.getRepository(WorldExplorationProgress);
+      const sessionRepository = manager.getRepository(BattleSessionV10);
+      let progress = await progressRepository.findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
+      if (!progress) {
+        progress = progressRepository.create({
+          userId,
+          regions: this.normalizeRegions(null),
+          currentRegionCode: REGIONS[0].code,
+          dailyDate: this.today(),
+          dailyNestWins: 0,
+          storedNestAttempts: 0,
+          monthlyPass: false,
+          extraDailyAttempts: 0,
+          epicPity: 0,
+          legendaryPity: 0,
+          mutationPity: 0,
+          settledSessionIds: [],
+        });
+        progress = await progressRepository.save(progress);
+      }
+      progress.regions = this.normalizeRegions(progress.regions);
+      progress.settledSessionIds = Array.isArray(progress.settledSessionIds) ? progress.settledSessionIds : [];
+      this.refreshDailyState(progress);
 
-    if (!battle.won) {
-      await this.progressRepository.save(progress);
-      return { success: true, won: false, message: '战败不消耗巢穴奖励次数', ...(await this.toWorldView(progress)) };
-    }
+      const region = this.region(regionCode);
+      const state = progress.regions[region.code];
+      if (!state?.unlocked) return { progress, success: false, message: '该地区尚未解锁' };
+      if (boss && !state.nestUnlocked) return { progress, success: false, message: '探索度达到100%后才能挑战首领巢穴' };
 
-    const attempts = this.attemptView(progress);
-    if (attempts.remaining <= 0) {
-      await this.progressRepository.save(progress);
-      return { ...(await this.toWorldView(progress)), success: false, won: true, message: '今日巢穴奖励次数已用完，本场不消耗也不发放宠物蛋' };
-    }
-    this.consumeAttempt(progress);
+      const battle = await sessionRepository.findOne({ where: { id: sessionId, userId }, lock: { mode: 'pessimistic_write' } });
+      if (!battle || battle.status === 'active') return { progress, success: false, message: '战斗尚未结束或会话不存在' };
+      if (boss && !battle.bossBattle) return { progress, success: false, message: '该战斗不是首领巢穴挑战' };
+      if (battle.regionCode && battle.regionCode !== region.code) return { progress, success: false, message: '战斗地区与结算地区不一致' };
 
-    const rarity = this.rollRarity(progress);
-    const isMutant = this.rollMutation(progress);
-    const egg = await this.eggService.createEgg({
-      ownerId: userId,
-      rarityPotential: rarity,
-      source: `region_nest:${region.code}`,
-      speciesCode: region.speciesCode,
-      species: region.speciesName,
-      isMutant,
-      quality: 92 + Math.floor(Math.random() * 20),
-      skillSlotCount: Math.min(8, 3 + Math.max(0, rarity - 2)),
-      specialSkillCount: rarity >= 5 ? 1 : 0,
+      if (battle.rewardStatus === 'claimed' || battle.settled || this.wasSettled(progress, sessionId)) {
+        return { progress, success: true, duplicate: true, won: battle.winnerSide === 'left', message: boss ? '本场巢穴战已经结算' : '本场探索已经结算', settlement: battle.resultSnapshot || {} };
+      }
+
+      const won = battle.winnerSide === 'left';
+      this.markSettled(progress, sessionId);
+      if (!won) {
+        const settlement = this.regionSettlementSnapshot(battle, false, {}, state, boss, '');
+        battle.rewardStatus = 'claimed';
+        battle.rewardClaimedAt = new Date();
+        battle.settlementKey = `exploration:${region.code}:${sessionId}`;
+        battle.resultSnapshot = settlement;
+        battle.rewards = {};
+        battle.settled = true;
+        await sessionRepository.save(battle);
+        await progressRepository.save(progress);
+        return { progress, success: true, won: false, settlement, message: boss ? '战败不消耗巢穴奖励次数' : '探索失败不消耗体力，调整阵法后可再次挑战' };
+      }
+
+      if (boss && this.attemptView(progress).remaining <= 0) {
+        return { progress, success: false, won: true, message: '今日巢穴奖励次数已用完，本场不消耗也不发放宠物蛋' };
+      }
+
+      const base = battleRewardConfig(boss ? 'boss' : 'pve', boss);
+      let message = '';
+      let egg: any = null;
+      let event: any = null;
+      let unlockedRegionCode = '';
+      let explorationGain = 0;
+      let firstClear = false;
+      const rewards: any = { ...base, items: { ...(base.items || {}) }, firstClear: false, stars: 0 };
+
+      if (!boss) {
+        const clearedStages: string[] = Array.isArray(state.clearedStages) ? state.clearedStages.map(String) : [];
+        const nextStageCode = this.nextUnclearedStage(clearedStages);
+        const stageCode = String(battle.stageCode || nextStageCode || 'stage-5');
+        if (!clearedStages.includes(stageCode) && nextStageCode && stageCode !== nextStageCode) {
+          return { progress, success: false, won: true, message: `前置关卡尚未完成，请先挑战 ${nextStageCode}` };
+        }
+        firstClear = !clearedStages.includes(stageCode);
+        event = EXPLORATION_EVENTS[Number(state.exploreWins || 0) % EXPLORATION_EVENTS.length];
+        const firstRegionReward = !state.firstRewardClaimed;
+        const firstRewardGold = firstRegionReward ? Number(region.firstRewards[0]?.amount || 0) : 0;
+        rewards.gold += Number(event.gold || 0) + firstRewardGold;
+        rewards.firstClear = firstClear;
+        rewards.stars = this.battleStars(battle);
+        if (firstClear) {
+          clearedStages.push(stageCode);
+          explorationGain = Number(event.explorationGain || 0);
+          state.exploration = Math.min(100, clearedStages.length * 20);
+        }
+        state.clearedStages = clearedStages;
+        state.stageStars = { ...(state.stageStars || {}), [stageCode]: Math.max(Number(state.stageStars?.[stageCode] || 0), rewards.stars) };
+        state.speciesDiscovered = Math.max(Number(state.speciesDiscovered || 0), state.exploration >= 60 ? 2 : 1);
+        state.nestUnlocked = state.exploration >= 100;
+        state.exploreWins = Number(state.exploreWins || 0) + 1;
+        state.firstRewardClaimed = true;
+        state.lastEvent = { ...event, firstClear, stageCode, explorationGain, reward: rewards, at: new Date().toISOString() };
+        state.eventHistory = [...(Array.isArray(state.eventHistory) ? state.eventHistory : []), state.lastEvent].slice(-7);
+        message = state.nestUnlocked ? `${region.name}探索度已满，首领巢穴开放！` : firstClear ? `${region.name}探索度提升至${state.exploration}%` : '重复挑战完成，首次探索度不会重复增加';
+      } else {
+        this.consumeAttempt(progress);
+        const rarity = this.rollRarity(progress);
+        const isMutant = this.rollMutation(progress);
+        egg = await this.eggService.createEgg({
+          ownerId: userId,
+          rarityPotential: rarity,
+          source: `region_nest:${region.code}`,
+          speciesCode: region.speciesCode,
+          species: region.speciesName,
+          isMutant,
+          quality: 92 + Math.floor(Math.random() * 20),
+          skillSlotCount: Math.min(8, 3 + Math.max(0, rarity - 2)),
+          specialSkillCount: rarity >= 5 ? 1 : 0,
+        }, manager);
+        firstClear = !state.bossCleared;
+        if (firstClear) rewards.gold += Number(region.completionRewards.find((reward) => reward.type === 'gold')?.amount || 0);
+        rewards.firstClear = firstClear;
+        rewards.stars = this.battleStars(battle);
+        state.bossCleared = true;
+        state.bossWins = Number(state.bossWins || 0) + 1;
+        state.eggsEarned = Number(state.eggsEarned || 0) + 1;
+        const index = REGIONS.findIndex((item) => item.code === region.code);
+        if (index >= 0 && index + 1 < REGIONS.length) {
+          const next = REGIONS[index + 1];
+          progress.regions[next.code] = { ...progress.regions[next.code], unlocked: true };
+          unlockedRegionCode = next.code;
+        }
+        message = firstClear && unlockedRegionCode ? `首领巢穴胜利，${region.chapter}完成并解锁下一地区` : `首领巢穴胜利，获得${region.speciesName}宠物蛋`;
+      }
+
+      await this.grantBattleRewards(manager, battle, rewards);
+      progress.currentRegionCode = region.code;
+      progress.regions[region.code] = state;
+      const settlement = this.regionSettlementSnapshot(battle, true, rewards, state, boss, unlockedRegionCode);
+      battle.rewards = rewards;
+      battle.resultSnapshot = settlement;
+      battle.rewardStatus = 'claimed';
+      battle.rewardClaimedAt = new Date();
+      battle.settlementKey = `exploration:${region.code}:${sessionId}`;
+      battle.settled = true;
+      await sessionRepository.save(battle);
+      await progressRepository.save(progress);
+      return { progress, success: true, won: true, message, settlement, event: state.lastEvent, egg: egg ? this.eggService.toEggView(egg) : null, unlockedRegionCode, chapterCompleted: boss && firstClear };
     });
 
-    const firstBossClear = !state.bossCleared;
-    if (firstBossClear) await this.grantGold(userId, Number(region.completionRewards.find((reward) => reward.type === 'gold')?.amount || 0));
-    state.bossCleared = true;
-    state.bossWins = Number(state.bossWins || 0) + 1;
-    state.eggsEarned = Number(state.eggsEarned || 0) + 1;
-    const index = REGIONS.findIndex((item) => item.code === region.code);
-    let unlockedRegionCode = '';
-    if (index >= 0 && index + 1 < REGIONS.length) {
-      const next = REGIONS[index + 1];
-      progress.regions[next.code] = { ...progress.regions[next.code], unlocked: true };
-      unlockedRegionCode = next.code;
-    }
-    progress.regions[region.code] = state;
-    await this.progressRepository.save(progress);
-
-    return {
-      success: true,
-      won: true,
-      chapterCompleted: firstBossClear,
-      completionRewards: firstBossClear ? region.completionRewards : [{ type: 'egg', amount: 1, label: `${region.speciesName}宠物蛋×1` }],
-      unlockedRegionCode,
-      message: firstBossClear && unlockedRegionCode ? `首领巢穴胜利，${region.chapter}完成并解锁下一地区` : `首领巢穴胜利，获得${region.speciesName}宠物蛋`,
-      egg: this.eggService.toEggView(egg),
-      ...(await this.toWorldView(progress)),
-    };
+    return { ...outcome, ...(await this.toWorldView(outcome.progress)) };
   }
 
   private async getProgress(userId: number) {
@@ -192,6 +245,8 @@ export class ExplorationService {
       eggsEarned: 0,
       bossCleared: false,
       firstRewardClaimed: false,
+      clearedStages: [],
+      stageStars: {},
       lastEvent: null,
       eventHistory: [],
       ...(existing[region.code] || {}),
@@ -208,6 +263,74 @@ export class ExplorationService {
     progress.dailyDate = today;
     progress.dailyNestWins = 0;
     await this.progressRepository.save(progress);
+  }
+
+  private refreshDailyState(progress: WorldExplorationProgress) {
+    const today = this.today();
+    if (progress.dailyDate === today) return;
+    if (progress.dailyDate) {
+      const unused = Math.max(0, this.dailyLimit(progress) - Number(progress.dailyNestWins || 0));
+      progress.storedNestAttempts = Math.min(6, Number(progress.storedNestAttempts || 0) + unused);
+    }
+    progress.dailyDate = today;
+    progress.dailyNestWins = 0;
+  }
+
+  private battleStars(battle: BattleSessionV10) {
+    const team = Array.isArray(battle.leftTeam) ? battle.leftTeam : [];
+    const survivors = team.filter((unit: any) => unit?.alive && Number(unit?.hp || 0) > 0).length;
+    if (survivors >= 5 && Number(battle.round || 99) <= 12) return 3;
+    if (survivors >= 3) return 2;
+    return 1;
+  }
+
+  private async grantBattleRewards(manager: EntityManager, battle: BattleSessionV10, rewards: any) {
+    await this.economyService.grant(manager, battle.userId, { gold: rewards.gold, diamond: rewards.diamond, items: rewards.items });
+    const userRepository = manager.getRepository(User);
+    const user = await userRepository.findOne({ where: { id: battle.userId }, lock: { mode: 'pessimistic_write' } });
+    if (!user) throw new Error('User not found');
+    user.exp = Number(user.exp || 0) + Number(rewards.playerExp || 0);
+    let nextExp = Math.max(100, Number(user.level || 1) * 100);
+    while (user.exp >= nextExp) {
+      user.exp -= nextExp;
+      user.level = Number(user.level || 1) + 1;
+      nextExp = Math.max(100, Number(user.level || 1) * 100);
+    }
+    await userRepository.save(user);
+
+    const petRepository = manager.getRepository(Pet);
+    const petIds = [...new Set((Array.isArray(battle.leftTeam) ? battle.leftTeam : []).map((unit: any) => Number(unit?.petId || 0)).filter((id: number) => id > 0))];
+    rewards.petUpdates = [];
+    for (const petId of petIds) {
+      const pet = await petRepository.findOne({ where: { id: Number(petId), ownerId: battle.userId, isEgg: false }, lock: { mode: 'pessimistic_write' } });
+      if (!pet) continue;
+      const before = { level: pet.level, exp: pet.exp };
+      const saved = await this.petService.addExp(pet, Number(rewards.petExp || 0), manager);
+      rewards.petUpdates.push({ petId, name: this.cleanPetName(saved.nickname || saved.species), before, after: { level: saved.level, exp: saved.exp }, gainedExp: Number(rewards.petExp || 0) });
+    }
+  }
+
+  private regionSettlementSnapshot(battle: BattleSessionV10, won: boolean, reward: any, state: any, boss: boolean, unlockedRegionCode: string) {
+    const left = Array.isArray(battle.leftTeam) ? battle.leftTeam : [];
+    const right = Array.isArray(battle.rightTeam) ? battle.rightTeam : [];
+    const sum = (team: any[], key: string) => team.reduce((total, unit) => total + Number(unit?.[key] || 0), 0);
+    return {
+      battleId: battle.battleId,
+      sessionId: battle.id,
+      result: won ? 'win' : 'lose',
+      mode: boss ? 'boss' : 'explore',
+      chapterCode: battle.chapterCode,
+      regionCode: battle.regionCode,
+      stageCode: battle.stageCode,
+      rounds: battle.round,
+      survivingPets: left.filter((unit: any) => unit?.alive && Number(unit?.hp || 0) > 0).map((unit: any) => ({ petId: unit.petId, name: unit.name, hp: unit.hp, maxHp: unit.maxHp })),
+      statistics: { totalDamage: sum(left, 'damageDealt'), totalHealing: sum(left, 'healingDone'), damageTaken: sum(left, 'damageTaken'), enemyDamage: sum(right, 'damageDealt') },
+      reward,
+      exploration: { value: Number(state?.exploration || 0), nestUnlocked: Boolean(state?.nestUnlocked), bossCleared: Boolean(state?.bossCleared), unlockedRegionCode },
+      failureReason: won ? '' : '本次阵容未能完成关卡目标，请调整编队或阵法',
+      nextActions: won ? ['next-stage', 'retry', 'return-adventure'] : ['adjust-team', 'change-formation', 'strengthen-pet', 'retry', 'return-adventure'],
+      settledAt: new Date().toISOString(),
+    };
   }
 
   private dailyLimit(progress: WorldExplorationProgress) {
@@ -270,7 +393,20 @@ export class ExplorationService {
   }
 
   private async toWorldView(progress: WorldExplorationProgress) {
-    const regions = REGIONS.map((region, index) => ({ ...region, index, ...(progress.regions?.[region.code] || {}) }));
+    const regions = REGIONS.map((region, index) => {
+      const state = progress.regions?.[region.code] || {};
+      const clearedStages = Array.isArray(state.clearedStages) ? state.clearedStages.map(String) : [];
+      const stageStars = state.stageStars && typeof state.stageStars === 'object' ? state.stageStars : {};
+      return {
+        ...region,
+        index,
+        ...state,
+        clearedStages,
+        stageStars,
+        nextStageCode: this.nextUnclearedStage(clearedStages),
+        stages: this.stageSequence().map((code) => ({ code, cleared: clearedStages.includes(code), stars: Number(stageStars[code] || 0) })),
+      };
+    });
     return {
       success: true,
       world: {
@@ -294,5 +430,27 @@ export class ExplorationService {
 
   private today() {
     return new Date().toISOString().slice(0, 10);
+  }
+
+  private stageSequence() {
+    return ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5'];
+  }
+
+  private nextUnclearedStage(clearedStages: string[]) {
+    const cleared = new Set((clearedStages || []).map(String));
+    return this.stageSequence().find((code) => !cleared.has(code)) || '';
+  }
+
+  private cleanPetName(value: unknown) {
+    const cleaned = String(value || '宝宝')
+      .replace(/\b(?:common|uncommon|rare|epic|legendary|mythic)\b/gi, ' ')
+      .replace(/普通|优秀|稀有|史诗|传说|神话/g, ' ')
+      .replace(/\bPET[-_\s]*\d+\b/gi, ' ')
+      .replace(/(?:^|[\s_#-])(?:[A-Z]{0,3}-?)?\d{6,}(?=$|[\s_#-])/gi, ' ')
+      .replace(/[-_\s]?[A-Z]?-?\d{6,}$/i, '')
+      .replace(/[|｜·]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || '宝宝';
   }
 }

@@ -25,7 +25,7 @@ export interface ShopSeedConfig {
   quantity: number;
 }
 
-export const ITEM_CONFIG_VERSION = '2.4.0';
+export const ITEM_CONFIG_VERSION = '2.5.0';
 
 export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
   {
@@ -235,6 +235,34 @@ export const CORE_ITEM_CONFIGS: ItemSeedConfig[] = [
     effect: 'hatch_acceleration',
     effectValue: 3600,
     effectData: { seconds: 3600 },
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
+  {
+    itemCode: 'adventure_leaf',
+    name: '生态叶片',
+    description: '区域探索中获得的基础成长材料。',
+    type: 'material',
+    rarity: 1,
+    maxStack: 9999,
+    usable: false,
+    effect: 'adventure_material',
+    effectValue: 1,
+    effectData: { source: 'adventure' },
+    enabled: true,
+    version: ITEM_CONFIG_VERSION,
+  },
+  {
+    itemCode: 'boss_core',
+    name: '首领晶核',
+    description: '击败区域首领后获得的稀有成长材料。',
+    type: 'material',
+    rarity: 4,
+    maxStack: 9999,
+    usable: false,
+    effect: 'boss_material',
+    effectValue: 1,
+    effectData: { source: 'boss' },
     enabled: true,
     version: ITEM_CONFIG_VERSION,
   },

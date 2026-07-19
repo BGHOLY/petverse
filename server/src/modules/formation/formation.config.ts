@@ -132,7 +132,7 @@ const FORMATION_SOURCES: Array<Omit<FormationConfig, 'positions'>> = [
     ultimate: {
       name: '流云先机',
       description: '全队行动条推进20%，并清除一个速度类减益。',
-      energyCost: 80,
+      energyCost: 100,
       icon: '羽',
       initialCooldown: 2,
       cooldown: 4,
@@ -182,7 +182,7 @@ const FORMATION_SOURCES: Array<Omit<FormationConfig, 'positions'>> = [
     ultimate: {
       name: '涅槃之羽',
       description: '治疗全队8%最大生命，并复活最早阵亡单位至20%生命。',
-      energyCost: 120,
+      energyCost: 100,
       icon: '焰',
       initialCooldown: 3,
       cooldown: 6,

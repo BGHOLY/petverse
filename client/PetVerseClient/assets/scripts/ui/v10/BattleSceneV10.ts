@@ -1,6 +1,7 @@
 import { BlockInputEvents, Color, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
 import ApiClient from '../../network/ApiClient';
 import { getPetArtPath } from '../pet/PetArtRegistry';
+import { cleanPetDisplayName } from '../pet/PetNameFormatter';
 import {
     DESIGN_HEIGHT,
     DESIGN_WIDTH,
@@ -24,12 +25,17 @@ export type FivePetBattleOptions = {
     formationCode?: string;
     difficulty?: number;
     enemySpeciesCode?: string;
+    chapterCode?: string;
+    regionCode?: string;
+    stageCode?: string;
     onClose: () => void;
     onComplete?: (result: any) => void;
+    onSettle?: (session: any) => Promise<any>;
+    onNext?: (result: any) => void;
 };
 
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
-type Directive = { type: DirectiveType; targetId?: string; useUltimate?: boolean };
+type Directive = { type: DirectiveType; targetId?: string; useUltimate?: boolean; requestId?: string };
 
 const DEFAULT_FORMATION_POSITIONS: Array<[number, number]> = [[0, 104], [-196, 26], [196, 26], [-104, -92], [104, -92]];
 
@@ -51,6 +57,8 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     let timerToken = 0;
     let countdown = 8;
     let completionNotified = false;
+    let settlementProcessing = false;
+    let settlementDone = false;
     let closing = false;
     let promptOverride = '';
     let armedDirective: Exclude<DirectiveType, 'auto'> | null = null;
@@ -64,6 +72,10 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         if (closing) return;
         closing = true;
         timerToken += 1;
+        if (settlementDone && !completionNotified) {
+            completionNotified = true;
+            options.onComplete?.(session);
+        }
         AudioDirector.playBgm('home');
         // Keep the input-blocking layer alive until the current pointer sequence
         // finishes, otherwise the release event can hit a button behind the battle.
@@ -101,7 +113,8 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const logs = Array.isArray(session.battleLog) ? session.battleLog.slice(-3) : [];
         const timeline=Array.from({length:Math.min(8,Math.max(1,Number(session?.round||1)))},(_,index)=>index===Math.min(7,Number(session?.round||1)-1)?'●':'○').join(' ');
         text(info,'Timeline',`回合轨迹 ${timeline}`, -310,28,620,24,12,CuteTheme.muted,'left',true);
-        text(info, 'Logs', logs.map((item: any) => `• ${String(item?.text || '').slice(0, 42)}`).join('\n') || '等待本回合战术指令', -310, -13, 620, 58, 12, CuteTheme.caramel, 'left', false);
+        const order=(Array.isArray(session?.actionOrder)?session.actionOrder:[]).slice(0,6).map((item:any)=>String(item?.name||'')).filter(Boolean).join(' → ');
+        text(info, 'Logs', `${order?`行动：${order}\n`:''}${logs.map((item: any) => `• ${String(item?.text || '').slice(0, 42)}`).join('\n') || '等待本回合战术指令'}`, -310, -13, 620, 58, 11, CuteTheme.caramel, 'left', false);
 
         const command = panel(battlefield, 'CommandBar', 0, -506, 700, 244, new Color(255, 246, 224, 252), 30, true, CuteTheme.caramelSoft, 4);
         if (session.status !== 'active') {
@@ -154,19 +167,21 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
 
     const renderResult = (command: Node) => {
         const win = session.winnerSide === 'left';
-        text(command, 'Result', win ? '胜利！' : session.winnerSide ? '挑战失败' : '战斗结束', 0, 67, 500, 58, 34, win ? CuteTheme.mintDark : CuteTheme.peachDark, 'center', true);
+        text(command, 'Result', settlementProcessing ? '正在结算…' : win ? '胜利！' : session.winnerSide ? '挑战失败' : '战斗结束', 0, 78, 500, 48, 30, win ? CuteTheme.mintDark : CuteTheme.peachDark, 'center', true);
         const summary = session.summary || {};
-        const rewards = session?.rewards || {};
-        const rewardText = win && (rewards.gold || rewards.diamond || rewards.exp)
-            ? `\n奖励：金币 ${formatNumber(rewards.gold || 0)}　钻石 ${formatNumber(rewards.diamond || 0)}　经验 ${formatNumber(rewards.exp || 0)}` : '';
-        text(command, 'Summary', `总伤害 ${formatNumber(summary?.left?.damage || 0)}　治疗 ${formatNumber(summary?.left?.healing || 0)}　回合 ${Math.max(1, Number(session.round || 1))}${rewardText}`, 0, 5, 640, 70, 15, CuteTheme.caramel, 'center', false);
-        button(command, 'CloseResult', '返回冒险', -120, -76, 190, 58, close, { icon: '↩', fill: CuteTheme.honey, fontSize: 17, radius: 25 });
-        button(command, 'Replay', '再战一次', 120, -76, 190, 58, () => restartBattle(), { icon: '⚔', fill: CuteTheme.mint, fontSize: 17, radius: 25 });
-        if (!completionNotified) {
-            completionNotified = true;
-            options.onComplete?.(session);
-            void AudioDirector.playSfx(win ? 'confirm' : 'error');
-        }
+        const settlement=session?.settlement||{};
+        const rewards = settlement?.reward || session?.rewards || {};
+        const itemCount=Object.values(rewards?.items||{}).reduce((sum:number,value:any)=>sum+Number(value||0),0);
+        const rewardText = win && settlementDone
+            ? `奖励 金币${formatNumber(rewards.gold || 0)} · 玩家经验${formatNumber(rewards.playerExp || 0)} · 宠物经验${formatNumber(rewards.petExp || 0)}${itemCount?` · 材料${itemCount}`:''}`
+            : (!win&&settlementDone?`失败原因：${String(settlement?.failureReason||'请调整阵容与阵法')}`:'等待服务端确认奖励');
+        const exploration=settlement?.exploration;
+        text(command, 'Summary', `总伤害 ${formatNumber(summary?.left?.damage || settlement?.statistics?.totalDamage || 0)}　治疗 ${formatNumber(summary?.left?.healing || settlement?.statistics?.totalHealing || 0)}　承伤 ${formatNumber(summary?.left?.taken || settlement?.statistics?.damageTaken || 0)}　回合 ${Math.max(1, Number(session.round || 1))}\n${rewardText}${exploration?`\n探索度 ${Number(exploration.value||0)}%${exploration.nestUnlocked?' · 首领巢穴已解锁':''}`:''}`, 0, 8, 660, 86, 13, CuteTheme.caramel, 'center', false);
+        const three=win&&Boolean(options.onNext);
+        button(command, 'CloseResult', '返回冒险', three?-218:-120, -82, three?150:190, 52, close, { icon: '↩', fill: CuteTheme.honey, fontSize: 15, radius: 23, disabled:settlementProcessing });
+        button(command, 'Replay', '再次挑战', three?0:120, -82, three?150:190, 52, () => restartBattle(), { icon: '⚔', fill: CuteTheme.mint, fontSize: 15, radius: 23, disabled:settlementProcessing });
+        if(three)button(command,'Next','下一关',218,-82,150,52,()=>{options.onNext?.(session);close();},{icon:'➜',fill:CuteTheme.sky,fontSize:15,radius:23,disabled:settlementProcessing});
+        if (settlementDone) void AudioDirector.playSfx(win ? 'confirm' : 'error');
     };
 
     const renderTeam = (team: any[], formationCode: string, enemy: boolean) => {
@@ -183,13 +198,16 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             const card = panel(battlefield, `Unit_${enemy ? 'E' : 'A'}_${unit?.id}`, x, y, 130, 158, alive ? new Color(255, 250, 232, 246) : new Color(118, 118, 118, 185), 22, false, alive ? CuteTheme.caramelSoft : CuteTheme.muted, 2);
             unitNodes.set(String(unit?.id), { node: card, enemy, alive });
             image(card, 'Art', getPetArtPath(unit, 'thumb'), 0, 28, 86, 86, CuteTheme.paperWarm);
-            text(card, 'Name', String(unit?.name || unit?.nickname || '宝宝').slice(0, 9), 0, -25, 118, 24, 12, CuteTheme.caramel, 'center', true);
+            text(card, 'Name', cleanPetDisplayName(unit,'宝宝',9), 0, -25, 118, 24, 12, CuteTheme.caramel, 'center', true);
             progress(card, 'Hp', 0, -49, 104, 11, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
-            if (Number(unit?.shield || 0) > 0) progress(card, 'Shield', 0, -62, 104, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky);
+            text(card,'HpText',`${formatNumber(unit?.hp||0)}/${formatNumber(unit?.maxHp||1)}`,0,-49,100,18,8,CuteTheme.white,'center',true);
+            if (Number(unit?.shield || 0) > 0){ progress(card, 'Shield', 0, -62, 104, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky); text(card,'ShieldText',`盾${formatNumber(unit.shield)}`,0,-68,100,16,8,CuteTheme.sky,'center',true); }
             const statusText = Array.isArray(unit?.statuses) ? unit.statuses.slice(0, MAX_VISIBLE_STATUSES).map((s: any) => statusIcon(s?.type)).join('') : '';
             if (statusText) tag(card, 'Status', statusText, 38, 63, 58, CuteTheme.peach);
             const marks = [...directiveTargets.entries()].filter(([, id]) => id === String(unit?.id));
             if (marks.length) tag(card, 'DirectiveMark', marks.map(([type]) => COMMAND_META[type as Exclude<DirectiveType, 'auto'>]?.icon || '').join(''), -39, 63, 56, CuteTheme.honey);
+            const focused=String((enemy?session?.cooldowns?.left:session?.cooldowns?.right)?.focusTargetId||'')===String(unit?.id);
+            if(focused)tag(card,'FocusMark','🎯 集火',-34,62,66,CuteTheme.peach);
             const chooseTarget=()=>{
                 const type=armedDirective;
                 if(!type||!alive)return;
@@ -304,7 +322,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     const unitName = (id: string) => {
         const all = [...(session?.leftTeam || []), ...(session?.rightTeam || [])];
         const unit = all.find((item: any) => String(item?.id) === String(id));
-        return String(unit?.name || unit?.nickname || '宝宝');
+        return cleanPetDisplayName(unit,'宝宝',10);
     };
 
     const firstAliveId = (enemy: boolean) => {
@@ -329,7 +347,38 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
                 void AudioDirector.playSfx('magic');
                 tween(battlefield).to(0.08,{scale:new Vec3(1.02,1.02,1)}).to(0.14,{scale:Vec3.ONE}).start();
             }
+            if(target?.isValid&&['damage','heal','shield','shield-absorb','command-shield','command-cleanse'].includes(String(event?.type))){
+                const isHeal=event?.type==='heal';
+                const isShield=/shield/.test(String(event?.type));
+                const label=event?.type==='command-cleanse'?'净化':`${isHeal?'+':isShield?'护盾 ':'-'}${formatNumber(event?.value||0)}${event?.critical?' 暴击':''}`;
+                const floating=text(target,`Float_${Date.now()}_${Math.random()}`,label,0,76,118,30,event?.critical?18:15,isHeal?CuteTheme.mintDark:isShield?CuteTheme.sky:CuteTheme.peachDark,'center',true);
+                tween(floating.node).by(0.45,{position:new Vec3(0,34,0)}).call(()=>floating?.node?.isValid&&floating.node.destroy()).start();
+            }
             await wait(90);
+        }
+    };
+
+    const settleCurrent = async () => {
+        if(settlementDone||settlementProcessing||!session||session.status==='active')return;
+        settlementProcessing=true;
+        render();
+        try{
+            const result=options.onSettle
+                ? await options.onSettle(session)
+                : await ApiClient.post('/battle/v10/settle',{sessionId:Number(session.id||0),battleId:String(session.battleId||''),settlementKey:`client:${session.battleId||session.id}`});
+            if(result?.success===false){
+                session.battleLog=[...(session.battleLog||[]),{type:'settlement-error',text:result?.message||'结算失败'}];
+            }else{
+                const next=result?.session||result?.data||session;
+                session={...session,...next,settlement:result?.settlement||next?.settlement||session?.settlement||{},rewards:result?.settlement?.reward||next?.rewards||session?.rewards||{}};
+                settlementDone=true;
+            }
+        }catch(error){
+            console.error('[BattleSceneV10] settlement failed',error);
+            session.battleLog=[...(session.battleLog||[]),{type:'settlement-error',text:'结算请求失败，请稍后重试'}];
+        }finally{
+            settlementProcessing=false;
+            render();
         }
     };
 
@@ -339,13 +388,15 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         timerToken += 1;
         render();
         try {
-            const result = await ApiClient.post('/battle/v10/command', { sessionId: session.id, directive });
+            const requestId=`${session?.battleId||session?.id}:${Number(session?.round||0)}:${Date.now()}`;
+            const result = await ApiClient.post('/battle/v10/command', { sessionId: session.id, directive:{...directive,requestId} });
             if (result?.success === false) {
                 void AudioDirector.playSfx('error');
                 session.battleLog = [...(session.battleLog || []), { text: result?.message || '指令执行失败' }];
             } else {
                 session = result?.session || result?.data || session;
                 await animateEvents(Array.isArray(result?.roundEvents) ? result.roundEvents : []);
+                if(session?.status!=='active')await settleCurrent();
             }
         } catch (error) {
             console.error('[BattleSceneV10] command failed', error);
@@ -383,6 +434,8 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         autoMode=options.mode==='arena';
         countdown=8;
         completionNotified=false;
+        settlementProcessing=false;
+        settlementDone=false;
         promptOverride='';
         armedDirective=null;
         directiveTargets.clear();
@@ -396,18 +449,19 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         await AudioDirector.playBgm(boss ? 'boss' : 'battle');
         const result = options.mode === 'arena'
             ? await ApiClient.post('/battle/v10/arena', { formationCode: options.formationCode, difficulty: options.difficulty || 1.05 })
-            : await ApiClient.post('/battle/v10/start', { mode: options.mode, boss, formationCode: options.formationCode, difficulty: options.difficulty || (boss ? 1.25 : 1), enemySpeciesCode: options.enemySpeciesCode || '' });
+            : await ApiClient.post('/battle/v10/start', { mode: options.mode, boss, formationCode: options.formationCode, difficulty: options.difficulty || (boss ? 1.25 : 1), enemySpeciesCode: options.enemySpeciesCode || '', chapterCode:options.chapterCode||'', regionCode:options.regionCode||'', stageCode:options.stageCode||'' });
         if (result?.success === false) {
             session = { status: 'ended', winnerSide: 'right', round: 0, battleLog: [{ text: result?.message || '战斗发起失败' }], leftTeam: [], rightTeam: [] };
             render();
             return;
         }
         session = result?.session || result?.data || result;
+        settlementDone=Boolean(session?.rewardStatus==='claimed'||session?.settled);
         render();
         if (options.mode === 'arena') {
             session.status = session.status || 'ended';
             render();
-        } else scheduleAuto();
+        } else if(session?.status==='active')scheduleAuto();else void settleCurrent();
     };
 
     void start();

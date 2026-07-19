@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DailyTaskModule } from '../daily-task/daily-task.module';
+import { EconomyModule } from '../economy/economy.module';
 import { FriendModule } from '../friend/friend.module';
 import { SeasonModule } from '../season/season.module';
 import { FormationModule } from '../formation/formation.module';
@@ -33,6 +34,7 @@ import { BattleSessionV10 } from './battle-session.entity';
     SeasonModule,
     TeamModule,
     FormationModule,
+    EconomyModule,
   ],
   controllers: [BattleController],
   providers: [BattleService, BattleV10Service],

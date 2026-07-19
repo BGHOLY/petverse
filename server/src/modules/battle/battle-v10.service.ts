@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
+import { EconomyService } from '../economy/economy.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { DailyTaskService } from '../daily-task/daily-task.service';
 import { FormationService } from '../formation/formation.service';
@@ -14,6 +16,7 @@ import { SeasonService } from '../season/season.service';
 import { TowerRecord } from '../tower/tower-record.entity';
 import { User } from '../user/user.entity';
 import { BattleSessionV10 } from './battle-session.entity';
+import { FORMATION_ENERGY_GAINS, battleRewardConfig } from './battle-reward.config';
 
 type Side = 'left' | 'right';
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
@@ -88,6 +91,8 @@ export class BattleV10Service {
     private readonly formationService: FormationService,
     private readonly dailyTaskService: DailyTaskService,
     private readonly seasonService: SeasonService,
+    private readonly economyService: EconomyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async startPve(userId = DEFAULT_USER_ID, body: any = {}) {
@@ -105,7 +110,7 @@ export class BattleV10Service {
     const formationLevel = await this.formationService.getLevel(userId, formationCode);
     const averageLevel = Math.max(1, Math.round(pets.reduce((sum, pet) => sum + Number(pet.level || 1), 0) / pets.length));
     const bossBattle = Boolean(body?.boss || body?.mode === 'boss' || body?.mode === 'tower' || body?.mode === 'nest' || body?.mode === 'guild-boss');
-    let difficulty = Math.max(0.8, Math.min(2.5, Number(body?.difficulty || (bossBattle ? 1.25 : 1))));
+    let difficulty = Math.max(0.8, Math.min(8, Number(body?.difficulty || (bossBattle ? 1.25 : 1))));
     if (body?.mode === 'tower') {
       const record = await this.towerRepository.findOne({ where: { userId } });
       const floor = Math.max(1, Number(record?.currentFloor || 1));
@@ -115,28 +120,55 @@ export class BattleV10Service {
     const leftTeam = this.buildPlayerUnits(pets, teamResult.slotAssignments, formationCode, formationLevel, 'left');
     const rightTeam = this.buildEnemyUnits(averageLevel, difficulty, enemyFormationCode, bossBattle, String(body?.enemySpeciesCode || ''));
 
-    const session = await this.sessionRepository.save(this.sessionRepository.create({
-      userId,
-      mode: String(body?.mode || (bossBattle ? 'boss' : 'pve')),
-      status: 'active',
-      round: 1,
-      maxRounds: bossBattle ? 35 : 25,
-      formationCode,
-      enemyFormationCode,
-      leftTeam,
-      rightTeam,
-      cooldowns: this.initialCooldownState(formationCode, enemyFormationCode),
-      tactics: teamResult.tactics || {},
-      battleLog: [{ round: 0, type: 'start', text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}` }],
-      winnerSide: '',
-      bossBattle,
-      settled: false,
-      rewards: {},
-    }));
+    const mode = String(body?.mode || (bossBattle ? 'boss' : 'pve'));
+    const chapterCode = String(body?.chapterCode || '');
+    const regionCode = String(body?.regionCode || '');
+    const stageCode = String(body?.stageCode || (bossBattle ? 'boss' : 'stage-1'));
+    let resumed = false;
+    const session = await this.dataSource.transaction(async (manager) => {
+      const userRepository = manager.getRepository(User);
+      await userRepository.findOne({ where: { id: userId }, lock: { mode: 'pessimistic_write' } });
+      const repository = manager.getRepository(BattleSessionV10);
+      const existing = await repository.findOne({
+        where: { userId, status: 'active', mode, regionCode, stageCode },
+        order: { updatedAt: 'DESC' },
+      });
+      if (existing) {
+        resumed = true;
+        return existing;
+      }
+      return repository.save(repository.create({
+        battleId: randomUUID(),
+        userId,
+        mode,
+        chapterCode,
+        regionCode,
+        stageCode,
+        status: 'active',
+        round: 1,
+        maxRounds: bossBattle ? 35 : 25,
+        formationCode,
+        enemyFormationCode,
+        leftTeam,
+        rightTeam,
+        cooldowns: this.initialCooldownState(formationCode, enemyFormationCode),
+        tactics: teamResult.tactics || {},
+        battleLog: [{ round: 0, type: 'start', text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}` }],
+        winnerSide: '',
+        bossBattle,
+        settled: false,
+        rewardStatus: 'pending',
+        settlementKey: '',
+        resultSnapshot: {},
+        processedCommandIds: [],
+        rewards: {},
+      }));
+    });
 
     return {
       success: true,
-      message: 'Five-pet battle started',
+      message: resumed ? '已恢复未结束战斗' : '五宠战斗已开始',
+      resumed,
       session: this.toSessionView(session),
       data: this.toSessionView(session),
     };
@@ -148,34 +180,102 @@ export class BattleV10Service {
     return { success: true, session: this.toSessionView(session), data: this.toSessionView(session) };
   }
 
-  async command(userId: number, sessionId: number, rawDirective: any) {
-    const session = await this.sessionRepository.findOne({ where: { id: sessionId, userId } });
+  async getSessionByBattleId(userId: number, battleId: string) {
+    const session = await this.sessionRepository.findOne({ where: { battleId: String(battleId || ''), userId } });
     if (!session) return { success: false, message: 'Battle session not found' };
-    if (session.status !== 'active') {
-      return { success: false, message: 'Battle has already ended', session: this.toSessionView(session) };
-    }
+    return { success: true, session: this.toSessionView(session), data: this.toSessionView(session) };
+  }
 
-    const directive = this.normalizeDirective(rawDirective);
-    const enemyDirective = this.autoDirective(
-      session.rightTeam as BattleUnit[],
-      session.leftTeam as BattleUnit[],
-      session.cooldowns?.right || {},
-      session.tactics || {},
-    );
-    const roundEvents = this.runRound(session, directive, enemyDirective);
-    session.battleLog = [...(session.battleLog || []), ...roundEvents];
-    this.finishIfNeeded(session);
-    if (session.status === 'active') session.round += 1;
-    else await this.settleSession(session);
-    await this.sessionRepository.save(session);
+  async command(userId: number, sessionId: number, rawDirective: any) {
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(BattleSessionV10);
+      const session = await repository.findOne({
+        where: { id: sessionId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!session) return { success: false, message: 'Battle session not found' };
+      if (session.status !== 'active') {
+        return { success: false, message: 'Battle has already ended', session: this.toSessionView(session) };
+      }
 
-    return {
-      success: true,
-      message: session.status === 'active' ? `Round ${session.round - 1} completed` : 'Battle completed',
-      roundEvents,
-      session: this.toSessionView(session),
-      data: this.toSessionView(session),
-    };
+      const requestId = String(rawDirective?.requestId || '').trim();
+      const processed = Array.isArray(session.processedCommandIds) ? session.processedCommandIds : [];
+      if (requestId && processed.includes(requestId)) {
+        return { success: true, duplicate: true, message: '该战斗指令已经执行', roundEvents: [], session: this.toSessionView(session), data: this.toSessionView(session) };
+      }
+
+      const directive = this.normalizeDirective(rawDirective);
+      const invalid = this.validateDirective(session, 'left', directive);
+      if (invalid) return { success: false, message: invalid, session: this.toSessionView(session) };
+      if (requestId) session.processedCommandIds = [...processed, requestId].slice(-80);
+
+      const enemyDirective = this.autoDirective(
+        session.rightTeam as BattleUnit[],
+        session.leftTeam as BattleUnit[],
+        session.cooldowns?.right || {},
+        session.tactics || {},
+      );
+      const roundEvents = this.runRound(session, directive, enemyDirective);
+      session.battleLog = [...(session.battleLog || []), ...roundEvents].slice(-600);
+      this.finishIfNeeded(session);
+      if (session.status === 'active') session.round += 1;
+      else {
+        session.finishedAt = new Date();
+        session.rewardStatus = 'pending';
+      }
+      await repository.save(session);
+
+      return {
+        success: true,
+        message: session.status === 'active' ? `第 ${session.round - 1} 回合完成` : '战斗完成，等待结算',
+        roundEvents,
+        session: this.toSessionView(session),
+        data: this.toSessionView(session),
+        serverNow: new Date().toISOString(),
+      };
+    });
+  }
+
+  async settle(userId: number, body: any = {}) {
+    const sessionId = Number(body?.sessionId || 0);
+    const battleId = String(body?.battleId || '').trim();
+    const settlementKey = String(body?.settlementKey || `battle-settle:${battleId || sessionId}`).trim();
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(BattleSessionV10);
+      const query = repository.createQueryBuilder('battle').setLock('pessimistic_write')
+        .where('battle.userId = :userId', { userId });
+      if (battleId) query.andWhere('battle.battleId = :battleId', { battleId });
+      else query.andWhere('battle.id = :sessionId', { sessionId });
+      const session = await query.getOne();
+      if (!session) return { success: false, message: 'Battle session not found' };
+      if (session.status === 'active') return { success: false, message: '战斗尚未结束', session: this.toSessionView(session) };
+      if (session.regionCode) {
+        return { success: false, message: '区域战斗请通过探索结算接口领取奖励', session: this.toSessionView(session) };
+      }
+      if (session.rewardStatus === 'claimed' || session.settled) {
+        return { success: true, duplicate: true, message: '本场奖励已经结算', settlement: session.resultSnapshot || {}, session: this.toSessionView(session) };
+      }
+
+      const won = session.winnerSide === 'left';
+      const reward = won ? this.rewardForSession(session) : this.emptyReward();
+      if (won) await this.grantReward(manager, session, reward);
+      const snapshot = this.buildSettlementSnapshot(session, reward, won);
+      session.rewards = reward;
+      session.resultSnapshot = snapshot;
+      session.rewardStatus = 'claimed';
+      session.rewardClaimedAt = new Date();
+      session.settlementKey = settlementKey;
+      session.settled = true;
+      await repository.save(session);
+      return {
+        success: true,
+        duplicate: false,
+        message: won ? '战斗奖励已发放' : '失败结算完成，本场未发放通关奖励',
+        settlement: snapshot,
+        session: this.toSessionView(session),
+        data: this.toSessionView(session),
+      };
+    });
   }
 
   async arena(userId = DEFAULT_USER_ID, body: any = {}) {
@@ -199,7 +299,11 @@ export class BattleV10Service {
         session.cooldowns?.left || {},
         session.tactics || {},
       );
-      latest = await this.command(userId, sessionId, directive);
+      latest = await this.command(userId, sessionId, { ...directive, requestId: `arena:${sessionId}:${index + 1}` });
+    }
+    if (latest.session?.status !== 'active') {
+      const settled = await this.settle(userId, { sessionId, settlementKey: `arena:${sessionId}` });
+      if (settled?.success) latest = { ...latest, ...settled, session: settled.session };
     }
     return {
       ...latest,
@@ -214,16 +318,21 @@ export class BattleV10Service {
     const left = session.leftTeam as BattleUnit[];
     const right = session.rightTeam as BattleUnit[];
     const events: any[] = [{ round: session.round, type: 'round', text: `第 ${session.round} 回合` }];
-    this.tickStatuses(left, session.round, events);
-    this.tickStatuses(right, session.round, events);
-    this.chargeFormationEnergy(session, 'left', events);
-    this.chargeFormationEnergy(session, 'right', events);
+    this.tickStatuses(session, left, session.round, events);
+    this.tickStatuses(session, right, session.round, events);
     this.applyDirective(session, 'left', leftDirective, events);
     this.applyDirective(session, 'right', rightDirective, events);
 
     const order = [...left, ...right]
       .filter((unit) => unit.alive && unit.hp > 0)
       .sort((a, b) => b.speed - a.speed || a.slotIndex - b.slotIndex);
+    events.push({
+      round: session.round,
+      type: 'action-order',
+      unitIds: order.map((unit) => unit.id),
+      unitNames: order.map((unit) => unit.name),
+      text: `行动顺序：${order.map((unit) => unit.name).join(' → ')}`,
+    });
     for (const actor of order) {
       if (!actor.alive || actor.hp <= 0) continue;
       const allies = actor.side === 'left' ? left : right;
@@ -256,6 +365,7 @@ export class BattleV10Service {
       lowAlly.hp = Math.min(lowAlly.maxHp, lowAlly.hp + amount);
       actor.healingDone += amount;
       events.push({ round: session.round, type: 'heal', actorId: actor.id, targetId: lowAlly.id, value: amount, text: `${actor.name} 治疗 ${lowAlly.name}，恢复 ${amount} 生命` });
+      this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.activeSkill, '主动技能', events);
       return;
     }
 
@@ -264,6 +374,7 @@ export class BattleV10Service {
       const shield = Math.max(1, Math.round(target.maxHp * 0.07));
       target.shield += shield;
       events.push({ round: session.round, type: 'shield', actorId: actor.id, targetId: target.id, value: shield, text: `${actor.name} 为 ${target.name} 套上 ${shield} 护盾` });
+      this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.activeSkill, '主动技能', events);
       return;
     }
 
@@ -294,6 +405,10 @@ export class BattleV10Service {
       this.applyDamage(session, actor, target, damage, events, '', critical, skill);
     }
 
+    this.gainFormationEnergy(session, actor.side, skill ? FORMATION_ENERGY_GAINS.activeSkill : FORMATION_ENERGY_GAINS.normalAttack, skill ? '主动技能' : '普通攻击', events);
+    if (skill && this.isSpecialSkill(skill)) {
+      this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.specialSkill, '特殊技能触发', events);
+    }
     if (skill && target.alive) this.tryApplySkillStatus(skill, actor, target, session.round, events);
   }
 
@@ -308,11 +423,21 @@ export class BattleV10Service {
     skill?: any,
   ) {
     let damage = Math.max(0, Math.round(rawDamage));
+    let absorbed = 0;
     const shieldDamage = Math.min(target.shield, damage * (1 + actor.shieldDamageRate));
     if (shieldDamage > 0) {
       const consumed = Math.min(target.shield, Math.round(shieldDamage));
+      absorbed = consumed;
       target.shield -= consumed;
       damage = Math.max(0, damage - consumed);
+      events.push({
+        round: session.round,
+        type: 'shield-absorb',
+        actorId: actor.id,
+        targetId: target.id,
+        value: consumed,
+        text: `${target.name} 的护盾吸收 ${consumed} 伤害`,
+      });
     }
     target.hp = Math.max(0, target.hp - damage);
     actor.damageDealt += damage;
@@ -324,12 +449,16 @@ export class BattleV10Service {
       actorId: actor.id,
       targetId: target.id,
       value: damage,
-      shieldValue: Math.round(shieldDamage),
+      shieldValue: absorbed,
       critical,
       skillName,
       text: `${actor.name}${skillName ? ` 使用 ${skillName}` : ' 发起攻击'}，${critical ? '暴击 ' : ''}对 ${target.name} 造成 ${damage} 伤害${note ? `（${note}）` : ''}`,
     });
-    if (target.hp <= 0) this.handleDefeat(session, target, events);
+    if (damage > 0) this.gainFormationEnergy(session, target.side, FORMATION_ENERGY_GAINS.damageTaken, '受到伤害', events);
+    if (target.hp <= 0) {
+      this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.kill, '击杀敌人', events);
+      this.handleDefeat(session, target, events);
+    }
   }
 
   private handleDefeat(session: BattleSessionV10, target: BattleUnit, events: any[]) {
@@ -343,6 +472,21 @@ export class BattleV10Service {
     target.alive = false;
     target.hp = 0;
     events.push({ round: session.round, type: 'defeat', targetId: target.id, text: `${target.name} 倒下了` });
+    const attackerSide: Side = target.side === 'left' ? 'right' : 'left';
+    const attackerCooldowns = session.cooldowns?.[attackerSide] || {};
+    if (attackerCooldowns.focusTargetId === target.id) {
+      const candidates = (target.side === 'left' ? session.leftTeam : session.rightTeam) as BattleUnit[];
+      const next = this.lowestHpUnit(candidates);
+      attackerCooldowns.focusTargetId = next?.id || '';
+      session.cooldowns[attackerSide] = attackerCooldowns;
+      events.push({
+        round: session.round,
+        type: 'focus-retarget',
+        side: attackerSide,
+        targetId: next?.id || '',
+        text: next ? `集火目标倒下，自动转向 ${next.name}` : '集火目标倒下，当前无合法目标',
+      });
+    }
   }
 
   private applyDirective(session: BattleSessionV10, side: Side, directive: RoundDirective, events: any[]) {
@@ -391,7 +535,8 @@ export class BattleV10Service {
         const removeTypes = new Set(removable.sort((a, b) => this.statusPriority(b.type) - this.statusPriority(a.type)).slice(0, 2).map((status) => status.type));
         target.statuses = target.statuses.filter((status) => !removeTypes.has(status.type));
         cooldowns.cleanse = 3;
-        events.push({ round: session.round, type: 'command-cleanse', side, command: 'cleanse', targetId: target.id, value: before - target.statuses.length, text: `战术净化：为 ${target.name} 清除 ${before - target.statuses.length} 个负面状态` });
+        const removedTypes = [...removeTypes];
+        events.push({ round: session.round, type: 'command-cleanse', side, command: 'cleanse', targetId: target.id, value: before - target.statuses.length, removedTypes, text: `战术净化：为 ${target.name} 清除 ${removedTypes.join('、')}` });
       }
     }
 
@@ -453,17 +598,17 @@ export class BattleV10Service {
     session.cooldowns[side] = cooldowns;
   }
 
-  private chargeFormationEnergy(session: BattleSessionV10, side: Side, events: any[]) {
+  private gainFormationEnergy(session: BattleSessionV10, side: Side, rawGain: number, source: string, events: any[]) {
     const cooldowns = session.cooldowns?.[side] || {};
     const formationCode = side === 'left' ? session.formationCode : session.enemyFormationCode;
     const cost = Number(getFormationConfig(formationCode).ultimate.energyCost || 100);
-    const living = (side === 'left' ? session.leftTeam : session.rightTeam as BattleUnit[]).filter((unit: BattleUnit) => unit.alive).length;
-    const gain = 18 + living * 2;
+    const gain = Math.max(0, Math.round(Number(rawGain || 0)));
     const before = Number(cooldowns.formationEnergy || 0);
     cooldowns.formationEnergyCost = cost;
     cooldowns.formationEnergy = Math.min(cost, before + gain);
     session.cooldowns[side] = cooldowns;
-    if (cooldowns.formationEnergy !== before) events.push({ round: session.round, type: 'formation-energy', side, value: gain, total: cooldowns.formationEnergy, text: `${side === 'left' ? '我方' : '敌方'}阵法能量 +${gain}` });
+    const actualGain = Number(cooldowns.formationEnergy || 0) - before;
+    if (actualGain > 0) events.push({ round: session.round, type: 'formation-energy', side, source, value: actualGain, total: cooldowns.formationEnergy, energyCost: cost, text: `${side === 'left' ? '我方' : '敌方'}阵法能量 +${actualGain}（${source}）` });
   }
 
   private selectAttackTarget(session: BattleSessionV10, actor: BattleUnit, enemies: BattleUnit[]) {
@@ -488,7 +633,7 @@ export class BattleV10Service {
     return team.find((unit) => unit.id === cooldowns.guardProtectorId && unit.alive) || null;
   }
 
-  private tickStatuses(team: BattleUnit[], round: number, events: any[]) {
+  private tickStatuses(session: BattleSessionV10, team: BattleUnit[], round: number, events: any[]) {
     for (const unit of team) {
       if (!unit.alive) continue;
       for (const status of unit.statuses) {
@@ -496,9 +641,9 @@ export class BattleV10Service {
           const damage = Math.max(1, Math.round(status.value || unit.maxHp * 0.03));
           unit.hp = Math.max(0, unit.hp - damage);
           events.push({ round, type: 'dot', targetId: unit.id, value: damage, text: `${unit.name} 受到 ${damage} 持续伤害` });
+          this.gainFormationEnergy(session, unit.side, FORMATION_ENERGY_GAINS.damageTaken, '受到持续伤害', events);
           if (unit.hp <= 0) {
-            unit.alive = false;
-            events.push({ round, type: 'defeat', targetId: unit.id, text: `${unit.name} 被持续伤害击倒` });
+            this.handleDefeat(session, unit, events);
           }
         }
         status.rounds -= 1;
@@ -519,6 +664,147 @@ export class BattleV10Service {
       target.statuses.push({ type: 'dot', rounds: 2, value: Math.max(1, Math.round(actor.magic * 0.18)), source: code });
       events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 被附加灼烧` });
     }
+  }
+
+  private isSpecialSkill(skill: any) {
+    const tier = String(skill?.tier || '').toLowerCase();
+    const code = String(skill?.skillCode || skill?.code || '').toUpperCase();
+    return tier === 'special' || code.startsWith('SPECIAL_');
+  }
+
+  private validateDirective(session: BattleSessionV10, side: Side, directive: RoundDirective) {
+    const allies = (side === 'left' ? session.leftTeam : session.rightTeam) as BattleUnit[];
+    const enemies = (side === 'left' ? session.rightTeam : session.leftTeam) as BattleUnit[];
+    const cooldowns = session.cooldowns?.[side] || {};
+    const target = directive.targetId
+      ? [...allies, ...enemies].find((unit) => unit.id === directive.targetId)
+      : undefined;
+
+    if (directive.type === 'focus') {
+      if (!target || target.side === side) return '请选择一个合法敌人作为集火目标';
+      if (!target.alive || target.hp <= 0) return '不能集火已经倒下的单位';
+    }
+    if (directive.type === 'guard' || directive.type === 'shield') {
+      if (!target || target.side !== side || !target.alive || target.hp <= 0) return '请选择一个存活的我方宠物';
+      if (Number(cooldowns[directive.type] || 0) > 0) return `${directive.type === 'guard' ? '守护' : '套盾'}仍在冷却中`;
+      if (directive.type === 'guard' && !this.bestProtector(allies, target.id)) return '当前没有可以执行守护的宠物';
+    }
+    if (directive.type === 'cleanse') {
+      if (!target || target.side !== side || !target.alive || target.hp <= 0) return '请选择一个存活的我方宠物';
+      if (Number(cooldowns.cleanse || 0) > 0) return '净化仍在冷却中';
+      if (this.debuffScore(target) <= 0) return `${target.name} 当前没有可净化的异常状态`;
+    }
+    if (directive.useUltimate) {
+      const formationCode = side === 'left' ? session.formationCode : session.enemyFormationCode;
+      const formation = getFormationConfig(formationCode);
+      if (session.round < formation.ultimate.initialCooldown) return `阵法大招将在第 ${formation.ultimate.initialCooldown} 回合解锁`;
+      if (Number(cooldowns.ultimate || 0) > 0) return '阵法大招仍在冷却中';
+      if (Number(cooldowns.formationEnergy || 0) < Number(formation.ultimate.energyCost || 100)) return '阵法能量不足100';
+    }
+    return '';
+  }
+
+  private rewardForSession(session: BattleSessionV10) {
+    const configured = battleRewardConfig(session.mode, session.bossBattle);
+    const survivorCount = (session.leftTeam as BattleUnit[]).filter((unit) => unit.alive && unit.hp > 0).length;
+    const stars = survivorCount >= 5 && session.round <= 12 ? 3 : survivorCount >= 3 ? 2 : 1;
+    return {
+      gold: Number(configured.gold || 0),
+      diamond: Number(configured.diamond || 0),
+      playerExp: Number(configured.playerExp || 0),
+      petExp: Number(configured.petExp || 0),
+      items: { ...(configured.items || {}) },
+      firstClear: false,
+      stars,
+    };
+  }
+
+  private emptyReward() {
+    return { gold: 0, diamond: 0, playerExp: 0, petExp: 0, items: {}, firstClear: false, stars: 0 };
+  }
+
+  private async grantReward(manager: EntityManager, session: BattleSessionV10, reward: any) {
+    await this.economyService.grant(manager, session.userId, {
+      gold: reward.gold,
+      diamond: reward.diamond,
+      items: reward.items,
+    });
+
+    const userRepository = manager.getRepository(User);
+    const user = await userRepository.findOne({ where: { id: session.userId }, lock: { mode: 'pessimistic_write' } });
+    if (!user) throw new Error('User not found');
+    user.exp = Number(user.exp || 0) + Number(reward.playerExp || 0);
+    let nextExp = Math.max(100, Number(user.level || 1) * 100);
+    while (user.exp >= nextExp) {
+      user.exp -= nextExp;
+      user.level = Number(user.level || 1) + 1;
+      nextExp = Math.max(100, Number(user.level || 1) * 100);
+    }
+    await userRepository.save(user);
+
+    const petRepository = manager.getRepository(Pet);
+    const petIds = [...new Set((session.leftTeam as BattleUnit[]).map((unit) => Number(unit.petId || 0)).filter((id) => id > 0))];
+    const petUpdates: any[] = [];
+    for (const petId of petIds) {
+      const pet = await petRepository.findOne({ where: { id: petId, ownerId: session.userId, isEgg: false }, lock: { mode: 'pessimistic_write' } });
+      if (!pet) continue;
+      const before = { level: Number(pet.level || 1), exp: Number(pet.exp || 0) };
+      const saved = await this.petService.addExp(pet, Number(reward.petExp || 0), manager);
+      petUpdates.push({ petId, name: this.cleanPetName(saved.nickname || saved.species), before, after: { level: saved.level, exp: saved.exp }, gainedExp: Number(reward.petExp || 0) });
+    }
+    reward.petUpdates = petUpdates;
+
+    if (session.mode === 'tower') {
+      const towerRepository = manager.getRepository(TowerRecord);
+      let record = await towerRepository.findOne({ where: { userId: session.userId }, lock: { mode: 'pessimistic_write' } });
+      if (!record) record = towerRepository.create({ userId: session.userId, currentFloor: 1, maxFloor: 0, totalRewardGold: 0 } as TowerRecord);
+      const clearedFloor = Math.max(1, Number(record.currentFloor || 1));
+      record.currentFloor = clearedFloor + 1;
+      record.maxFloor = Math.max(Number(record.maxFloor || 0), clearedFloor);
+      record.totalRewardGold = Number(record.totalRewardGold || 0) + Number(reward.gold || 0);
+      await towerRepository.save(record);
+      reward.floor = clearedFloor;
+    }
+  }
+
+  private buildSettlementSnapshot(session: BattleSessionV10, reward: any, won: boolean) {
+    const left = session.leftTeam as BattleUnit[];
+    const right = session.rightTeam as BattleUnit[];
+    const leftDamage = left.reduce((sum, unit) => sum + Number(unit.damageDealt || 0), 0);
+    const rightDamage = right.reduce((sum, unit) => sum + Number(unit.damageDealt || 0), 0);
+    const leftHealing = left.reduce((sum, unit) => sum + Number(unit.healingDone || 0), 0);
+    const leftTaken = left.reduce((sum, unit) => sum + Number(unit.damageTaken || 0), 0);
+    return {
+      battleId: session.battleId,
+      sessionId: session.id,
+      result: won ? 'win' : 'lose',
+      winnerSide: session.winnerSide,
+      mode: session.mode,
+      chapterCode: session.chapterCode,
+      regionCode: session.regionCode,
+      stageCode: session.stageCode,
+      rounds: session.round,
+      survivingPets: left.filter((unit) => unit.alive && unit.hp > 0).map((unit) => ({ petId: unit.petId, name: unit.name, hp: unit.hp, maxHp: unit.maxHp })),
+      statistics: { totalDamage: leftDamage, totalHealing: leftHealing, damageTaken: leftTaken, enemyDamage: rightDamage },
+      reward,
+      failureReason: won ? '' : this.failureReason(session),
+      nextActions: won ? ['next-stage', 'retry', 'return-adventure'] : ['adjust-team', 'change-formation', 'strengthen-pet', 'retry', 'return-adventure'],
+      settledAt: new Date().toISOString(),
+    };
+  }
+
+  private failureReason(session: BattleSessionV10) {
+    const left = session.leftTeam as BattleUnit[];
+    const right = session.rightTeam as BattleUnit[];
+    const leftDamage = left.reduce((sum, unit) => sum + Number(unit.damageDealt || 0), 0);
+    const rightRemaining = right.reduce((sum, unit) => sum + Math.max(0, Number(unit.hp || 0)), 0);
+    const leftHealing = left.reduce((sum, unit) => sum + Number(unit.healingDone || 0), 0);
+    const recommendedPower = right.reduce((sum, unit) => sum + unit.maxHp + unit.attack * 8 + unit.magic * 8 + unit.defense * 5, 0);
+    const playerPower = left.reduce((sum, unit) => sum + unit.maxHp + unit.attack * 8 + unit.magic * 8 + unit.defense * 5, 0);
+    if (playerPower < recommendedPower * 0.75) return '推荐战力差距较大';
+    if (rightRemaining > leftDamage * 0.35) return '输出不足';
+    if (leftHealing < left.reduce((sum, unit) => sum + unit.maxHp, 0) * 0.08) return '生存不足';
+    return '控制与战术配合不足';
   }
 
   private async settleSession(session: BattleSessionV10) {
@@ -611,6 +897,19 @@ export class BattleV10Service {
     }
   }
 
+  private cleanPetName(value: unknown) {
+    const cleaned = String(value || '宝宝')
+      .replace(/\b(?:common|uncommon|rare|epic|legendary|mythic)\b/gi, ' ')
+      .replace(/普通|优秀|稀有|史诗|传说|神话/g, ' ')
+      .replace(/\bPET[-_\s]*\d+\b/gi, ' ')
+      .replace(/(?:^|[\s_#-])(?:[A-Z]{0,3}-?)?\d{6,}(?=$|[\s_#-])/gi, ' ')
+      .replace(/[-_\s]?[A-Z]?-?\d{6,}$/i, '')
+      .replace(/[|｜·]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || '宝宝';
+  }
+
   private buildPlayerUnits(
     pets: Pet[],
     slotAssignments: number[],
@@ -675,7 +974,7 @@ export class BattleV10Service {
       petId: Number(pet.id || 0),
       side,
       slotIndex,
-      name: String(pet.nickname || pet.name || species.name),
+      name: this.cleanPetName(pet.nickname || pet.name || species.name),
       species: species.name,
       speciesCode: species.speciesCode,
       rarity: Number(pet.rarity || 1),
@@ -854,8 +1153,12 @@ export class BattleV10Service {
     const rightFormation = getFormationConfig(session.enemyFormationCode);
     return {
       id: session.id,
+      battleId: session.battleId,
       userId: session.userId,
       mode: session.mode,
+      chapterCode: session.chapterCode || '',
+      regionCode: session.regionCode || '',
+      stageCode: session.stageCode || '',
       status: session.status,
       round: session.round,
       maxRounds: session.maxRounds,
@@ -863,7 +1166,12 @@ export class BattleV10Service {
       result: session.status === 'finished' ? (session.winnerSide === 'left' ? 'win' : 'lose') : '',
       bossBattle: session.bossBattle,
       settled: session.settled,
+      rewardStatus: session.rewardStatus || (session.settled ? 'claimed' : 'pending'),
       rewards: session.rewards || {},
+      settlement: session.resultSnapshot || {},
+      startedAt: session.createdAt,
+      finishedAt: session.finishedAt,
+      rewardClaimedAt: session.rewardClaimedAt,
       formationCode: leftFormation.code,
       enemyFormationCode: rightFormation.code,
       formationName: leftFormation.name,
@@ -878,6 +1186,10 @@ export class BattleV10Service {
       cooldowns: session.cooldowns,
       tactics: session.tactics,
       battleLog: session.battleLog || [],
+      actionOrder: [...left, ...right]
+        .filter((unit) => unit.alive && unit.hp > 0)
+        .sort((a, b) => b.speed - a.speed || a.slotIndex - b.slotIndex)
+        .map((unit) => ({ id: unit.id, name: unit.name, side: unit.side, speed: unit.speed })),
       commands: {
         focus: { cooldown: 0, enabled: session.status === 'active' },
         guard: { cooldown: Number(session.cooldowns?.left?.guard || 0), enabled: session.status === 'active' && Number(session.cooldowns?.left?.guard || 0) <= 0 },

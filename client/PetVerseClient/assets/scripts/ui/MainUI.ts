@@ -44,6 +44,7 @@ import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
 import { calculatePetAptitudeScore, getPetAptitudeGrade, getPetAptitudeProfile } from './pet/PetAptitudeRegistry';
 import { getPetArtPath, getPetSpeciesMeta } from './pet/PetArtRegistry';
+import { cleanPetDisplayName } from './pet/PetNameFormatter';
 import { showBattlePlayback } from './advanced/BattlePlayback';
 import { loadHomePetId, loadPetFilter, saveHomePetId, savePetFilter } from './advanced/PetExperienceState';
 import { showPetReveal } from './advanced/RevealOverlay';
@@ -425,6 +426,12 @@ export class MainUI extends Component {
     }
 
     private onStoreChanged = () => {
+        const liveBattle = Boolean(this.battleLayer?.active && this.battleLayer.children.some((child) => child.name.startsWith('BattleV10')));
+        if (liveBattle) {
+            this.renderTopBar();
+            this.renderBottomNav();
+            return;
+        }
         this.refreshAllVisuals();
     };
 
@@ -2102,24 +2109,32 @@ export class MainUI extends Component {
             formationCode:this.selectedFormationCode,
             difficulty:Number(region?.difficulty||1),
             enemySpeciesCode:String(region?.speciesCode||''),
+            chapterCode:String(region?.chapter||''),
+            regionCode:String(region?.code||''),
+            stageCode:kind==='nest'?'boss':String(region?.nextStageCode||`stage-${Math.min(5,Math.floor(Number(region?.exploration||0)/20)+1)}`),
             onClose:()=>{this.showPage('adventure');void this.refreshWorldExploration();},
-            onComplete:(session:any)=>void this.settleRegionBattle(kind,region,session),
+            onSettle:(session:any)=>this.settleRegionBattle(kind,region,session),
+            onComplete:()=>void this.refreshAfterBattle(),
+            onNext:kind==='explore'?()=>{this.showPage('adventure');void this.refreshWorldExploration();}:undefined,
         });
     }
 
     private async settleRegionBattle(kind:'explore'|'nest',region:any,session:any) {
         const key=`region-settle:${session?.id||0}`;
-        if(!session?.id||this.busy.has(key))return;
+        if(!session?.id||this.busy.has(key))return {success:false,message:'结算正在处理中'};
         this.busy.add(key);
         try{
             const result=await ApiClient.post(kind==='nest'?'/exploration/settle-nest':'/exploration/settle-explore',{regionCode:String(region?.code||''),sessionId:Number(session.id)});
             this.applyWorldExploration(result);
-            if(result?.egg){const eggs=await ApiClient.get('/hatchery/eggs');if(eggs?.success!==false)GameStore.setList('eggs',eggs);}
-            const profile=await ApiClient.get('/user/profile');if(profile?.success!==false)GameStore.setProfile(profile);
+            const [profile,pets,inventory,eggs]=await Promise.all([ApiClient.get('/user/profile'),ApiClient.get('/pet/my'),ApiClient.get('/inventory'),result?.egg?ApiClient.get('/hatchery/eggs'):Promise.resolve(null)]);
+            if(profile?.success!==false)GameStore.setProfile(profile);
+            if(pets?.success!==false)GameStore.setPets(pets);
+            if(inventory?.success!==false)GameStore.setList('inventory',inventory);
+            if(eggs?.success!==false&&eggs)GameStore.setList('eggs',eggs);
             this.showToast(result?.message||'世界主线进度已更新');
             if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
-            this.renderCurrentPage(false);
-        }catch(error){console.error('[CuteMainUI] settle region battle failed:',error);this.showToast('世界主线结算失败，请稍后重试');}
+            return result;
+        }catch(error){console.error('[CuteMainUI] settle region battle failed:',error);this.showToast('世界主线结算失败，请稍后重试');return {success:false,message:'世界主线结算失败，请稍后重试'};}
         finally{this.busy.delete(key);}
     }
 
@@ -3715,6 +3730,8 @@ export class MainUI extends Component {
 
     private renderBattleResultModal() {
         if (!this.battleLayer) return;
+        const hasLiveBattle = this.battleLayer.children.some((child) => child.name.startsWith('BattleV10'));
+        if (hasLiveBattle && !this.battleResult) return;
         if (!this.battleResult) {
             clearNode(this.battleLayer);
             this.battleLayer.active = false;
@@ -4824,32 +4841,7 @@ export class MainUI extends Component {
     }
 
     private petDisplayName(pet: any, fallback = '宝宝') {
-        const speciesMeta = getPetSpeciesMeta(pet);
-        const speciesFallback = safeName(speciesMeta.name, fallback);
-        const raw = safeName(pet?.nickname || pet?.name || pet?.displayName || pet?.species, speciesFallback).trim();
-        const cleaned = raw
-            .replace(/\b(?:common|uncommon|rare|epic|legendary|mythic)\b/gi, ' ')
-            .replace(/普通|优秀|稀有|史诗|传说|神话/g, ' ')
-            .replace(/\bPET[-_\s]*\d+\b/gi, ' ')
-            .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, ' ')
-            .replace(/(?:^|[\s_#-])(?:[A-Z]{0,3}-?)?\d{6,}(?=$|[\s_#-])/gi, ' ')
-            .replace(/[-_\s]?[A-Z]?-?\d{6,}$/i, '')
-            .replace(/[|｜/\\·]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        const normalize = (value: string) => value.toLowerCase().replace(/[\s_-]+/g, ' ').trim();
-        const normalizedCleaned = normalize(cleaned);
-        const speciesAliases = [speciesMeta.name, ...(speciesMeta.aliases || [])].map((value) => normalize(value));
-        const legacySpeciesNames: Record<string, string> = {
-            dog: '灵犬', cat: '月光猫', rabbit: '疾风兔', bunny: '疾风兔', fox: '炎尾狐',
-            wolf: '影刃狼', bear: '森灵熊', dragon: '星辉龙', phoenix: '焰羽凤', turtle: '岩甲龟',
-            otter: '潮汐獭', deer: '森灵鹿', owl: '霜羽鸮',
-        };
-        const legacySpeciesName = legacySpeciesNames[normalizedCleaned];
-        const speciesOnly = speciesAliases.includes(normalizedCleaned) || Boolean(legacySpeciesName) || /(?:\.{2,}|…)$/.test(cleaned);
-        const resolvedSpeciesFallback = legacySpeciesName || speciesFallback;
-        const value = cleaned && !/^\d+$/.test(cleaned) && !speciesOnly ? cleaned : resolvedSpeciesFallback;
-        return value.length > 10 ? `${value.slice(0, 9)}…` : value;
+        return cleanPetDisplayName(pet,fallback,10);
     }
 
     private petListDisplayName(pet: any, fallback = '宝宝') {

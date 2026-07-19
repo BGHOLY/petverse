@@ -69,6 +69,16 @@ export class BattleController {
     return this.battleV10Service.getSession(DEFAULT_USER_ID, Number(id || 0));
   }
 
+  @Get('v10/id/:battleId')
+  getFivePetSessionByBattleId(@Param('battleId') battleId: string) {
+    return this.battleV10Service.getSessionByBattleId(DEFAULT_USER_ID, battleId);
+  }
+
+  @Post('v10/settle')
+  settleFivePetBattle(@Body() body: any) {
+    return this.battleV10Service.settle(DEFAULT_USER_ID, body || {});
+  }
+
   @Post('v10/arena')
   arenaFivePetBattle(@Body() body: any) {
     return this.battleV10Service.arena(DEFAULT_USER_ID, body || {});
