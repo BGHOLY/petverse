@@ -5,6 +5,8 @@ import {
     Component,
     Enum,
     find,
+    game,
+    Game,
     Mask,
     Node,
     ScrollView,
@@ -112,25 +114,25 @@ export class MainUI extends Component {
     @property({ displayName: '页面整体缩放', tooltip: '建议保持在 0.95 至 1.02。' })
     pageContentScale = 1;
 
-    @property({ type: Vec2, displayName: '宠物页偏移' })
+    @property({ displayName: '宠物页偏移' })
     petPageOffset = new Vec2(0, 0);
 
     @property({ displayName: '宠物页缩放' })
     petPageScale = 1;
 
-    @property({ type: Vec2, displayName: '商店页偏移' })
+    @property({ displayName: '商店页偏移' })
     shopPageOffset = new Vec2(0, 0);
 
     @property({ displayName: '商店页缩放' })
     shopPageScale = 1;
 
-    @property({ type: Vec2, displayName: '背包页偏移' })
+    @property({ displayName: '背包页偏移' })
     inventoryPageOffset = new Vec2(0, 0);
 
     @property({ displayName: '背包页缩放' })
     inventoryPageScale = 1;
 
-    @property({ type: Vec2, displayName: '孵化室偏移' })
+    @property({ displayName: '孵化室偏移' })
     hatcheryPageOffset = new Vec2(0, 0);
 
     @property({ displayName: '孵化室缩放' })
@@ -170,8 +172,9 @@ export class MainUI extends Component {
     private eggSyncRunning = false;
     private hatchAcceleratorOpen = false;
     private hatchAcceleratorEggId = 0;
-    private hatchEggFilter: 'all' | 'rare' | 'mutant' = 'all';
-    private hatchEggSort: 'rarity' | 'time' = 'rarity';
+    private hatchEggFilter: 'all' | 'normal' | 'rare' | 'mutant' = 'all';
+    private hatchEggSort: 'rarity' | 'created' | 'hatchTime' = 'rarity';
+    private selectedHatchEggId = 0;
     private homePetPickerOpen = false;
     private pendingHomePetId = 0;
     private fusionPickerSide: 'A' | 'B' | null = null;
@@ -268,6 +271,10 @@ export class MainUI extends Component {
 
         this.unsubscribeStore?.();
         this.unsubscribeStore = GameStore.subscribe(this.onStoreChanged);
+        if (!EDITOR) {
+            game.off(Game.EVENT_SHOW, this.handleAppShow, this);
+            game.on(Game.EVENT_SHOW, this.handleAppShow, this);
+        }
 
         if (EDITOR && !GameStore.pets.length) GameStore.seedPreview();
         if (EDITOR) this.currentPage = this.editorPreviewPageName();
@@ -292,7 +299,13 @@ export class MainUI extends Component {
         this.unsubscribeStore?.();
         this.unsubscribeStore = null;
         this.root?.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
+        if (!EDITOR) game.off(Game.EVENT_SHOW, this.handleAppShow, this);
         ToastManager.unbind(this.showToast);
+    }
+
+    private handleAppShow() {
+        if (EDITOR || this.currentPage !== 'hatchery') return;
+        void this.refreshPageData('hatchery');
     }
 
     update(dt: number) {
@@ -1743,11 +1756,17 @@ export class MainUI extends Component {
         const allStoredEggs = GameStore.eggs.filter((egg) => String(egg?.status || '') === 'stored');
         const storedEggs = allStoredEggs
             .filter((egg) => this.hatchEggFilter === 'all'
+                || this.hatchEggFilter === 'normal' && !Boolean(egg?.isMutant) && Number(egg?.rarityPotential || 1) < 4
                 || this.hatchEggFilter === 'mutant' && Boolean(egg?.isMutant)
                 || this.hatchEggFilter === 'rare' && Number(egg?.rarityPotential || 1) >= 4)
-            .sort((a, b) => this.hatchEggSort === 'rarity'
-                ? Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1)
-                : Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0));
+            .sort((a, b) => {
+                if (this.hatchEggSort === 'rarity') return Number(b?.rarityPotential || 1) - Number(a?.rarityPotential || 1);
+                if (this.hatchEggSort === 'created') return new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
+                return Number(a?.hatchDurationSeconds || 0) - Number(b?.hatchDurationSeconds || 0);
+            });
+        if (this.selectedHatchEggId && !allStoredEggs.some((egg) => Number(egg?.id || 0) === this.selectedHatchEggId)) {
+            this.selectedHatchEggId = 0;
+        }
         const eggCapacity = Math.max(20, Number(GameStore.user?.eggCapacity || GameStore.user?.hatcheryCapacity || 20));
         const scrollKey = `hatchery|${this.hatchEggFilter}|${this.hatchEggSort}::HatcheryEggScrollV6`;
         renderHatcheryPageV6(this.pageRoot, {
@@ -1767,16 +1786,18 @@ export class MainUI extends Component {
             capacity: eggCapacity,
             filter: this.hatchEggFilter,
             sort: this.hatchEggSort,
+            selectedEggId: this.selectedHatchEggId,
             scrollKey,
             initialOffset: this.scrollOffsets.get(scrollKey),
             formatDuration: (seconds) => this.formatSeconds(seconds),
             formatEggDuration: (egg) => this.formatEggDuration(egg),
             onFilter: (filter) => {
                 this.hatchEggFilter = filter;
+                this.selectedHatchEggId = 0;
                 this.renderCurrentPage(false);
             },
             onSort: () => {
-                this.hatchEggSort = this.hatchEggSort === 'rarity' ? 'time' : 'rarity';
+                this.hatchEggSort = this.hatchEggSort === 'rarity' ? 'created' : this.hatchEggSort === 'created' ? 'hatchTime' : 'rarity';
                 this.renderCurrentPage(false);
             },
             onChooseEgg: (egg) => {
@@ -1784,11 +1805,21 @@ export class MainUI extends Component {
                     this.showToast('三台孵化装置都在使用中');
                     return;
                 }
-                this.requestIncubation(egg, 0);
+                this.selectedHatchEggId = this.selectedHatchEggId === Number(egg?.id || 0) ? 0 : Number(egg?.id || 0);
+                this.renderCurrentPage(false);
             },
-            onChooseEmptySlot: () => this.showToast('请先在下方仓库选择一枚宠物蛋'),
+            onChooseEmptySlot: (slot) => {
+                const selectedEgg = allStoredEggs.find((egg) => Number(egg?.id || 0) === this.selectedHatchEggId);
+                if (!selectedEgg) {
+                    this.showToast('请先在下方仓库选择一枚宠物蛋');
+                    return;
+                }
+                this.requestIncubation(selectedEgg, slot);
+            },
             onAccelerate: (egg) => this.openHatchAccelerator(egg),
             onCollect: (egg) => void this.hatchEgg(egg),
+            onGoMarriage: () => this.showPage('marriage'),
+            onBackHome: () => this.showPage('home'),
         });
     }
 
@@ -3179,17 +3210,16 @@ export class MainUI extends Component {
 
         if (this.pendingIncubation) {
             const egg=this.pendingIncubation.egg;
-            const card=panel(this.utilityLayer,'IncubationConfirm',0,0,570,600,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
-            headingTag(card,'Title','确认孵化',0,246,170,CuteTheme.honey);
-            image(card,'Egg',getEggArtPath(egg),0,118,120,150,CuteTheme.paperWarm);
-            text(card,'Name',getEggDisplayName(egg),0,32,480,42,22,CuteTheme.caramel,'center',true);
-            text(card,'Time',`预计时间：${this.formatEggDuration(egg)}`,0,-10,440,34,17,CuteTheme.muted,'center',true);
-            const occupied=new Set(GameStore.eggs.filter((item)=>['incubating','hatching'].includes(String(item?.status||''))).map((item)=>Number(item?.incubatorSlot||0)));
-            text(card,'SlotTitle','选择孵化装置',0,-70,420,34,17,CuteTheme.caramel,'center',true);
-            [1,2,3].forEach((slot,index)=>button(card,`Slot_${slot}`,`${slot}号`, -140+index*140,-120,110,48,()=>{this.pendingIncubation={egg,slot};this.renderUtilityModal();},{selected:this.pendingIncubation?.slot===slot,fill:occupied.has(slot)?new Color(212,210,204,255):this.pendingIncubation?.slot===slot?CuteTheme.honey:CuteTheme.paperWarm,fontSize:14,radius:20,disabled:occupied.has(slot)}));
-            text(card,'Warning','确认后开始计时；变异蛋不会额外延长孵化时间。',0,-178,460,34,14,CuteTheme.peachDark,'center',true);
-            button(card,'Cancel','取消',-105,-238,170,54,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:23});
-            button(card,'Confirm','开始孵化',105,-238,180,54,()=>void this.startEggIncubationNow(egg,this.pendingIncubation?.slot||0),{icon:'🥚',fill:CuteTheme.honey,fontSize:15,radius:23,disabled:!this.pendingIncubation?.slot});
+            const card=panel(this.utilityLayer,'IncubationConfirm',0,0,570,570,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
+            headingTag(card,'Title','确认孵化',0,232,170,CuteTheme.honey);
+            image(card,'Egg',getEggArtPath(egg),0,112,120,150,CuteTheme.paperWarm);
+            text(card,'Name',getEggDisplayName(egg),0,26,480,42,22,CuteTheme.caramel,'center',true);
+            text(card,'Meta',`${this.rarityName(egg)} · ${egg?.isMutant?'变异':'普通'} · ${safeName(egg?.species,'未知品种')}`,0,-12,460,32,15,CuteTheme.muted,'center',true);
+            text(card,'Time',`预计孵化时间：${this.formatEggDuration(egg)}`,0,-52,440,34,17,CuteTheme.muted,'center',true);
+            tag(card,'TargetSlot',`目标装置  0${Number(this.pendingIncubation?.slot||0)}`,0,-108,210,CuteTheme.mint);
+            text(card,'Warning','确认后开始计时；退出页面或重启游戏不会重置进度。',0,-166,480,40,14,CuteTheme.peachDark,'center',true);
+            button(card,'Cancel','取消',-105,-226,170,54,()=>this.closeUtilityModal(),{fill:CuteTheme.paperWarm,fontSize:15,radius:23});
+            button(card,'Confirm','开始孵化',105,-226,180,54,()=>void this.startEggIncubationNow(egg,this.pendingIncubation?.slot||0),{icon:'🥚',fill:CuteTheme.honey,fontSize:15,radius:23,disabled:!this.pendingIncubation?.slot});
             return;
         }
 
@@ -3324,6 +3354,7 @@ export class MainUI extends Component {
             if(result?.success===false){this.showToast(result?.message||'放入孵化装置失败');return;}
             const refreshed=await ApiClient.get('/hatchery/eggs');
             if(refreshed?.success!==false)GameStore.setList('eggs',refreshed);
+            this.selectedHatchEggId=0;
             this.closeUtilityModal();
             CuteFeedback.playSuccess();
             void AudioDirector.playSfx('confirm');
@@ -3434,6 +3465,9 @@ export class MainUI extends Component {
                 showPetReveal(this.revealLayer, 'hatch', newPet, () => {
                     GameStore.selectPet(Number(newPet?.id || 0));
                     this.showPage('pet');
+                }, () => {
+                    this.showPage('hatchery');
+                    void this.refreshPageData('hatchery');
                 });
             } else {
                 this.showToast('孵化成功，新宝宝已加入宝宝列表');

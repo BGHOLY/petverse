@@ -7,6 +7,18 @@ const projectRoot = path.resolve(scriptDirectory, '../client/PetVerseClient');
 const scenePath = path.join(projectRoot, 'assets/scenes/MainScene.scene');
 const resourcesRoot = path.join(projectRoot, 'assets/resources');
 const checkOnly = process.argv.includes('--check');
+const previewArgumentIndex = process.argv.indexOf('--preview');
+const previewPageName = previewArgumentIndex >= 0
+    ? String(process.argv[previewArgumentIndex + 1] || '').toLowerCase()
+    : '';
+const previewPageValues = {
+    home: 0,
+    pet: 1,
+    shop: 2,
+    inventory: 3,
+    hatchery: 4,
+    adventure: 5,
+};
 
 const data = JSON.parse(fs.readFileSync(scenePath, 'utf8'));
 const nodeAt = (id) => data[id];
@@ -47,7 +59,12 @@ for (const name of ['bg', 'HomeLayer', 'PageLayer', 'ToastLayer']) {
 
 const mainUi = data.find((entry) => entry?.apiBaseUrl && entry?.node?.__id__ === canvasRecord.id);
 if (!mainUi) throw new Error('MainUI component was not found on Canvas.');
-assign(mainUi, 'editorPreviewPage', 0);
+if (previewPageName) {
+    if (!(previewPageName in previewPageValues)) {
+        throw new Error(`Unknown editor preview page: ${previewPageName}`);
+    }
+    assign(mainUi, 'editorPreviewPage', previewPageValues[previewPageName]);
+}
 assign(mainUi, 'pageContentOffsetX', 0);
 assign(mainUi, 'pageContentOffsetY', 0);
 assign(mainUi, 'pageContentScale', 1);
@@ -79,7 +96,6 @@ const artResources = new Map([
     ['ShortcutArt_adventure', 'ui/home-v4/shortcut-adventure-v4'],
     ['ShortcutArt_hatchery', 'ui/home-v4/shortcut-hatchery-v4'],
     ['ShortcutArt_formation', 'ui/home-v4/shortcut-formation-v4'],
-    ['NavigationArt', 'ui/home-v4/bottom-navigation-v4'],
 ]);
 
 const setSpriteFrame = (nodeId, resourcePath) => {
@@ -275,6 +291,56 @@ const pageNames = ['HomePage', 'PetPage', 'InventoryPage', 'AdventurePage', 'Sho
 for (const name of pageNames) {
     const pageId = childByName(pageRootRecord.id, name);
     if (pageId !== undefined) assign(nodeAt(pageId), '_active', name === 'HomePage');
+}
+
+// Remove the pre-v6 scene hierarchy instead of merely hiding it. The active
+// interface is rendered exclusively under PetVerseUIRoot, so keeping the old
+// bg/HomeLayer/PageLayer/ToastLayer subtrees makes the editor misleading and
+// risks accidental edits to nodes that never appear in preview.
+const legacyRootIds = new Set(
+    (canvasRecord.entry._children || [])
+        .map((reference) => reference.__id__)
+        .filter((id) => ['bg', 'HomeLayer', 'PageLayer', 'ToastLayer'].includes(nodeAt(id)?._name)),
+);
+
+if (legacyRootIds.size) {
+    const removedIds = new Set();
+    const collectNodeRecords = (nodeId) => {
+        if (removedIds.has(nodeId)) return;
+        const node = nodeAt(nodeId);
+        removedIds.add(nodeId);
+        for (const reference of node?._components || []) removedIds.add(reference.__id__);
+        for (const reference of node?._children || []) collectNodeRecords(reference.__id__);
+    };
+    for (const id of legacyRootIds) collectNodeRecords(id);
+
+    canvasRecord.entry._children = (canvasRecord.entry._children || [])
+        .filter((reference) => !legacyRootIds.has(reference.__id__));
+
+    const oldToNew = new Map();
+    const compacted = [];
+    data.forEach((entry, oldId) => {
+        if (removedIds.has(oldId)) return;
+        oldToNew.set(oldId, compacted.length);
+        compacted.push(entry);
+    });
+
+    const remapReferences = (value) => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+            value.forEach(remapReferences);
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(value, '__id__')) {
+            const mapped = oldToNew.get(value.__id__);
+            if (mapped === undefined) throw new Error(`Dangling scene reference to removed record ${value.__id__}.`);
+            value.__id__ = mapped;
+        }
+        Object.values(value).forEach(remapReferences);
+    };
+    compacted.forEach(remapReferences);
+    data.splice(0, data.length, ...compacted);
+    changes += removedIds.size;
 }
 
 if (checkOnly) {

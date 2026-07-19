@@ -179,9 +179,10 @@ export class InventoryService {
     userId: number,
     itemCode: string,
     quantity = 1,
+    manager?: EntityManager,
   ) {
-    return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Inventory);
+    const consume = async (activeManager: EntityManager) => {
+      const repository = activeManager.getRepository(Inventory);
       const inventory = await repository.findOne({
         where: {
           userId,
@@ -207,7 +208,11 @@ export class InventoryService {
         await repository.save(inventory);
       }
       return true;
-    });
+    };
+
+    return manager
+      ? consume(manager)
+      : this.dataSource.transaction(consume);
   }
 
   async useItem(

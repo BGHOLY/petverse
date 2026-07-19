@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AchievementModule } from '../achievement/achievement.module';
 import { EconomyModule } from '../economy/economy.module';
+import { EggModule } from '../egg/egg.module';
 import { FriendModule } from '../friend/friend.module';
 import { FormationModule } from '../formation/formation.module';
 import { GuildModule } from '../guild/guild.module';
@@ -30,6 +31,7 @@ import { DevService } from './dev.service';
     InventoryModule,
     TowerModule,
     EconomyModule,
+    EggModule,
     TeamModule,
     AchievementModule,
     MailModule,

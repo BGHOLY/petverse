@@ -1,4 +1,5 @@
-import { Node, resources, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { loadSpriteFrameResource } from '../cute/CuteUiKit';
 
 export function createPetArtSprite(
     parent: Node,
@@ -30,12 +31,7 @@ export function createPetArtSprite(
         transform.setContentSize(width, height);
     };
 
-    resources.load(`${resourcePath}/spriteFrame`, SpriteFrame, (error, frame) => {
-        if (!error && frame) return apply(frame);
-        resources.load(resourcePath, SpriteFrame, (fallbackError, fallbackFrame) => {
-            if (!fallbackError && fallbackFrame) apply(fallbackFrame);
-        });
-    });
+    loadSpriteFrameResource(resourcePath, apply);
 
     return node;
 }

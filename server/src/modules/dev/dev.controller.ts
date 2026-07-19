@@ -10,4 +10,9 @@ export class DevController {
   async seedAll() {
     return this.devService.seedAll();
   }
+
+  @Post('seed-hatchery')
+  async seedHatchery() {
+    return this.devService.seedHatchery();
+  }
 }

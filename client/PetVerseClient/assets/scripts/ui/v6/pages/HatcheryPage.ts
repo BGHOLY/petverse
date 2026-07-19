@@ -25,8 +25,8 @@ import { getEggArtPath, getEggDisplayName } from '../../v10/EggArtRegistry';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PAGE_WIDTH, V6_PANEL_GAP } from '../UiMetrics';
 
-export type HatcheryEggFilterV6 = 'all' | 'rare' | 'mutant';
-export type HatcheryEggSortV6 = 'rarity' | 'time';
+export type HatcheryEggFilterV6 = 'all' | 'normal' | 'rare' | 'mutant';
+export type HatcheryEggSortV6 = 'rarity' | 'created' | 'hatchTime';
 
 export type HatcherySlotV6 = {
     slot: number;
@@ -43,6 +43,7 @@ export type HatcheryPageV6Options = {
     capacity: number;
     filter: HatcheryEggFilterV6;
     sort: HatcheryEggSortV6;
+    selectedEggId: number;
     scrollKey: string;
     initialOffset?: Vec2;
     formatDuration: (seconds: number) => string;
@@ -53,13 +54,25 @@ export type HatcheryPageV6Options = {
     onChooseEmptySlot: (slot: number) => void;
     onAccelerate: (egg: any) => void;
     onCollect: (egg: any) => void;
+    onGoMarriage: () => void;
+    onBackHome: () => void;
 };
 
 const FILTERS: Array<[HatcheryEggFilterV6, string]> = [
     ['all', '全部'],
+    ['normal', '普通'],
     ['rare', '稀有'],
     ['mutant', '变异'],
 ];
+
+function parentNames(egg: any) {
+    const snapshot = egg?.parentSnapshot || {};
+    const parentA = snapshot?.parentA || snapshot?.father || {};
+    const parentB = snapshot?.parentB || snapshot?.mother || {};
+    const nameA = String(parentA?.nickname || parentA?.name || egg?.parentNameA || '').trim();
+    const nameB = String(parentB?.nickname || parentB?.name || egg?.parentNameB || '').trim();
+    return nameA || nameB ? `${nameA || '未知'} × ${nameB || '未知'}` : '活动或商店获得';
+}
 
 function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPageV6Options, x: number) {
     const active = Boolean(slot.egg);
@@ -80,10 +93,12 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
     const chamber = panel(card, 'Chamber', 0, 33, 170, 170, active ? new Color(255, 241, 194, 255) : new Color(231, 247, 225, 255), 62, true, new Color(218, 179, 121, 210), 2);
 
     if (!slot.egg) {
-        drawUiIcon(chamber, 'EmptyEgg', 'hatchery', 0, 18, 62, CuteTheme.honeyDark);
-        text(chamber, 'EmptyState', '空闲\n等待宠物蛋', 0, -47, 138, 52, 14, CuteTheme.muted, 'center', true);
-        text(card, 'Status', '可使用', 0, -72, 150, 26, 13, CuteTheme.mintDark, 'center', true);
-        button(card, 'ChooseEgg', '从仓库选择', 0, -119, 148, 42, () => options.onChooseEmptySlot(slot.slot), { fill: CuteTheme.mint, fontSize: 13, radius: 17 });
+        const selectedEgg = options.eggs.find((egg) => Number(egg?.id || 0) === options.selectedEggId) || null;
+        if (selectedEgg) artImage(chamber, 'SelectedEggArt', getEggArtPath(selectedEgg), 0, 22, 76, 94);
+        else drawUiIcon(chamber, 'EmptyEgg', 'hatchery', 0, 18, 62, CuteTheme.honeyDark);
+        text(chamber, 'EmptyState', selectedEgg ? `${getEggDisplayName(selectedEgg)}\n等待放入` : '空闲\n等待宠物蛋', 0, -47, 142, 52, 14, selectedEgg ? CuteTheme.caramel : CuteTheme.muted, 'center', true);
+        text(card, 'Status', selectedEgg ? '已选择宠物蛋' : '可使用', 0, -72, 150, 26, 13, selectedEgg ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
+        button(card, 'ChooseEgg', selectedEgg ? '放入此处' : '先选择宠物蛋', 0, -119, 148, 42, () => options.onChooseEmptySlot(slot.slot), { fill: selectedEgg ? CuteTheme.honey : CuteTheme.mint, fontSize: 13, radius: 17 });
         return;
     }
 
@@ -98,6 +113,7 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
 
 function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryPageV6Options) {
     const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
+    const selected = Number(egg?.id || 0) === Number(options.selectedEggId || 0);
     const card = panel(
         parent,
         `WarehouseEgg_${egg?.id || index}`,
@@ -105,18 +121,18 @@ function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryP
         0,
         320,
         130,
-        egg?.isMutant ? new Color(255, 236, 226, 255) : new Color(255, 252, 239, 255),
+        selected ? new Color(255, 243, 193, 255) : egg?.isMutant ? new Color(255, 236, 226, 255) : new Color(255, 252, 239, 255),
         20,
         true,
-        egg?.isMutant ? CuteTheme.peachDark : new Color(211, 171, 116, 230),
-        egg?.isMutant ? 3 : 2,
+        selected ? CuteTheme.honeyDark : egg?.isMutant ? CuteTheme.peachDark : new Color(211, 171, 116, 230),
+        selected ? 4 : egg?.isMutant ? 3 : 2,
     );
     artImage(card, 'EggArt', getEggArtPath(egg), -112, 1, 72, 90);
     text(card, 'Name', getEggDisplayName(egg), -66, 40, 190, 28, 15, CuteTheme.caramel, 'left', true);
     text(card, 'Meta', `${rarity}★${egg?.isMutant ? ' · 变异' : ''}`, -66, 14, 170, 24, 12, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'left', true);
-    text(card, 'Parents', `品种 ${String(egg?.species || egg?.speciesName || '未知')}`, -66, -10, 188, 22, 11, CuteTheme.muted, 'left', true);
-    text(card, 'Time', `孵化 ${options.formatEggDuration(egg)}`, -66, -34, 188, 22, 11, CuteTheme.muted, 'left', true);
-    button(card, 'Choose', '选择装置', 88, -38, 104, 34, () => options.onChooseEgg(egg), { fill: CuteTheme.honey, fontSize: 11, radius: 14 });
+    text(card, 'Parents', `父母 ${parentNames(egg)}`, -66, -10, 188, 22, 11, CuteTheme.muted, 'left', true);
+    text(card, 'Time', `${String(egg?.species || egg?.speciesName || '未知')} · ${options.formatEggDuration(egg)}`, -66, -34, 188, 22, 11, CuteTheme.muted, 'left', true);
+    button(card, 'Choose', selected ? '已选择' : '选择', 88, -38, 104, 34, () => options.onChooseEgg(egg), { selected, fill: selected ? CuteTheme.mint : CuteTheme.honey, fontSize: 11, radius: 14 });
     hitArea(card, 'OpenEgg', 0, 0, 320, 130, () => options.onChooseEgg(egg));
 }
 
@@ -159,7 +175,11 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     if (options.eggs.length) {
         text(content, 'ListEnd', '—— 已经到底了 ——', 0, -gridHeight - 22, width - 30, 30, 13, CuteTheme.muted, 'center', true);
     } else {
-        text(content, 'Empty', options.totalStored ? '当前筛选没有宠物蛋' : '仓库暂无宠物蛋\n可通过冒险、繁育与活动获得', 0, -height / 2 + 40, width - 80, 88, 18, CuteTheme.muted, 'center', true);
+        text(content, 'Empty', options.totalStored ? '当前筛选没有宠物蛋' : '当前没有宠物蛋\n可通过好友结婚、生蛋或活动获得', 0, -height / 2 + 68, width - 80, 88, 18, CuteTheme.muted, 'center', true);
+        if (!options.totalStored) {
+            button(content, 'GoMarriage', '前往好友/结婚', -100, -height / 2 - 4, 180, 46, options.onGoMarriage, { fill: CuteTheme.honey, fontSize: 13, radius: 19 });
+            button(content, 'BackHome', '返回首页', 100, -height / 2 - 4, 150, 46, options.onBackHome, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 19 });
+        }
     }
 
     const scroll = viewport.addComponent(ScrollView);
@@ -204,13 +224,14 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     const warehouse = panel(page, 'EggWarehouse', 0, cursor - warehouseHeight / 2, V6_PAGE_WIDTH, warehouseHeight, new Color(255, 249, 230, 248), 24, true, new Color(205, 158, 103, 225), 2);
     text(warehouse, 'Title', `宝宝蛋仓库 ${options.totalStored}/${options.capacity}`, -306, warehouseHeight / 2 - 32, 300, 34, 19, CuteTheme.caramel, 'left', true);
     text(warehouse, 'Hint', '选择蛋后再指定空闲装置', 58, warehouseHeight / 2 - 32, 250, 28, 12, CuteTheme.muted, 'right', true);
-    FILTERS.forEach(([key, label], index) => button(warehouse, `Filter_${key}`, label, -236 + index * 104, warehouseHeight / 2 - 78, 94, 40, () => options.onFilter(key), {
+    FILTERS.forEach(([key, label], index) => button(warehouse, `Filter_${key}`, label, -258 + index * 86, warehouseHeight / 2 - 78, 78, 40, () => options.onFilter(key), {
         selected: options.filter === key,
         fill: options.filter === key ? CuteTheme.honey : CuteTheme.paperWarm,
         fontSize: 13,
         radius: 16,
     }));
-    button(warehouse, 'Sort', options.sort === 'rarity' ? '稀有度优先' : '时间优先', 238, warehouseHeight / 2 - 78, 154, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
+    const sortLabel = options.sort === 'rarity' ? '稀有度优先' : options.sort === 'created' ? '获取时间' : '孵化时间';
+    button(warehouse, 'Sort', sortLabel, 258, warehouseHeight / 2 - 78, 132, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
     const scrollHeight = warehouseHeight - 116;
     const scrollHost = panel(warehouse, 'EggListPanel', 0, -50, V6_PAGE_WIDTH - 16, scrollHeight, CuteTheme.transparent, 0, false, CuteTheme.transparent, 0);
     renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 24, scrollHeight - 4);

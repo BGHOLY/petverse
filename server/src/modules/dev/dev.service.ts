@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { AchievementService } from '../achievement/achievement.service';
 import { EconomyService } from '../economy/economy.service';
+import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { FriendService } from '../friend/friend.service';
 import { FormationService } from '../formation/formation.service';
@@ -30,6 +31,7 @@ export class DevService {
     private readonly inventoryService: InventoryService,
     private readonly towerService: TowerService,
     private readonly economyService: EconomyService,
+    private readonly eggService: EggService,
     private readonly teamService: TeamService,
     private readonly achievementService: AchievementService,
     private readonly mailService: MailService,
@@ -56,6 +58,8 @@ export class DevService {
       await this.petService.repairLegacySpeciesForUser(userId);
     const friends =
       await this.friendService.seedMockFriends(userId);
+    const hatchery =
+      await this.eggService.ensureHatcheryTestEggs(userId);
 
     await this.economyService.ensureMinimumBalance(
       userId,
@@ -76,6 +80,8 @@ export class DevService {
       fusion_core: 20,
       skill_lock: 100,
       mutation_essence: 5,
+      hatch_sandglass_small: 10,
+      hatch_sandglass_large: 3,
       pet_capacity_ticket: 3,
       season_token: 5,
       BOOK_LOW_PHYSICAL_COMBO: 3,
@@ -144,6 +150,7 @@ export class DevService {
       pets: pets.pets,
       inventory,
       friends: friends.friends,
+      hatchery,
       tower,
       wallet,
       team: finalTeam,
@@ -155,6 +162,22 @@ export class DevService {
       formations,
       guildJoin,
       guild,
+    };
+  }
+
+  async seedHatchery() {
+    const user = await this.userService.getOrCreateDefaultUser();
+    const userId = user.id || DEFAULT_USER_ID;
+    await this.itemService.seedDefaultItems();
+    await this.inventoryService.ensureItemQuantity(userId, 'hatch_sandglass_small', 10);
+    await this.inventoryService.ensureItemQuantity(userId, 'hatch_sandglass_large', 3);
+    const hatchery = await this.eggService.ensureHatcheryTestEggs(userId);
+
+    return {
+      success: true,
+      message: 'Hatchery test data is ready',
+      userId,
+      ...hatchery,
     };
   }
 }

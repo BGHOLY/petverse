@@ -200,6 +200,56 @@ export class EggService {
     return active[0] || null;
   }
 
+  async ensureHatcheryTestEggs(userId: number) {
+    const specs = [
+      { key: 'stored-normal', rarity: 2, mutant: false, status: 'stored', slot: 0, duration: 90 },
+      { key: 'stored-rare', rarity: 4, mutant: false, status: 'stored', slot: 0, duration: 180 },
+      { key: 'stored-mutant', rarity: 5, mutant: true, status: 'stored', slot: 0, duration: 240 },
+      { key: 'incubating', rarity: 3, mutant: false, status: 'incubating', slot: 1, duration: 300 },
+      { key: 'ready', rarity: 4, mutant: false, status: 'incubating', slot: 2, duration: 120 },
+      { key: 'hatched-history', rarity: 3, mutant: false, status: 'hatched', slot: 0, duration: 60 },
+    ] as const;
+
+    const created: Egg[] = [];
+    const existing: Egg[] = [];
+
+    for (const spec of specs) {
+      const source = `dev-hatchery-${spec.key}`;
+      const found = await this.eggRepository.findOne({ where: { ownerId: userId, source } });
+      if (found) {
+        existing.push(found);
+        continue;
+      }
+
+      const egg = await this.createEgg({
+        ownerId: userId,
+        rarityPotential: spec.rarity,
+        isMutant: spec.mutant,
+        source,
+        randomSeed: `${source}-${userId}`,
+        hatchDurationSeconds: spec.duration,
+        parentSnapshot: {
+          parentA: { nickname: 'Mochi' },
+          parentB: { nickname: 'Flow' },
+        },
+      });
+
+      egg.status = spec.status;
+      egg.incubatorSlot = spec.slot;
+      egg.hatchReadyAt = spec.status === 'incubating'
+        ? new Date(Date.now() + (spec.key === 'ready' ? -30 : Math.max(30, spec.duration - 30)) * 1000)
+        : null;
+      created.push(await this.eggRepository.save(egg));
+    }
+
+    const eggs = await this.getUserEggViews(userId, true);
+    return {
+      createdCount: created.length,
+      existingCount: existing.length,
+      eggs,
+    };
+  }
+
   async startIncubation(eggId: number, ownerId: number, requestedSlot = 0) {
     const active = await this.getActiveEggs(ownerId);
     const occupied = new Set(active.map((egg) => Number(egg.incubatorSlot || 0)).filter((slot) => slot >= 1 && slot <= 3));

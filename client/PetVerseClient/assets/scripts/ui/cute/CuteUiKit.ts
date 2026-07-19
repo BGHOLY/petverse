@@ -1,4 +1,5 @@
 import {
+    assetManager,
     Button,
     Color,
     Graphics,
@@ -10,10 +11,75 @@ import {
     UITransform,
     Vec3,
 } from 'cc';
+import { EDITOR } from 'cc/env';
 import CuteFeedback from './CuteFeedback';
 
 export const DESIGN_WIDTH = 720;
 export const DESIGN_HEIGHT = 1280;
+
+export function loadSpriteFrameResource(resourcePath: string, onLoaded: (asset: SpriteFrame) => void) {
+    const cached = resources.get(`${resourcePath}/spriteFrame`, SpriteFrame)
+        || resources.get(resourcePath, SpriteFrame);
+    if (cached) {
+        onLoaded(cached);
+        return;
+    }
+
+    if (EDITOR) {
+        const editorApi = (globalThis as any).Editor;
+        if (editorApi?.Message?.request) {
+            void (async () => {
+                for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
+                    try {
+                        const uuid = await editorApi.Message.request(
+                            'asset-db',
+                            'query-uuid',
+                            `db://assets/resources/${resourcePath}.${extension}`,
+                        );
+                        if (!uuid) continue;
+                        assetManager.loadAny<SpriteFrame>(`${uuid}@f9941`, (error, asset) => {
+                            if (!error && asset) onLoaded(asset);
+                            else console.warn(`[CuteUiKit] failed to load editor SpriteFrame: ${resourcePath}`, error);
+                        });
+                        return;
+                    } catch {
+                        // Try the next supported image extension.
+                    }
+                }
+                console.warn(`[CuteUiKit] editor asset was not found: ${resourcePath}`);
+            })();
+            return;
+        }
+    }
+
+    const loadByPath = (previousError?: Error | null) => {
+        resources.load(`${resourcePath}/spriteFrame`, SpriteFrame, (error, asset) => {
+            if (!error && asset) {
+                onLoaded(asset);
+                return;
+            }
+            resources.load(resourcePath, SpriteFrame, (fallbackError, fallbackAsset) => {
+                if (!fallbackError && fallbackAsset) onLoaded(fallbackAsset);
+                else console.warn(`[CuteUiKit] failed to load SpriteFrame: ${resourcePath}`, previousError || error || fallbackError);
+            });
+        });
+    };
+
+    // In edit mode the resources bundle has no runtime name, so loading by
+    // path fails before it reaches the asset pipeline. The bundle config can
+    // still resolve the imported SpriteFrame UUID; load that UUID directly.
+    const info = resources.getInfoWithPath(`${resourcePath}/spriteFrame`, SpriteFrame)
+        || resources.getInfoWithPath(resourcePath, SpriteFrame);
+    if (info?.uuid) {
+        assetManager.loadAny<SpriteFrame>(info.uuid, (error, asset) => {
+            if (!error && asset) onLoaded(asset);
+            else loadByPath(error);
+        });
+        return;
+    }
+
+    loadByPath();
+}
 
 export const CuteTheme = {
     cream: new Color(255, 249, 230, 255),
@@ -456,15 +522,7 @@ export function image(
         setRect(spriteNode, 0, 0, width - 8, height - 8);
     };
 
-    resources.load(`${resourcePath}/spriteFrame`, SpriteFrame, (error, asset) => {
-        if (!error && asset) {
-            apply(asset);
-            return;
-        }
-        resources.load(resourcePath, SpriteFrame, (fallbackError, fallbackAsset) => {
-            if (!fallbackError && fallbackAsset) apply(fallbackAsset);
-        });
-    });
+    loadSpriteFrameResource(resourcePath, apply);
 
     return node;
 }
@@ -491,15 +549,7 @@ export function artImage(
         setRect(node, x, y, width, height);
     };
 
-    resources.load(`${resourcePath}/spriteFrame`, SpriteFrame, (error, asset) => {
-        if (!error && asset) {
-            apply(asset);
-            return;
-        }
-        resources.load(resourcePath, SpriteFrame, (fallbackError, fallbackAsset) => {
-            if (!fallbackError && fallbackAsset) apply(fallbackAsset);
-        });
-    });
+    loadSpriteFrameResource(resourcePath, apply);
     return node;
 }
 

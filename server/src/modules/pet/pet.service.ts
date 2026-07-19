@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import {
   BreedingMode,
@@ -429,6 +429,7 @@ export class PetService {
     parentA?: Pet | null,
     parentB?: Pet | null,
     storedBlueprint?: Partial<OffspringBlueprint>,
+    manager?: EntityManager,
   ) {
     let blueprint: OffspringBlueprint;
 
@@ -471,6 +472,7 @@ export class PetService {
       parentA || null,
       parentB || null,
       'hatch',
+      manager,
     );
   }
 
@@ -480,8 +482,9 @@ export class PetService {
     parentA?: Pet | null,
     parentB?: Pet | null,
     sourceType?: string,
+    manager?: EntityManager,
   ) {
-    await this.petCapacityService.assertCanReceive(userId, 1);
+    await this.petCapacityService.assertCanReceive(userId, 1, manager);
 
     const data = this.buildPetCreateDataFromBlueprint(
       userId,
@@ -490,7 +493,10 @@ export class PetService {
       parentB,
       sourceType,
     );
-    return this.petRepository.save(this.petRepository.create(data));
+    const repository = manager
+      ? manager.getRepository(Pet)
+      : this.petRepository;
+    return repository.save(repository.create(data));
   }
 
   buildPetCreateDataFromBlueprint(
@@ -513,9 +519,7 @@ export class PetService {
 
     return {
       ownerId: userId,
-      nickname: `${blueprint.isMutant ? '变异' : ''}${
-        RARITY_NAMES[this.clampRarity(blueprint.rarity)]
-      } ${species.name}`,
+      nickname: `${blueprint.isMutant ? '变异·' : ''}${species.name}`,
       species: species.name,
       speciesCode: species.speciesCode,
       isMutant: Boolean(blueprint.isMutant),
