@@ -221,6 +221,7 @@ export class MainUI extends Component {
     private marriageProposals: any[] = [];
     private marriageOwnPetId = 0;
     private marriageTargetPetId = 0;
+    private marriagePickerKind: 'own' | 'target' | null = null;
 
     private mails: any[] = [];
     private selectedMailId = 0;
@@ -2323,12 +2324,20 @@ export class MainUI extends Component {
             if (coverPet) image(photo, 'PetPhoto', getPetArtPath(coverPet, 'thumb'), -96, 55, 78, 78, CuteTheme.paperWarm);
             else text(photo, 'Avatar', '🐾', -96, 55, 72, 72, 42, CuteTheme.peachDark, 'center', true);
             text(photo, 'Name', safeName(friend?.nickname, `玩家${friend?.id || ''}`), -48, 78, 172, 34, 20, CuteTheme.caramel, 'left', true);
-            text(photo, 'Meta', `Lv.${Number(friend?.level || 1)} · 宝宝${Array.isArray(friend?.pets) ? friend.pets.length : 0}只`, -48, 41, 174, 28, 13, CuteTheme.muted, 'left', true);
+            text(photo, 'Meta', `Lv.${Number(friend?.level || 1)} · 宝宝${Array.isArray(friend?.pets) ? friend.pets.length : 0}只 · ${friend?.online ? '在线' : '最近登录'}`, -48, 41, 174, 28, 12, CuteTheme.muted, 'left', true);
             const petNames = (Array.isArray(friend?.pets) ? friend.pets : []).slice(0, 2).map((pet: any) => safeName(pet?.nickname, '宝宝')).join('、');
             text(photo, 'Pets', petNames || '暂未展示宝宝', 0, -8, 250, 34, 14, CuteTheme.caramel, 'center', true);
             button(photo, 'Challenge', '切磋', -68, -72, 120, 48, () => { this.selectedFriendUserId = Number(friend?.userId || friend?.id || 0); this.adventureMode = 'friend'; this.showPage('adventure'); }, { icon: '⚔', fill: CuteTheme.sky, fontSize: 14, radius: 20 });
             button(photo, 'Marriage', '结缘', 68, -72, 120, 48, () => { const firstPet = Array.isArray(friend?.pets) ? friend.pets[0] : null; this.marriageTargetPetId = Number(firstPet?.id || 0); this.marriageMode = 'match'; this.showPage('marriage'); },
                 { icon: '💞', fill: CuteTheme.pink, fontSize: 14, radius: 20, disabled: !(Array.isArray(friend?.pets) && friend.pets.length) });
+            button(photo, 'Remove', '×', 126, 92, 34, 34, () => this.openSecondaryConfirmation({
+                title: '删除好友',
+                message: `确认从双方好友列表中删除 ${safeName(friend?.nickname, '这位好友')}？已有结缘关系和宠物蛋不会被删除。`,
+                confirmText: '确认删除',
+                icon: '💔',
+                tone: 'peach',
+                action: () => this.removeFriend(friend),
+            }), { fill: CuteTheme.peach, fontSize: 16, radius: 14 });
         });
     }
 
@@ -2353,7 +2362,8 @@ export class MainUI extends Component {
     private renderFriendDiscover(parent: Node) {
         headingTag(parent, 'DiscoverTitle', '发现新伙伴', 0, 306, 190, CuteTheme.sky);
         text(parent, 'Tip', 'Beta阶段先用玩家ID快速搜索。正式微信版本会支持昵称和好友推荐。', 0, 250, 560, 46, 14, CuteTheme.muted, 'center', true);
-        const keys = ['101', '102', '103', '104'];
+        const currentUserId = Number(GameStore.user?.id || 1);
+        const keys = [currentUserId === 201 ? '202' : '201', currentUserId === 202 ? '201' : '202', '101', '102'];
         keys.forEach((key, index) => button(parent, `Search_${key}`, `ID ${key}`, -225 + index * 150, 187, 132, 46, () => void this.searchFriend(key), { fill: this.friendSearchKeyword === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 14, radius: 19 }));
         button(parent, 'SeedRecommend', '补充测试玩家', 0, 125, 190, 48, () => void this.seedFriends(), { icon: '🐾', fill: CuteTheme.mint, fontSize: 14, radius: 21, disabled: this.busy.has('friends:seed') });
         const rows = this.friendSearchResults;
@@ -2408,17 +2418,21 @@ export class MainUI extends Component {
 
     private renderMarriageProposals(parent: Node) {
         const pending = this.marriageProposals.filter((item) => String(item?.status) === 'pending');
-        headingTag(parent, 'ProposalTitle', `结婚申请 ${pending.length}`, 0, 306, 200, CuteTheme.peach);
+        headingTag(parent, 'ProposalTitle', `待处理申请 ${pending.length}`, 0, 306, 200, CuteTheme.peach);
         if (!this.marriageProposals.length) { text(parent, 'NoProposal', '没有结婚申请记录\n配对后发出的申请会在这里保留72小时。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true); return; }
         const area = this.createScrollArea(parent, 'MarriageProposalScroll', 0, -15, 620, 590, 620, this.marriageProposals.length * 108 + 12, 'vertical');
         this.marriageProposals.forEach((proposal, index) => {
             const incoming = Number(proposal?.targetUserId || 0) === Number(GameStore.user?.id || 1);
             const row = panel(area.content, `Proposal_${proposal?.id ?? index}`, 0, -50 - index * 108, 602, 92, index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255), 22, false, CuteTheme.white, 2);
             text(row, 'Icon', incoming ? '📥' : '📤', -260, 0, 44, 44, 25, CuteTheme.peachDark, 'center', true);
-            text(row, 'Name', `${incoming ? '收到' : '发出'}：宝宝${proposal?.proposerPetId || '-'} × 宝宝${proposal?.targetPetId || '-'}`, -224, 17, 340, 30, 16, CuteTheme.caramel, 'left', true);
-            text(row, 'State', this.statusLabel(proposal?.status), -224, -17, 220, 24, 13, CuteTheme.muted, 'left', true);
+            const proposerName = safeName(proposal?.proposerPet?.nickname, `宝宝${proposal?.proposerPetId || '-'}`);
+            const targetName = safeName(proposal?.targetPet?.nickname, `宝宝${proposal?.targetPetId || '-'}`);
+            const playerName = incoming ? proposal?.proposerUser?.nickname : proposal?.targetUser?.nickname;
+            text(row, 'Name', `${incoming ? '收到' : '发出'}：${proposerName} × ${targetName}`, -224, 17, 340, 30, 16, CuteTheme.caramel, 'left', true);
+            text(row, 'Player', safeName(playerName, incoming ? '好友申请' : '等待好友处理'), -224, -15, 220, 22, 12, CuteTheme.muted, 'left', true);
+            text(row, 'State', this.statusLabel(proposal?.status), 0, -17, 120, 24, 13, CuteTheme.muted, 'left', true);
             if (String(proposal?.status) === 'pending' && incoming) {
-                button(row, 'Accept', '同意', 174, 0, 88, 44, () => this.openSecondaryConfirmation({ title: '确认同意结缘', message: '同意后两只宝宝将建立结缘关系，之后双方按回合轮流获得宠物蛋。', confirmText: '同意结缘', icon: '💞', tone: 'mint', action: () => this.respondMarriageProposal(proposal, true) }), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
+                button(row, 'Accept', '同意', 174, 0, 88, 44, () => this.openSecondaryConfirmation({ title: '确认同意结缘', message: '同意后两只宝宝将建立终生结缘关系，双方会立即各获得一颗独立宠物蛋。', confirmText: '同意结缘', icon: '💞', tone: 'mint', action: () => this.respondMarriageProposal(proposal, true) }), { fill: CuteTheme.mint, fontSize: 13, radius: 19 });
                 button(row, 'Reject', '拒绝', 269, 0, 82, 44, () => this.openSecondaryConfirmation({ title: '确认拒绝申请', message: '拒绝后这条申请会立即失效，对方需要重新发起申请。', confirmText: '确认拒绝', icon: '💌', tone: 'peach', action: () => this.respondMarriageProposal(proposal, false) }), { fill: CuteTheme.peach, fontSize: 13, radius: 19 });
             } else if (String(proposal?.status) === 'pending') button(row, 'Cancel', '撤回', 232, 0, 108, 44, () => this.openSecondaryConfirmation({ title: '撤回结缘申请', message: '撤回后本次申请立即失效，需要配对时可再次发起。', confirmText: '确认撤回', icon: '↩', tone: 'peach', action: () => this.cancelMarriageProposal(proposal) }), { fill: CuteTheme.paper, fontSize: 13, radius: 19 });
             else tag(row, 'Status', this.statusLabel(proposal?.status), 230, 0, 116, CuteTheme.paper, CuteTheme.muted);
@@ -2427,8 +2441,8 @@ export class MainUI extends Component {
 
     private renderMarriageMatch(parent: Node) {
         this.ensureMarriageSelection();
-        const ownPets = GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
-        const targetPets = this.friendPets().filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        const ownPets = GameStore.pets.filter((pet) => this.marriagePetEligibility(pet, 'own').ok);
+        const targetPets = this.friendPets().filter((pet) => this.marriagePetEligibility(pet, 'target').ok);
         const own = ownPets.find((pet) => Number(pet?.id) === this.marriageOwnPetId) || ownPets[0];
         const target = targetPets.find((pet) => Number(pet?.id) === this.marriageTargetPetId) || targetPets[0];
         headingTag(parent, 'MatchTitle', '选择结缘对象', 0, 306, 210, CuteTheme.pink);
@@ -2439,8 +2453,7 @@ export class MainUI extends Component {
         else text(left, 'PetIcon', '🐶', 0, 35, 100, 90, 58, CuteTheme.honeyDark, 'center', true);
         text(left, 'Name', safeName(own?.nickname, '暂无可用宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
         text(left, 'Meta', own ? `Lv.${Number(own?.level || 1)} · ${this.genderText(own)} · 生育力${Number(own?.fertility || 100)}` : '请先获得宝宝', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
-        button(left, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('own', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: ownPets.length < 2 });
-        button(left, 'Next', '下一个', 65, -112, 112, 42, () => this.cycleMarriagePet('own', 1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: ownPets.length < 2 });
+        button(left, 'ChooseOverview', '查看全部宝宝', 0, -112, 214, 42, () => this.openMarriagePetPicker('own'), { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18, disabled: ownPets.length < 1 });
 
         const right = panel(parent, 'TargetPet', 164, 110, 282, 280, new Color(255, 244, 242, 255), 28, true, CuteTheme.white, 3);
         text(right, 'Owner', '好友宝宝', 0, 104, 220, 32, 17, CuteTheme.caramel, 'center', true);
@@ -2448,11 +2461,10 @@ export class MainUI extends Component {
         else text(right, 'PetIcon', '🐱', 0, 35, 100, 90, 58, CuteTheme.peachDark, 'center', true);
         text(right, 'Name', safeName(target?.nickname, '暂无好友宝宝'), 0, -33, 240, 34, 20, CuteTheme.caramel, 'center', true);
         text(right, 'Meta', target ? `Lv.${Number(target?.level || 1)} · ${this.genderText(target)} · 生育力${Number(target?.fertility || 100)}` : '先添加有宝宝的好友', 0, -73, 246, 30, 13, CuteTheme.muted, 'center', true);
-        button(right, 'Prev', '上一个', -65, -112, 112, 42, () => this.cycleMarriagePet('target', -1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: targetPets.length < 2 });
-        button(right, 'Next', '下一个', 65, -112, 112, 42, () => this.cycleMarriagePet('target', 1), { fill: CuteTheme.paperWarm, fontSize: 12, radius: 18, disabled: targetPets.length < 2 });
+        button(right, 'ChooseOverview', '查看好友宝宝', 0, -112, 214, 42, () => this.openMarriagePetPicker('target'), { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18, disabled: targetPets.length < 1 });
 
         text(parent, 'Ribbon', '────── 🎀 三代血缘自动校验 🎀 ──────', 0, -80, 560, 42, 16, CuteTheme.peachDark, 'center', true);
-        text(parent, 'Rules', '申请有效期72小时；通过后双方轮流获得宠物蛋。\n每次产蛋消耗500金币、繁育凭证和双方20点生育力。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
+        text(parent, 'Rules', '申请有效期72小时；通过后双方立即各获得一颗独立宠物蛋。\n结缘后再次产蛋会消耗金币、繁育凭证和双方生育力。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
         button(parent, 'Propose', '发送结缘申请', 0, -245, 250, 64, () => this.openSecondaryConfirmation({
             title: '发送结缘申请',
             message: `${safeName(own?.nickname, '我的宝宝')} 与 ${safeName(target?.nickname, '好友宝宝')} 的申请将在72小时内有效，通过后三代血缘仍会由服务器校验。`,
@@ -3077,6 +3089,7 @@ export class MainUI extends Component {
             || this.hatchAcceleratorOpen
             || this.homePetPickerOpen
             || Boolean(this.fusionPickerSide)
+            || Boolean(this.marriagePickerKind)
             || Boolean(this.pendingIncubation)
             || this.fusionConfirmOpen;
         this.utilityLayer.active = active;
@@ -3223,6 +3236,39 @@ export class MainUI extends Component {
             return;
         }
 
+        if (this.marriagePickerKind) {
+            const kind = this.marriagePickerKind;
+            const pets = kind === 'own'
+                ? GameStore.pets.filter((pet) => !pet?.isEgg)
+                : this.friendPets().filter((pet) => !pet?.isEgg);
+            const card = panel(this.utilityLayer, 'MarriagePetPicker', 0, 0, 650, 920, new Color(255, 250, 232, 255), 38, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', kind === 'own' ? '选择我的结缘宝宝' : '选择好友结缘宝宝', 0, 398, 250, CuteTheme.pink);
+            text(card, 'Hint', '显示全部宝宝；不可配对的宝宝会置灰并标明原因。', 0, 354, 570, 34, 15, CuteTheme.muted, 'center', true);
+            const rows = Math.max(1, Math.ceil(pets.length / 2));
+            const area = this.createScrollArea(card, 'MarriagePetScroll', 0, 12, 604, 650, 604, Math.max(650, rows * 144 + 10), 'vertical');
+            pets.forEach((pet, index) => {
+                const id = Number(pet?.id || 0);
+                const eligibility = this.marriagePetEligibility(pet, kind);
+                const selected = id === (kind === 'own' ? this.marriageOwnPetId : this.marriageTargetPetId);
+                const col = index % 2;
+                const rowIndex = Math.floor(index / 2);
+                const item = panel(area.content, `MarriagePet_${id}`, -151 + col * 302, -66 - rowIndex * 144, 286, 132, eligibility.ok ? (selected ? new Color(255, 240, 211, 255) : CuteTheme.paperWarm) : new Color(228, 226, 218, 255), 23, true, selected ? CuteTheme.honeyDark : CuteTheme.white, selected ? 3 : 2);
+                image(item, 'Art', getPetArtPath(pet, 'thumb'), -98, 18, 74, 74, CuteTheme.paperWarm);
+                text(item, 'Name', safeName(pet?.nickname, '宝宝'), -52, 40, 178, 28, 16, CuteTheme.caramel, 'left', true);
+                text(item, 'Meta', `${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)} · ${this.genderText(pet)}`, -52, 8, 180, 26, 13, CuteTheme.muted, 'left', true);
+                text(item, 'Owner', kind === 'target' ? safeName(pet?.friendName, `玩家${pet?.friendUserId || ''}`) : `战力 ${formatNumber(this.battleAttributesOf(pet).power)}`, -52, -24, 188, 24, 12, CuteTheme.muted, 'left', true);
+                button(item, 'Choose', eligibility.ok ? (selected ? '已选择' : '选择') : eligibility.reason, 74, -44, 104, 34, () => {
+                    if (!eligibility.ok) return;
+                    if (kind === 'own') this.marriageOwnPetId = id;
+                    else this.marriageTargetPetId = id;
+                    this.closeUtilityModal();
+                    this.renderCurrentPage(false);
+                }, { fill: eligibility.ok ? CuteTheme.pink : new Color(210, 208, 202, 255), fontSize: 11, radius: 15, disabled: !eligibility.ok });
+            });
+            button(card, 'Close', '关闭', 0, -410, 170, 54, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 23 });
+            return;
+        }
+
         if (this.pendingIncubation) {
             const egg=this.pendingIncubation.egg;
             const card=panel(this.utilityLayer,'IncubationConfirm',0,0,570,570,new Color(255,250,232,255),38,true,CuteTheme.caramelSoft,4);
@@ -3286,6 +3332,7 @@ export class MainUI extends Component {
         this.inventoryUseCount=1;
         this.shopPurchaseOpen=false;
         this.fusionPickerSide=null;
+        this.marriagePickerKind=null;
         this.pendingIncubation=null;
         this.fusionConfirmOpen=false;
         this.secondaryConfirmation=null;
@@ -3323,6 +3370,25 @@ export class MainUI extends Component {
     private openFusionPicker(side:'A'|'B') {
         this.fusionPickerSide=side;
         this.renderUtilityModal();
+    }
+
+    private openMarriagePetPicker(kind: 'own' | 'target') {
+        this.marriagePickerKind = kind;
+        this.renderUtilityModal();
+    }
+
+    private marriagePetEligibility(pet: any, kind: 'own' | 'target') {
+        if (!pet || pet?.isEgg) return { ok: false, reason: '不可使用' };
+        if (pet?.married || pet?.partnerId || pet?.marriedPetId) return { ok: false, reason: '已结缘' };
+        if (pet?.isLocked) return { ok: false, reason: '已锁定' };
+        if (pet?.tradeStatus === 'listed' || pet?.tradeListingId) return { ok: false, reason: '寄售中' };
+        const gender = String(pet?.gender || '').toLowerCase();
+        if (!['male', 'female'].includes(gender)) return { ok: false, reason: '未生成性别' };
+        const otherId = kind === 'own' ? this.marriageTargetPetId : this.marriageOwnPetId;
+        const pool = kind === 'own' ? this.friendPets() : GameStore.pets;
+        const other = pool.find((item) => Number(item?.id || 0) === Number(otherId || 0));
+        if (other && String(other?.gender || '').toLowerCase() === gender) return { ok: false, reason: '性别不符' };
+        return { ok: true, reason: '' };
     }
 
     private inventoryQuantity(itemCode:string) {
@@ -3895,6 +3961,21 @@ export class MainUI extends Component {
         } finally { this.busy.delete(key); }
     }
 
+    private async removeFriend(friend: any) {
+        const friendUserId = Number(friend?.userId || friend?.id || 0);
+        const key = `friend:remove:${friendUserId}`;
+        if (!friendUserId || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/friend/remove', { friendUserId });
+            if (result?.success === false) return this.showToast(result?.message || '删除好友失败');
+            this.showToast('已从双方好友列表删除');
+            await this.refreshPageData('friends');
+        } finally {
+            this.busy.delete(key);
+        }
+    }
+
     private friendPets() {
         const pets: any[] = [];
         for (const friend of GameStore.friends) {
@@ -3904,10 +3985,15 @@ export class MainUI extends Component {
     }
 
     private ensureMarriageSelection() {
-        const own = GameStore.pets.filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
-        const targets = this.friendPets().filter((pet) => !pet?.isEgg && !pet?.married && String(pet?.tradeStatus || '') !== 'listed');
+        const available = (pet: any) => !pet?.isEgg && !pet?.married && !pet?.partnerId && !pet?.marriedPetId && !pet?.isLocked && String(pet?.tradeStatus || '') !== 'listed' && !pet?.tradeListingId && ['male', 'female'].includes(String(pet?.gender || '').toLowerCase());
+        const own = GameStore.pets.filter(available);
+        const targets = this.friendPets().filter(available);
         if (!own.some((pet) => Number(pet?.id) === this.marriageOwnPetId)) this.marriageOwnPetId = Number(own[0]?.id || 0);
-        if (!targets.some((pet) => Number(pet?.id) === this.marriageTargetPetId)) this.marriageTargetPetId = Number(targets[0]?.id || 0);
+        const ownPet = own.find((pet) => Number(pet?.id) === this.marriageOwnPetId);
+        const compatibleTargets = ownPet
+            ? targets.filter((pet) => String(pet?.gender || '').toLowerCase() !== String(ownPet?.gender || '').toLowerCase())
+            : targets;
+        if (!compatibleTargets.some((pet) => Number(pet?.id) === this.marriageTargetPetId)) this.marriageTargetPetId = Number(compatibleTargets[0]?.id || 0);
     }
 
     private cycleMarriagePet(kind: 'own' | 'target', delta: number) {
@@ -3944,8 +4030,12 @@ export class MainUI extends Component {
             const result = await ApiClient.post('/marriage/proposal/respond', { proposalId: proposal?.id, accept });
             if (result?.success === false) return this.showToast(result?.message || '处理申请失败');
             CuteFeedback.playSuccess();
-            this.showToast(accept ? '结缘成功' : '已拒绝申请');
-            await this.refreshPageData('marriage');
+            this.showToast(accept ? (result?.duplicate ? '结缘已完成，宠物蛋不会重复发放' : '结缘成功，双方已各获得一颗宠物蛋') : '已拒绝申请');
+            const [eggs] = await Promise.all([
+                accept ? ApiClient.get('/hatchery/eggs') : Promise.resolve(null),
+                this.refreshPageData('marriage'),
+            ]);
+            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
         } finally { this.busy.delete(key); }
     }
 

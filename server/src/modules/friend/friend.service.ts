@@ -59,10 +59,15 @@ export class FriendService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async getFriends(userId = DEFAULT_USER_ID) {
+  async getFriends(userId = DEFAULT_USER_ID, page = 1, pageSize = 50) {
+    await this.touchActivity(userId);
+    const safePage = Math.max(1, Math.floor(Number(page || 1)));
+    const safePageSize = Math.max(1, Math.min(100, Math.floor(Number(pageSize || 50))));
     const relations = await this.friendRepository.find({
       where: { userId },
       order: { id: 'ASC' },
+      skip: (safePage - 1) * safePageSize,
+      take: safePageSize,
     });
     const users = await this.userRepository.find();
     const userMap = new Map(users.map((user) => [user.id, user]));
@@ -79,6 +84,8 @@ export class FriendService {
         nickname: friendUser.nickname,
         avatar: friendUser.avatar,
         level: friendUser.level,
+        lastActiveAt: friendUser.lastActiveAt,
+        online: this.isRecentlyActive(friendUser.lastActiveAt),
         pets: petResult.pets.filter((pet) => !pet.isEgg),
         since: relation.createTime,
       });
@@ -87,6 +94,8 @@ export class FriendService {
     return {
       success: true,
       count: friends.length,
+      page: safePage,
+      pageSize: safePageSize,
       friends,
       data: friends,
     };
@@ -353,6 +362,7 @@ export class FriendService {
   }
 
   async searchPlayers(userId: number, keyword: string) {
+    await this.touchActivity(userId);
     const normalized = String(keyword || '').trim().toLowerCase();
     if (!normalized) {
       return {
@@ -376,7 +386,8 @@ export class FriendService {
           String(user.id) === normalized ||
           String(user.nickname || '')
             .toLowerCase()
-            .includes(normalized),
+            .includes(normalized) ||
+          String(user.openid || '').toLowerCase() === normalized,
       )
       .slice(0, 20)
       .map((user) => ({
@@ -384,6 +395,8 @@ export class FriendService {
         nickname: user.nickname,
         avatar: user.avatar,
         level: user.level,
+        lastActiveAt: user.lastActiveAt,
+        online: this.isRecentlyActive(user.lastActiveAt),
         isFriend: friendIds.has(user.id),
       }));
 
@@ -408,12 +421,38 @@ export class FriendService {
     return result.friends;
   }
 
+  async getFriendPets(userId: number, friendUserId: number) {
+    if (!friendUserId || friendUserId === userId) {
+      return { success: false, message: 'Invalid friend user', pets: [] };
+    }
+    const relation = await this.friendRepository.findOne({
+      where: { userId, friendUserId },
+    });
+    if (!relation) {
+      return { success: false, message: 'Players are not friends', pets: [] };
+    }
+    const result = await this.petService.getUserPets(friendUserId);
+    const pets = result.pets.filter((pet) => !pet.isEgg);
+    return { success: true, friendUserId, count: pets.length, pets, data: pets };
+  }
+
   private async ensureRelation(userId: number, friendUserId: number) {
     return this.ensureRelationWithRepository(
       this.friendRepository,
       userId,
       friendUserId,
     );
+  }
+
+  private async touchActivity(userId: number) {
+    if (userId > 0) {
+      await this.userRepository.update({ id: userId }, { lastActiveAt: new Date() });
+    }
+  }
+
+  private isRecentlyActive(value?: Date | null) {
+    if (!value) return false;
+    return Date.now() - new Date(value).getTime() <= 5 * 60 * 1000;
   }
 
   private async ensureRelationWithRepository(

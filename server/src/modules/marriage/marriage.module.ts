@@ -7,6 +7,7 @@ import { Friend } from '../friend/friend.entity';
 import { MailModule } from '../mail/mail.module';
 import { Pet } from '../pet/pet.entity';
 import { PetModule } from '../pet/pet.module';
+import { User } from '../user/user.entity';
 import { LineageService } from './lineage.service';
 import { MarriageController } from './marriage.controller';
 import { MarriageProposal } from './marriage-proposal.entity';
@@ -20,6 +21,7 @@ import { MarriageService } from './marriage.service';
       MarriageProposal,
       Pet,
       Friend,
+      User,
     ]),
     EggModule,
     PetModule,

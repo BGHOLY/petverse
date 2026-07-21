@@ -15,6 +15,9 @@ export class Egg {
   ownerId: number;
 
   @Column({ default: 0 })
+  marriageId: number;
+
+  @Column({ default: 0 })
   parentAId: number;
 
   @Column({ default: 0 })

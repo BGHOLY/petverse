@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Post,
   Req,
@@ -9,7 +10,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { PET_SPECIES_CONFIGS } from './config/pet-species.config';
 import { PetService } from './pet.service';
 
@@ -18,8 +19,8 @@ export class PetController {
   constructor(private readonly petService: PetService) {}
 
   @Get()
-  getMyPetsForBeta() {
-    return this.petService.getUserPets(DEFAULT_USER_ID);
+  getMyPetsForBeta(@Headers('x-user-id') userId?: string) {
+    return this.petService.getUserPets(resolveRequestUserId(userId));
   }
 
   @Get('all')
@@ -28,8 +29,8 @@ export class PetController {
   }
 
   @Get('my')
-  getMyPets() {
-    return this.petService.getUserPets(DEFAULT_USER_ID);
+  getMyPets(@Headers('x-user-id') userId?: string) {
+    return this.petService.getUserPets(resolveRequestUserId(userId));
   }
 
   @Get('my-auth')
@@ -48,10 +49,10 @@ export class PetController {
   }
 
   @Post('create')
-  async createPet(@Body() body: any) {
+  async createPet(@Headers('x-user-id') userId: string, @Body() body: any) {
     try {
       const pet = await this.petService.createPet(
-        DEFAULT_USER_ID,
+        resolveRequestUserId(userId),
         {
           nickname: body?.nickname,
           species: body?.species,
@@ -96,84 +97,84 @@ export class PetController {
   }
 
   @Post('rename')
-  renamePet(@Body() body: any) {
+  renamePet(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.renamePet(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       String(body?.nickname || ''),
     );
   }
 
   @Post('lock')
-  setPetLock(@Body() body: any) {
+  setPetLock(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.setPetLock(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       body?.locked !== false,
     );
   }
 
   @Post('favorite')
-  setPetFavorite(@Body() body: any) {
+  setPetFavorite(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.setPetFavorite(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       body?.favorite !== false,
     );
   }
 
   @Post('release')
-  releasePet(@Body() body: any) {
+  releasePet(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.releasePet(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
     );
   }
 
   @Post('feed')
-  feedPet(@Body() body: any) {
+  feedPet(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.feedPet(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0) || undefined,
     );
   }
 
   @Post('level-up')
-  levelUp(@Body() body: any) {
+  levelUp(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.levelUpPet(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0) || undefined,
       Number(body?.exp || 100),
     );
   }
 
   @Post('hatch-starter')
-  hatchStarterEgg() {
-    return this.petService.hatchStarterEgg(DEFAULT_USER_ID);
+  hatchStarterEgg(@Headers('x-user-id') userId?: string) {
+    return this.petService.hatchStarterEgg(resolveRequestUserId(userId));
   }
 
   @Post('stats/allocate')
-  allocateStats(@Body() body: any) {
+  allocateStats(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.allocateStatPoints(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       body?.points || body || {},
     );
   }
 
   @Post('stats/recommend')
-  recommendStats(@Body() body: any) {
+  recommendStats(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.applyRecommendedStatPoints(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       String(body?.template || 'auto'),
     );
   }
 
   @Post('stats/reset')
-  resetStats(@Body() body: any) {
+  resetStats(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.petService.resetStatPoints(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
     );
   }

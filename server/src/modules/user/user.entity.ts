@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('users')
@@ -41,6 +42,12 @@ export class User {
   @Column({ default: 50 })
   petCapacity: number;
 
+  @Column({ type: 'timestamp', nullable: true })
+  lastActiveAt: Date;
+
   @CreateDateColumn()
   createTime: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

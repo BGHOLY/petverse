@@ -3,7 +3,9 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
+  Query,
 } from '@nestjs/common';
 
 import { resolveRequestUserId } from '../../common/request-user.util';
@@ -14,13 +16,28 @@ export class FriendController {
   constructor(private readonly friendService: FriendService) {}
 
   @Get()
-  getFriends(@Headers('x-user-id') userId?: string) {
-    return this.friendService.getFriends(resolveRequestUserId(userId));
+  getFriends(
+    @Headers('x-user-id') userId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.friendService.getFriends(resolveRequestUserId(userId), Number(page || 1), Number(pageSize || 50));
   }
 
   @Get('list')
   getMyFriends(@Headers('x-user-id') userId?: string) {
     return this.friendService.getFriends(resolveRequestUserId(userId));
+  }
+
+  @Get(':friendUserId/pets')
+  getFriendPets(
+    @Headers('x-user-id') userId: string,
+    @Param('friendUserId') friendUserId: string,
+  ) {
+    return this.friendService.getFriendPets(
+      resolveRequestUserId(userId),
+      Number(friendUserId || 0),
+    );
   }
 
   @Post('seed')

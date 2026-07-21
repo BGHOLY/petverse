@@ -19,6 +19,42 @@ export class UserService {
     return this.getOrCreateDefaultUser();
   }
 
+  async getUserById(userId = DEFAULT_USER_ID): Promise<User | null> {
+    if (userId === DEFAULT_USER_ID) return this.getOrCreateDefaultUser();
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) return null;
+    user.lastActiveAt = new Date();
+    return this.userRepository.save(user);
+  }
+
+  async ensureDevUser(
+    id: number,
+    openid: string,
+    nickname: string,
+  ): Promise<User> {
+    let user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      user = this.userRepository.create({
+        id,
+        openid,
+        unionid: '',
+        nickname,
+        avatar: '',
+        level: 10,
+        vipLevel: 0,
+        exp: 0,
+        gold: 10000,
+        diamond: 500,
+        petCapacity: 50,
+        lastActiveAt: new Date(),
+      } as Partial<User>);
+      return this.userRepository.save(user);
+    }
+
+    user.lastActiveAt = new Date();
+    return this.userRepository.save(user);
+  }
+
   async getOrCreateDefaultUser(): Promise<User> {
     let user = await this.userRepository.findOne({
       where: { id: DEFAULT_USER_ID },
@@ -47,8 +83,16 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async getProfile() {
-    const user = await this.getOrCreateDefaultUser();
+  async getProfile(userId = DEFAULT_USER_ID) {
+    const user = await this.getUserById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: 'User not found',
+        user: null,
+        pets: [],
+      };
+    }
 
     const pets = await this.petRepository.find({
       where: { ownerId: user.id },
@@ -56,6 +100,7 @@ export class UserService {
     });
 
     return {
+      success: true,
       user: {
         id: user.id,
         nickname: user.nickname,
@@ -65,6 +110,7 @@ export class UserService {
         gold: user.gold,
         diamond: user.diamond,
         vipLevel: user.vipLevel,
+        lastActiveAt: user.lastActiveAt,
       },
       pets: pets.map((pet) => ({
         id: pet.id,

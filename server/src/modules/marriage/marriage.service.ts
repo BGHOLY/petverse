@@ -12,11 +12,13 @@ import {
   EconomyService,
 } from '../economy/economy.service';
 import { EggService } from '../egg/egg.service';
+import { Egg } from '../egg/egg.entity';
 import { Friend } from '../friend/friend.entity';
 import { DEFAULT_USER_ID } from '../game-data';
 import { MailService } from '../mail/mail.service';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
+import { User } from '../user/user.entity';
 import { LineageService } from './lineage.service';
 import { MarriageProposal } from './marriage-proposal.entity';
 import { Marriage } from './marriage.entity';
@@ -48,6 +50,9 @@ export class MarriageService {
     @InjectRepository(Friend)
     private readonly friendRepository: Repository<Friend>,
 
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+
     private readonly eggService: EggService,
     private readonly petService: PetService,
     private readonly economyService: EconomyService,
@@ -76,6 +81,11 @@ export class MarriageService {
         })
       : [];
     const petMap = new Map(pets.map((pet) => [pet.id, pet]));
+    const ownerIds = [...new Set(marriages.flatMap((item) => [item.ownerAId, item.ownerBId]))];
+    const owners = ownerIds.length
+      ? await this.userRepository.find({ where: { id: In(ownerIds) } })
+      : [];
+    const ownerMap = new Map(owners.map((user) => [user.id, user]));
 
     const data = marriages.map((marriage) => {
       const petA = petMap.get(marriage.petAId);
@@ -97,6 +107,10 @@ export class MarriageService {
         breedingCost: BREEDING_COST,
         fertilityCost: FERTILITY_COST,
         pets: [petA, petB].filter(Boolean),
+        marriedAt: marriage.createdAt,
+        counterpartUser: this.toPublicUser(
+          ownerMap.get(marriage.ownerAId === userId ? marriage.ownerBId : marriage.ownerAId),
+        ),
       };
     });
 
@@ -126,10 +140,25 @@ export class MarriageService {
       order: { id: 'DESC' },
       take: 100,
     });
+    const petIds = [...new Set(proposals.flatMap((item) => [item.proposerPetId, item.targetPetId]))];
+    const userIds = [...new Set(proposals.flatMap((item) => [item.proposerUserId, item.targetUserId]))];
+    const [pets, users]: [Pet[], User[]] = await Promise.all([
+      petIds.length ? this.petRepository.find({ where: { id: In(petIds) } }) : [],
+      userIds.length ? this.userRepository.find({ where: { id: In(userIds) } }) : [],
+    ]);
+    const petMap = new Map(pets.map((pet) => [pet.id, pet]));
+    const userMap = new Map(users.map((user) => [user.id, user]));
+    const data = proposals.map((proposal) => ({
+      ...proposal,
+      proposerPet: petMap.get(proposal.proposerPetId) || null,
+      targetPet: petMap.get(proposal.targetPetId) || null,
+      proposerUser: this.toPublicUser(userMap.get(proposal.proposerUserId)),
+      targetUser: this.toPublicUser(userMap.get(proposal.targetUserId)),
+    }));
     return {
       success: true,
-      proposals,
-      data: proposals,
+      proposals: data,
+      data,
     };
   }
 
@@ -177,6 +206,7 @@ export class MarriageService {
           );
           await this.assertPetMarriageState(petA);
           await this.assertPetMarriageState(petB);
+          this.assertGenderCompatibility(petA, petB);
 
           const lineage = await this.lineageService.checkCompatibility(
             petA,
@@ -187,22 +217,20 @@ export class MarriageService {
             throw new Error(lineage.reason);
           }
 
-          const existing = await manager.findOne(MarriageProposal, {
-            where: [
-              {
-                proposerPetId: petA.id,
-                targetPetId: petB.id,
-                status: 'pending',
-              },
-              {
-                proposerPetId: petB.id,
-                targetPetId: petA.id,
-                status: 'pending',
-              },
-            ],
+          const pending = await manager.getRepository(MarriageProposal).find({
+            where: { status: 'pending' },
             lock: { mode: 'pessimistic_write' },
           });
+          const existing = pending.find((item) =>
+            [item.proposerPetId, item.targetPetId].includes(petA.id) ||
+            [item.proposerPetId, item.targetPetId].includes(petB.id),
+          );
           if (existing) {
+            const samePair = [existing.proposerPetId, existing.targetPetId].includes(petA.id) &&
+              [existing.proposerPetId, existing.targetPetId].includes(petB.id);
+            if (!samePair) {
+              throw new Error('One pet is already reserved by another pending proposal');
+            }
             return {
               success: true,
               duplicate: true,
@@ -269,12 +297,36 @@ export class MarriageService {
             where: {
               id: proposalId,
               targetUserId: userId,
-              status: 'pending',
             },
             lock: { mode: 'pessimistic_write' },
           });
           if (!proposal) {
-            throw new Error('Pending marriage proposal not found');
+            throw new Error('Marriage proposal not found');
+          }
+          if (proposal.status !== 'pending') {
+            if (accept && ['accepted', 'completed'].includes(proposal.status) && proposal.marriageId) {
+              const marriage = await manager.findOne(Marriage, {
+                where: { id: proposal.marriageId },
+              });
+              const eggs = await manager.getRepository(Egg).find({
+                where: { marriageId: proposal.marriageId, source: 'marriage_initial' },
+                order: { id: 'ASC' },
+              });
+              return {
+                success: true,
+                accepted: true,
+                duplicate: true,
+                proposal,
+                marriage,
+                eggs: eggs.map((egg) => this.eggService.toEggView(egg)),
+              };
+            }
+            return {
+              success: true,
+              accepted: false,
+              duplicate: true,
+              proposal,
+            };
           }
           if (
             proposal.expiresAt &&
@@ -317,6 +369,7 @@ export class MarriageService {
           );
           await this.assertPetMarriageState(petA);
           await this.assertPetMarriageState(petB);
+          this.assertGenderCompatibility(petA, petB);
           const lineage = await this.lineageService.checkCompatibility(
             petA,
             petB,
@@ -330,7 +383,13 @@ export class MarriageService {
             petB,
             proposal.id,
           );
-          proposal.status = 'accepted';
+          const initialEggs = await this.createInitialMarriageEggs(
+            manager,
+            marriageResult.marriage,
+            petA,
+            petB,
+          );
+          proposal.status = 'completed';
           proposal.resolvedAt = new Date();
           proposal.marriageId = Number(marriageResult.marriage?.id || 0);
           await manager.save(MarriageProposal, proposal);
@@ -363,6 +422,7 @@ export class MarriageService {
             ...marriageResult,
             accepted: true,
             proposal,
+            eggs: initialEggs.map((egg) => this.eggService.toEggView(egg)),
           };
         },
       );
@@ -392,26 +452,22 @@ export class MarriageService {
   }
 
   async cancelProposal(userId: number, proposalId: number) {
-    const proposal = await this.proposalRepository.findOne({
-      where: {
-        id: proposalId,
-        proposerUserId: userId,
-        status: 'pending',
-      },
+    return this.dataSource.transaction(async (manager) => {
+      const proposal = await manager.findOne(MarriageProposal, {
+        where: { id: proposalId, proposerUserId: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!proposal) {
+        return { success: false, message: 'Marriage proposal not found' };
+      }
+      if (proposal.status !== 'pending') {
+        return { success: true, duplicate: true, proposal };
+      }
+      proposal.status = 'cancelled';
+      proposal.resolvedAt = new Date();
+      await manager.save(MarriageProposal, proposal);
+      return { success: true, duplicate: false, proposal };
     });
-    if (!proposal) {
-      return {
-        success: false,
-        message: 'Pending marriage proposal not found',
-      };
-    }
-    proposal.status = 'cancelled';
-    proposal.resolvedAt = new Date();
-    await this.proposalRepository.save(proposal);
-    return {
-      success: true,
-      proposal,
-    };
   }
 
   async createMarriage(
@@ -454,6 +510,7 @@ export class MarriageService {
         if (!lockedA || !lockedB) throw new Error('Pet not found');
         await this.assertPetMarriageState(lockedA);
         await this.assertPetMarriageState(lockedB);
+        this.assertGenderCompatibility(lockedA, lockedB);
         const lineage = await this.lineageService.checkCompatibility(
           lockedA,
           lockedB,
@@ -907,6 +964,7 @@ export class MarriageService {
   ) {
     await this.assertPetMarriageState(petA);
     await this.assertPetMarriageState(petB);
+    this.assertGenderCompatibility(petA, petB);
 
     const existing = await manager.findOne(Marriage, {
       where: [
@@ -956,6 +1014,72 @@ export class MarriageService {
     };
   }
 
+  private async createInitialMarriageEggs(
+    manager: EntityManager,
+    marriage: Marriage,
+    petA: Pet,
+    petB: Pet,
+  ) {
+    const repository = manager.getRepository(Egg);
+    const existing = await repository.find({
+      where: { marriageId: marriage.id, source: 'marriage_initial' },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (existing.length >= 2) return existing;
+
+    const owners = [...new Set([marriage.ownerAId, marriage.ownerBId])];
+    for (const ownerId of owners) {
+      if (existing.some((egg) => egg.ownerId === ownerId)) continue;
+      const seed = `marriage-${marriage.id}-owner-${ownerId}-initial`;
+      const blueprint = this.petService.buildOffspringBlueprint(
+        petA,
+        petB,
+        undefined,
+        'breed',
+        seed,
+      );
+      const egg = await this.eggService.createEgg(
+        {
+          ownerId,
+          marriageId: marriage.id,
+          parentAId: petA.id,
+          parentBId: petB.id,
+          rarityPotential: blueprint.rarity,
+          quality: blueprint.quality,
+          species: blueprint.species,
+          speciesCode: blueprint.speciesCode,
+          isMutant: blueprint.isMutant,
+          skillSlotCount: blueprint.skillSlotCount,
+          aptitudes: blueprint.aptitudes,
+          growth: blueprint.growth,
+          generation: blueprint.generation,
+          specialSkillCount: blueprint.specialSkillCount,
+          geneCode: blueprint.geneCode,
+          geneScore: blueprint.geneScore,
+          bodyType: blueprint.bodyType,
+          color: blueprint.color,
+          pattern: blueprint.pattern,
+          inheritedSkills: blueprint.inheritedSkills,
+          mutationData: blueprint.mutationData,
+          parentSnapshot: blueprint.parentSnapshot,
+          offspringData: blueprint,
+          randomSeed: blueprint.seed,
+          configVersion: '2.4.0-social',
+          source: 'marriage_initial',
+        },
+        manager,
+      );
+      existing.push(egg);
+    }
+
+    marriage.eggCount = Math.max(Number(marriage.eggCount || 0), existing.length);
+    marriage.lastEggOwnerId = 0;
+    marriage.nextEggOwnerId = marriage.ownerAId;
+    await manager.save(Marriage, marriage);
+    return existing;
+  }
+
   private async assertFriendship(
     manager: EntityManager,
     userAId: number,
@@ -991,6 +1115,28 @@ export class MarriageService {
     if (Number(pet.level || 1) < 1) {
       throw new Error('Both pets must be at least level 1');
     }
+  }
+
+  private assertGenderCompatibility(petA: Pet, petB: Pet) {
+    const genderA = String(petA.gender || '').toLowerCase();
+    const genderB = String(petB.gender || '').toLowerCase();
+    if (!['male', 'female'].includes(genderA) || !['male', 'female'].includes(genderB)) {
+      throw new Error('Both pets must have a fixed gender before marriage');
+    }
+    if (genderA === genderB) {
+      throw new Error('Current marriage rule requires one male pet and one female pet');
+    }
+  }
+
+  private toPublicUser(user?: User | null) {
+    if (!user) return null;
+    return {
+      id: user.id,
+      nickname: user.nickname,
+      avatar: user.avatar,
+      level: user.level,
+      lastActiveAt: user.lastActiveAt,
+    };
   }
 
   private async assertBreedReady(pet: Pet) {

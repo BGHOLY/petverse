@@ -1,5 +1,6 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Req, UseGuards } from '@nestjs/common';
 
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserService } from './user.service';
 
@@ -8,8 +9,8 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  async getDefaultUser() {
-    const user = await this.userService.getCurrentUser();
+  async getDefaultUser(@Headers('x-user-id') userId?: string) {
+    const user = await this.userService.getUserById(resolveRequestUserId(userId));
     return {
       success: true,
       user,
@@ -18,10 +19,10 @@ export class UserController {
   }
 
   @Get('profile')
-  async getProfile() {
+  async getProfile(@Headers('x-user-id') userId?: string) {
     return {
       success: true,
-      data: await this.userService.getProfile(),
+      data: await this.userService.getProfile(resolveRequestUserId(userId)),
     };
   }
 

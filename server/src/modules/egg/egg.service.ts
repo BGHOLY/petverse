@@ -16,6 +16,7 @@ import { Egg } from './egg.entity';
 
 export interface CreateEggData {
   ownerId: number;
+  marriageId?: number;
   parentAId?: number;
   parentBId?: number;
   rarityPotential: number;
@@ -105,6 +106,7 @@ export class EggService {
 
     const egg = eggRepository.create({
       ownerId: data.ownerId,
+      marriageId: Number(data.marriageId || 0),
       parentAId: data.parentAId || 0,
       parentBId: data.parentBId || 0,
       rarityPotential: rarity,

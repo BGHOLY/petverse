@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { HatcheryService } from './hatchery.service';
 
 @Controller('hatchery')
@@ -8,28 +8,28 @@ export class HatcheryController {
   constructor(private readonly hatcheryService: HatcheryService) {}
 
   @Get('eggs')
-  async getEggs() {
-    return this.hatcheryService.getEggs(DEFAULT_USER_ID);
+  async getEggs(@Headers('x-user-id') userId?: string) {
+    return this.hatcheryService.getEggs(resolveRequestUserId(userId));
   }
 
   @Get('eggs/:id')
-  async getEggDetail(@Param('id') id: string) {
-    return this.hatcheryService.getEggDetail(DEFAULT_USER_ID, Number(id));
+  async getEggDetail(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+    return this.hatcheryService.getEggDetail(resolveRequestUserId(userId), Number(id));
   }
 
   @Post('start')
-  async start(@Body() body: any) {
+  async start(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.hatcheryService.startIncubation(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.eggId || 0),
       Number(body?.slot || body?.incubatorSlot || 0),
     );
   }
 
   @Post('accelerate')
-  async accelerate(@Body() body: any) {
+  async accelerate(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.hatcheryService.accelerate(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.eggId || 0),
       String(body?.itemCode || ''),
       Number(body?.quantity || 1),
@@ -37,9 +37,9 @@ export class HatcheryController {
   }
 
   @Post('hatch')
-  async hatch(@Body() body: any) {
+  async hatch(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.hatcheryService.hatch(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.eggId || 0) || undefined,
       Boolean(body?.force),
     );

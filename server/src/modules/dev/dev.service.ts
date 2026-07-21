@@ -180,4 +180,77 @@ export class DevService {
       ...hatchery,
     };
   }
+
+  async seedSocial() {
+    if (process.env.NODE_ENV === 'production') {
+      return { success: false, message: 'Social test seeding is disabled in production' };
+    }
+
+    const accountSpecs = [
+      {
+        id: 201,
+        openid: 'petverse_social_a',
+        nickname: '星愿玩家A',
+        pets: [
+          ['晨曦猫', 'PET004', 'male'],
+          ['流光狐', 'PET001', 'female'],
+          ['青风兔', 'PET003', 'male'],
+          ['潮歌獭', 'PET006', 'female'],
+          ['银羽鸮', 'PET010', 'male'],
+        ],
+      },
+      {
+        id: 202,
+        openid: 'petverse_social_b',
+        nickname: '月愿玩家B',
+        pets: [
+          ['月铃猫', 'PET004', 'female'],
+          ['赤霞狐', 'PET001', 'male'],
+          ['云跃兔', 'PET003', 'female'],
+          ['海星獭', 'PET006', 'male'],
+          ['霜语鸮', 'PET010', 'female'],
+        ],
+      },
+    ] as const;
+
+    await this.itemService.seedDefaultItems();
+    const accounts = [];
+    for (const spec of accountSpecs) {
+      const user = await this.userService.ensureDevUser(spec.id, spec.openid, spec.nickname);
+      await this.economyService.ensureMinimumBalance(user.id, 10000, 500);
+      await this.inventoryService.ensureItemQuantity(user.id, 'breeding_token', 10);
+
+      const existing = await this.petService.getUserPets(user.id);
+      const names = new Set(existing.pets.map((pet) => String(pet.nickname)));
+      for (const [nickname, speciesCode, gender] of spec.pets) {
+        if (names.has(nickname)) continue;
+        await this.petService.createPet(user.id, {
+          nickname,
+          speciesCode,
+          gender,
+          rarity: 3,
+          quality: 100,
+          skillSlotCount: 4,
+          sourceType: 'social_seed',
+        });
+      }
+
+      const pets = await this.petService.getUserPets(user.id);
+      accounts.push({
+        user: {
+          id: user.id,
+          openid: user.openid,
+          nickname: user.nickname,
+        },
+        pets: pets.pets.filter((pet) => !pet.isEgg),
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Two idempotent social test accounts are ready',
+      accounts,
+      previewUrls: accounts.map((entry) => `?userId=${entry.user.id}`),
+    };
+  }
 }

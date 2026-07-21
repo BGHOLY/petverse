@@ -15,4 +15,9 @@ export class DevController {
   async seedHatchery() {
     return this.devService.seedHatchery();
   }
+
+  @Post('seed-social')
+  async seedSocial() {
+    return this.devService.seedSocial();
+  }
 }

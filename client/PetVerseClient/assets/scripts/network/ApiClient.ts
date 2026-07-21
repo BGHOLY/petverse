@@ -13,6 +13,7 @@ export default class ApiClient {
 
     private static pending = new Map<string, Promise<any>>();
     private static token = '';
+    private static userId = 0;
 
     public static setBaseUrl(url: string) {
         const normalized = String(url || '').trim().replace(/\/+$/, '');
@@ -21,6 +22,12 @@ export default class ApiClient {
 
     public static setToken(token: string) {
         this.token = String(token || '').trim();
+    }
+
+    public static setUserId(userId: number) {
+        const value = Number(userId || 0);
+        this.userId = Number.isInteger(value) && value > 0 ? value : 0;
+        this.clearPending();
     }
 
     public static clearPending() {
@@ -150,7 +157,19 @@ export default class ApiClient {
             'Content-Type': 'application/json',
         };
         if (this.token) headers.Authorization = `Bearer ${this.token}`;
+        const userId = this.userId || this.userIdFromLocation();
+        if (userId > 0) headers['X-User-Id'] = String(userId);
         return headers;
+    }
+
+    private static userIdFromLocation() {
+        try {
+            const search = String((globalThis as any)?.location?.search || '');
+            const match = search.match(/[?&](?:userId|account)=([1-9]\d*)/i);
+            return match ? Number(match[1]) : 0;
+        } catch {
+            return 0;
+        }
     }
 
     private static async readJson(response: Response) {
