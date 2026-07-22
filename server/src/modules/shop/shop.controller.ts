@@ -2,10 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
 } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { BuyItemDto } from './dto/buy-item.dto';
 import { ShopService } from './shop.service';
 
@@ -46,6 +47,7 @@ export class ShopController {
 
   @Post('buy')
   buyItem(
+    @Headers('x-user-id') userId: string,
     @Body()
     dto: BuyItemDto & {
       count?: number;
@@ -53,7 +55,7 @@ export class ShopController {
     },
   ) {
     return this.shopService.buyItem(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       dto,
     );
   }
