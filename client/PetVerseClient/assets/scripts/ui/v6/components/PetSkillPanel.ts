@@ -2,7 +2,7 @@ import { Color, Layout, Mask, Node, ScrollView, Size } from 'cc';
 import { CuteTheme, button, hitArea, image, panel, setRect, tag, text } from '../../cute/CuteUiKit';
 import { PetSkillV6 } from './PetTypes';
 
-export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], onSkill: (skill: any) => void, onSkillBook: () => void) {
+export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], skillSlotCount: number, onSkill: (skill: any) => void, onSkillBook: () => void) {
     text(parent, 'Heading', '技能槽与已学习技能', -232, 224, 464, 34, 19, CuteTheme.caramel, 'left', true);
     button(parent, 'GoSkillBook', '前往打书', 177, 224, 116, 40, onSkillBook, { fill: CuteTheme.honey, fontSize: 13, radius: 16 });
 
@@ -13,7 +13,7 @@ export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], onSkil
     mask.type = Mask.Type.GRAPHICS_RECT;
     const content = new Node('Content');
     viewport.addChild(content);
-    const visibleRows = Math.max(6, skills.length);
+    const visibleRows = Math.max(1, Math.floor(skillSlotCount));
     const contentHeight = Math.max(438, visibleRows * 82 + 12);
     const transform = setRect(content, 0, 219, 486, contentHeight);
     transform.setAnchorPoint(0.5, 1);
@@ -25,7 +25,7 @@ export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], onSkil
     layout.paddingTop = 6;
     layout.paddingBottom = 6;
     layout.spacingY = 8;
-    const rows = Math.max(6, skills.length);
+    const rows = visibleRows;
     for (let index = 0; index < rows; index += 1) {
         const skill = skills[index];
         if (skill) {

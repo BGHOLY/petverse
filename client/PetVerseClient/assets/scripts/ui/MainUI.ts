@@ -769,10 +769,14 @@ export class MainUI extends Component {
             const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
             const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
             progress(this.topBar, 'PlayerExp', -191, -39, 108, 8, currentExp / nextExp, CuteTheme.honey);
-            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), 244, 24, 116, 28, 15, CuteTheme.caramel, 'center', true);
-            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), 244, -28, 116, 28, 15, CuteTheme.caramel, 'center', true);
-            hitArea(this.topBar, 'Gold', 248, 24, 184, 46, () => this.showPage('shop'));
-            hitArea(this.topBar, 'Diamond', 248, -28, 184, 46, () => this.showPage('shop'));
+            const resourceValueX = 252;
+            const resourceHitX = 250;
+            const resourceGoldY = 2;
+            const resourceDiamondY = -50;
+            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), resourceValueX, resourceGoldY, 108, 28, 15, CuteTheme.caramel, 'center', true);
+            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), resourceValueX, resourceDiamondY, 108, 28, 15, CuteTheme.caramel, 'center', true);
+            hitArea(this.topBar, 'Gold', resourceHitX, resourceGoldY, 190, 46, () => this.showPage('shop'));
+            hitArea(this.topBar, 'Diamond', resourceHitX, resourceDiamondY, 190, 46, () => this.showPage('shop'));
             if (!GameStore.online) {
                 button(this.topBar, 'Reconnect', '重连', 310, -55, 70, 25, () => void this.bootstrap(), { fill: CuteTheme.peach, fontSize: 10, radius: 11 });
             }
@@ -1162,6 +1166,14 @@ export class MainUI extends Component {
         const genderRaw = String(selected?.gender || selected?.sex || '').toLowerCase();
         const gender = /female|girl|女/.test(genderRaw) ? '雌性' : /male|boy|男/.test(genderRaw) ? '雄性' : '未知';
         const skills = Array.isArray(selected?.skills) ? selected.skills : [];
+        const rawSkillSlotCount = Number(selected?.skillSlotCount || 0);
+        const skillSlotCount = Math.max(1, Math.min(10, Number.isFinite(rawSkillSlotCount) && rawSkillSlotCount > 0
+            ? Math.floor(rawSkillSlotCount)
+            : Math.max(1, skills.length)));
+        if (skills.length > skillSlotCount) {
+            console.warn(`[PetPageV6] pet ${selectedId} has ${skills.length} skills but only ${skillSlotCount} slots; extra skills are hidden`);
+        }
+        const visibleSkills = skills.slice(0, skillSlotCount);
         const points = selected?.statPoints || {
             unspent: Number(selected?.unspentStatPoints || 0),
             constitution: Number(selected?.constitutionPoints || 0),
@@ -1246,9 +1258,9 @@ export class MainUI extends Component {
                 speed: attrs.speed,
                 growth,
                 quality: Number(selected?.quality || 100),
-                skillCount: skills.length,
+                skillCount: visibleSkills.length,
             },
-            skills: skills.map((skill: any, index: number) => ({
+            skills: visibleSkills.map((skill: any, index: number) => ({
                 key: `${this.skillCode(skill) || index}`,
                 name: this.skillName(skill),
                 description: this.skillDescription(skill),
@@ -1261,6 +1273,7 @@ export class MainUI extends Component {
                 special: this.isSpecialSkill(skill),
                 raw: skill,
             })),
+            skillSlotCount,
             aptitudes: [
                 { label: '体力资质', value: aptitudes.hp, icon: '❤', minimum: aptitudeProfile.ranges.hp[0], maximum: aptitudeProfile.ranges.hp[1], grade: getPetAptitudeGrade(aptitudes.hp, aptitudeProfile.ranges.hp) },
                 { label: '攻击资质', value: aptitudes.attack, icon: '⚔', minimum: aptitudeProfile.ranges.attack[0], maximum: aptitudeProfile.ranges.attack[1], grade: getPetAptitudeGrade(aptitudes.attack, aptitudeProfile.ranges.attack) },

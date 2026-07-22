@@ -144,7 +144,10 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     mask.type = Mask.Type.GRAPHICS_RECT;
 
     const rows = Math.max(1, Math.ceil(options.eggs.length / 2));
-    const gridHeight = rows * 140 + 10;
+    const cardHeight = 130;
+    const rowGap = 10;
+    const gridPadding = 8;
+    const gridHeight = gridPadding * 2 + rows * cardHeight + Math.max(0, rows - 1) * rowGap;
     const footerHeight = 48;
     const contentHeight = Math.max(height, gridHeight + footerHeight + 24);
     const content = new Node('Content');
@@ -162,13 +165,13 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     layout.startAxis = Layout.AxisDirection.HORIZONTAL;
     layout.horizontalDirection = Layout.HorizontalDirection.LEFT_TO_RIGHT;
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.cellSize = new Size(320, 130);
-    layout.paddingLeft = 8;
-    layout.paddingRight = 8;
-    layout.paddingTop = 8;
-    layout.paddingBottom = 8;
+    layout.cellSize = new Size(320, cardHeight);
+    layout.paddingLeft = gridPadding;
+    layout.paddingRight = gridPadding;
+    layout.paddingTop = gridPadding;
+    layout.paddingBottom = gridPadding;
     layout.spacingX = 10;
-    layout.spacingY = 10;
+    layout.spacingY = rowGap;
     options.eggs.forEach((egg, index) => renderEggCard(grid, egg, index, options));
     layout.updateLayout();
 
@@ -234,6 +237,8 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     button(warehouse, 'Sort', sortLabel, 258, warehouseHeight / 2 - 78, 132, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
     const scrollHeight = warehouseHeight - 116;
     const scrollHost = panel(warehouse, 'EggListPanel', 0, -50, V6_PAGE_WIDTH - 16, scrollHeight, CuteTheme.transparent, 0, false, CuteTheme.transparent, 0);
-    renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 24, scrollHeight - 4);
+    // 2 * 320 cards + 10 gap + 16 padding = 666px. The former 660px
+    // viewport forced Cocos Layout to wrap every card into a single column.
+    renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 16, scrollHeight - 4);
 }
 

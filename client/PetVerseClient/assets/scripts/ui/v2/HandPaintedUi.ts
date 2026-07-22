@@ -323,29 +323,36 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    const bar = panel(parent, 'NavigationBar', 0, -2, 704, 112, new Color(255, 247, 224, 252), 28, true, new Color(132, 84, 47, 255), 4);
-    panel(bar, 'TopStitch', 0, 49, 650, 2, new Color(202, 157, 101, 140), 1, false, CuteTheme.transparent, 0);
+    // Reuse the illustrated navigation that belongs to the home art direction.
+    // The artwork already gives Adventure a larger, raised silhouette; interaction
+    // and selected state remain real nodes so every page still highlights correctly.
+    // Fit the complete artwork inside the 126px navigation safe area. This keeps
+    // the illustrated style without covering page actions and filters above it.
+    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 0, 700, 126);
 
     MAIN_TABS.forEach((item, index) => {
-        const x = -276 + index * 138;
         const selected = item.key === active;
-        const tab = panel(
-            bar,
-            `Tab_${item.key}`,
-            x,
-            selected ? 8 : 0,
-            126,
-            selected ? 94 : 84,
-            selected ? new Color(255, 222, 136, 255) : new Color(255, 252, 239, 210),
-            24,
-            selected,
-            selected ? HandPaintedTheme.honey : new Color(211, 178, 132, 220),
-            selected ? 3 : 1,
-        );
-        drawUiIcon(tab, 'Icon', item.icon, 0, 18, selected ? 36 : 32, selected ? HandPaintedTheme.woodDark : HandPaintedTheme.mutedInk);
-        text(tab, 'Label', item.title, 0, -23, 108, 28, selected ? 17 : 15, HandPaintedTheme.ink, 'center', true);
-        if (selected) panel(tab, 'SelectedMark', 0, -40, 54, 5, HandPaintedTheme.leaf, 3, false, CuteTheme.transparent, 0);
-        hitArea(tab, 'HitArea', 0, 0, 126, selected ? 94 : 84, () => onNavigate(item.key));
+        const x = -276 + index * 138;
+        const isAdventure = item.key === 'adventure';
+        const centerY = isAdventure ? 7 : 0;
+        const hitWidth = isAdventure ? 148 : 112;
+        const hitHeight = isAdventure ? 124 : 104;
+        if (selected) {
+            panel(
+                parent,
+                `Selected_${item.key}`,
+                x,
+                centerY,
+                hitWidth,
+                hitHeight,
+                new Color(255, 245, 184, 12),
+                isAdventure ? 48 : 22,
+                true,
+                isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220),
+                3,
+            );
+        }
+        const tab = hitArea(parent, `Tab_${item.key}`, x, centerY, hitWidth, hitHeight, () => onNavigate(item.key));
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });
 }

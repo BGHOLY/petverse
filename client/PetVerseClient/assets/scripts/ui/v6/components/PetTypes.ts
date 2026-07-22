@@ -107,6 +107,7 @@ export type PetPageV6Options = {
     profile: PetProfileV6;
     attributes: PetAttributesV6;
     skills: PetSkillV6[];
+    skillSlotCount: number;
     aptitudes: PetAptitudeV6[];
     aptitudeScore: number;
     aptitudeRange: string;

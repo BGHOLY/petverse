@@ -129,7 +129,7 @@ function renderDetails(parent: Node, options: PetPageV6Options) {
         else if (options.attributeView === 'lineage') renderPetLineageV6(detail, options.lineage);
         else renderPetAttributeGridV6(detail, options.attributes);
     } else if (options.tab === 'skills') {
-        renderPetSkillPanelV6(detail, options.skills, options.onSkill, options.onSkillBook);
+        renderPetSkillPanelV6(detail, options.skills, options.skillSlotCount, options.onSkill, options.onSkillBook);
     } else if (options.tab === 'aptitudes') {
         renderPetAptitudePanelV6(detail, options.aptitudes, options.aptitudeScore, options.aptitudeRange, options.attributes.growth);
     } else {
