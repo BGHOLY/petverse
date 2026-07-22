@@ -324,53 +324,36 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    // Keep the illustrated navigation, but render each tab from its own slice of
-    // the source artwork. The original composite made the Home artwork larger than
-    // the other normal tabs and forced the entire strip through a non-uniform scale.
-    // Independent slices preserve the drawing while giving the four normal tabs a
-    // consistent visual size. Selected state is an underline, never an outline.
-    panel(parent, 'NavigationPaper', 0, -2, 700, 112, HandPaintedTheme.paper, 28, true, new Color(214, 169, 107, 230), 2);
+    // The five tabs are a single finished illustration. Rendering the source once
+    // keeps its shared paper base, borders, labels and icon scale intact; slicing it
+    // into separate sprites introduced seams and mixed visual sizes.
+    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 0, 700, 126);
 
-    const slices: Record<MainTab, { resource: string; left: number; bottom: number; width: number; height: number; visualWidth: number; visualHeight: number }> = {
-        // The old composite Home artwork includes decorative green vines around the
-        // whole tab. Use the clean illustrated house from the existing nav asset so
-        // the selected state cannot look like a second green frame.
-        home: { resource: 'ui/panels/bottom_nav_bar', left: 34 / 600, bottom: 42 / 220, width: 112 / 600, height: 130 / 220, visualWidth: 70, visualHeight: 66 },
-        pet: { resource: 'ui/home-v4/bottom-navigation-v4', left: 150 / 720, bottom: 0, width: 132 / 720, height: 1, visualWidth: 104, visualHeight: 104 },
-        adventure: { resource: 'ui/home-v4/bottom-navigation-v4', left: 262 / 720, bottom: 0, width: 196 / 720, height: 1, visualWidth: 146, visualHeight: 124 },
-        shop: { resource: 'ui/home-v4/bottom-navigation-v4', left: 445 / 720, bottom: 0, width: 135 / 720, height: 1, visualWidth: 104, visualHeight: 104 },
-        more: { resource: 'ui/home-v4/bottom-navigation-v4', left: 566 / 720, bottom: 0, width: 152 / 720, height: 1, visualWidth: 104, visualHeight: 104 },
-    };
-
-    const navigationSlice = (name: string, x: number, y: number, tab: MainTab) => {
-        const config = slices[tab];
-        const node = new Node(name);
-        parent.addChild(node);
-        setRect(node, x, y, config.visualWidth, config.visualHeight);
-        const sprite = node.addComponent(Sprite);
-        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        loadSpriteFrameResource(config.resource, (asset) => {
-            if (!node.isValid) return;
-            const source = asset.rect;
-            const rect = new Rect(
-                source.x + source.width * config.left,
-                source.y + source.height * config.bottom,
-                source.width * config.width,
-                source.height * config.height,
-            );
-            const frame = new SpriteFrame();
-            frame.reset({
-                texture: asset.texture,
-                rect,
-                originalSize: new Size(rect.width, rect.height),
-                offset: new Vec2(),
-                isRotate: false,
-            });
-            sprite.spriteFrame = frame;
-            sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-            setRect(node, x, y, config.visualWidth, config.visualHeight);
+    // The source illustration intentionally makes the Home house much taller than
+    // the other normal icons. Preserve the shared bar and label, but replace only
+    // that icon area with a smaller crop from the same artwork. This keeps one art
+    // style while matching Pet, Shop and More visually.
+    panel(parent, 'HomeIconClear', -267, 10, 126, 72, new Color(255, 246, 216, 255), 20, false, CuteTheme.transparent, 0);
+    const homeIcon = new Node('HomeIcon');
+    parent.addChild(homeIcon);
+    setRect(homeIcon, -267, 10, 78, 66);
+    const homeSprite = homeIcon.addComponent(Sprite);
+    homeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    loadSpriteFrameResource('ui/home-v4/bottom-navigation-v4', (asset) => {
+        if (!homeIcon.isValid) return;
+        const source = asset.rect;
+        const frame = new SpriteFrame();
+        frame.reset({
+            texture: asset.texture,
+            rect: new Rect(source.x + source.width * (20 / 720), source.y + source.height * (20 / 205), source.width * (130 / 720), source.height * (125 / 205)),
+            originalSize: new Size(130, 125),
+            offset: new Vec2(),
+            isRotate: false,
         });
-    };
+        homeSprite.spriteFrame = frame;
+        homeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        setRect(homeIcon, -267, 10, 78, 66);
+    });
 
     MAIN_TABS.forEach((item, index) => {
         const selected = item.key === active;
@@ -379,13 +362,6 @@ export function renderBottomNavigation(
         const centerY = isAdventure ? 7 : 0;
         const hitWidth = isAdventure ? 148 : 112;
         const hitHeight = isAdventure ? 124 : 104;
-        if (item.key === 'home') {
-            panel(parent, 'HomeTabPaper', x, 0, 104, 104, new Color(255, 248, 224, 255), 22, true, new Color(211, 159, 91, 220), 2);
-            navigationSlice('Art_home', x, 14, item.key);
-            text(parent, 'HomeTabLabel', '首页', x, -34, 78, 28, 18, HandPaintedTheme.ink, 'center', true);
-        } else {
-            navigationSlice(`Art_${item.key}`, x, centerY, item.key);
-        }
         if (selected) {
             panel(
                 parent,
