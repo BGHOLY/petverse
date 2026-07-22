@@ -76,6 +76,8 @@ export type PetEquipmentSlotV6 = {
     name: string;
     status: string;
     locked: boolean;
+    item?: any;
+    onClick?: () => void;
 };
 
 export type PetStatRowV6 = {

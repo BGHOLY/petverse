@@ -5,6 +5,7 @@ import { In, Repository } from 'typeorm';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
 import { getFormationConfig } from '../formation/formation.config';
+import { EquipmentService } from '../equipment/equipment.service';
 import { PetTeam } from './pet-team.entity';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class TeamService {
     private readonly teamRepository: Repository<PetTeam>,
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+    private readonly equipmentService: EquipmentService,
   ) {}
 
   async getTeam(userId = DEFAULT_USER_ID) {
@@ -43,6 +45,7 @@ export class TeamService {
       : [];
     const petMap = new Map(pets.map((pet) => [pet.id, pet]));
     const orderedPets = petIds.map((id) => petMap.get(id)).filter(Boolean) as Pet[];
+    await this.equipmentService.attachToPets(orderedPets);
     const formationCode = getFormationConfig(team.formationCode).code;
     const slotAssignments = this.normalizeSlots(team.slotAssignments, orderedPets.map((pet) => pet.id));
     const tactics = this.normalizeTactics(team.tactics);

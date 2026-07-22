@@ -40,6 +40,7 @@ import { GuildDonation } from '../modules/guild/guild-donation.entity';
 import { GuildExpedition } from '../modules/guild/guild-expedition.entity';
 import { GuildHelpRequest } from '../modules/guild/guild-help.entity';
 import { WorldExplorationProgress } from '../modules/exploration/world-exploration.entity';
+import { EquipmentItem } from '../modules/equipment/equipment.entity';
 
 dotenv.config();
 
@@ -91,6 +92,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     GuildExpedition,
     GuildHelpRequest,
     WorldExplorationProgress,
+    EquipmentItem,
   ],
   synchronize: true,
 };

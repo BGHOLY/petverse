@@ -12,6 +12,7 @@ import {
 } from '../breeding/breeding.service';
 import { DailyTaskService } from '../daily-task/daily-task.service';
 import { EconomyService } from '../economy/economy.service';
+import { EquipmentService } from '../equipment/equipment.service';
 import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
 import {
   DEFAULT_USER_ID,
@@ -78,6 +79,7 @@ export class PetService {
     private readonly dailyTaskService: DailyTaskService,
     private readonly petCapacityService: PetCapacityService,
     private readonly economyService: EconomyService,
+    private readonly equipmentService: EquipmentService,
   ) {}
 
   async getAllPets() {
@@ -92,6 +94,7 @@ export class PetService {
     for (const pet of pets) {
       await this.ensureBetaFields(pet);
     }
+    await this.equipmentService.attachToPets(pets);
 
     return {
       success: true,
@@ -120,6 +123,7 @@ export class PetService {
         await this.ensureBetaFields(pet);
       }
     }
+    await this.equipmentService.attachToPets(pets);
 
     return {
       success: true,
@@ -139,6 +143,7 @@ export class PetService {
     if (!pet.isEgg) {
       await this.updatePetStatus(pet);
       await this.ensureBetaFields(pet);
+      await this.equipmentService.attachToPets([pet]);
     }
 
     return pet;
@@ -201,14 +206,16 @@ export class PetService {
       };
     }
 
+    const equipment = ((pet as any).equipmentBonuses || {}) as Record<string, number>;
     return {
-      hp: Math.max(1, Math.round(base.hp + points.constitution * 3)),
-      attack: Math.max(1, Math.round(base.attack + points.strength * 0.35)),
-      defense: Math.max(1, Math.round(base.defense + points.endurance * 0.25)),
-      magicDefense: Math.max(1, Math.round(base.defense + points.endurance * 0.25)),
-      magic: Math.max(1, Math.round(base.magic + points.spirit * 0.35)),
-      speed: Math.max(1, Math.round(base.speed + points.speed * 0.15)),
+      hp: Math.max(1, Math.round(base.hp + points.constitution * 3 + Number(equipment.hp || 0))),
+      attack: Math.max(1, Math.round(base.attack + points.strength * 0.35 + Number(equipment.attack || 0))),
+      defense: Math.max(1, Math.round(base.defense + points.endurance * 0.25 + Number(equipment.defense || 0))),
+      magicDefense: Math.max(1, Math.round(base.defense + points.endurance * 0.25 + Number(equipment.magicDefense || equipment.defense || 0))),
+      magic: Math.max(1, Math.round(base.magic + points.spirit * 0.35 + Number(equipment.magic || 0))),
+      speed: Math.max(1, Math.round(base.speed + points.speed * 0.15 + Number(equipment.speed || 0))),
       healingPower: Math.max(0, Math.round(points.spirit * 0.15)),
+      equipmentPower: Number((pet as any).equipmentPower || 0),
     };
   }
 

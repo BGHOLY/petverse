@@ -190,6 +190,8 @@ export class MainUI extends Component {
     private inventoryDetailItem: any | null = null;
     private inventoryDetailOpen = false;
     private inventoryUseCount = 1;
+    private equipmentItems: any[] = [];
+    private equipmentPickerSlot = '';
     private secondaryConfirmation: SecondaryConfirmation | null = null;
     private petFilter = loadPetFilter();
     private readonly router = new AppRouter('home');
@@ -465,6 +467,7 @@ export class MainUI extends Component {
                 ApiClient.get('/friend/requests'),
                 ApiClient.get('/marriage/proposals?direction=incoming'),
                 ApiClient.get('/exploration/world'),
+                ApiClient.get('/equipment'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -485,6 +488,7 @@ export class MainUI extends Component {
             this.incomingFriendRequests = this.resultList(results[14], ['requests', 'data', 'items', 'list']);
             this.marriageProposals = this.resultList(results[15], ['proposals', 'data', 'items', 'list']);
             this.applyWorldExploration(results[16]);
+            this.equipmentItems = this.resultList(results[17], ['equipment', 'items', 'data', 'list']);
             this.ensureSelectedShopItem();
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
@@ -545,8 +549,12 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'pet': {
-                    const pets = await ApiClient.get('/pet/my');
+                    const [pets, equipment] = await Promise.all([
+                        ApiClient.get('/pet/my'),
+                        ApiClient.get('/equipment'),
+                    ]);
                     if (pets?.success !== false) GameStore.setPets(pets);
+                    if (equipment?.success !== false) this.equipmentItems = this.resultList(equipment, ['equipment', 'items', 'data', 'list']);
                     await GameStore.ensureCurrentPetDetail(true);
                     break;
                 }
@@ -571,8 +579,12 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'inventory': {
-                    const inventory = await ApiClient.get('/inventory');
+                    const [inventory, equipment] = await Promise.all([
+                        ApiClient.get('/inventory'),
+                        ApiClient.get('/equipment'),
+                    ]);
                     if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+                    if (equipment?.success !== false) this.equipmentItems = this.resultList(equipment, ['equipment', 'items', 'data', 'list']);
                     await this.syncEggItemsToHatchery();
                     break;
                 }
@@ -1204,11 +1216,21 @@ export class MainUI extends Component {
         const equipmentNames = ['头部', '项链', '护符', '饰品', '徽记', '灵石'];
         const equipment: PetEquipmentSlotV6[] = equipmentKeys.map((key, index) => {
             const value = Array.isArray(equipmentSource) ? equipmentSource[index] : equipmentSource?.[key];
+            const locked = index >= 4;
             return {
                 key,
                 name: equipmentNames[index],
-                locked: false,
-                status: value ? `已装备：${safeName(value?.name || value?.itemName || value, '装备')}` : '功能开发中',
+                locked,
+                item: value || undefined,
+                status: locked
+                    ? (index === 4 ? '冒险第三章解锁' : '首领巢穴解锁')
+                    : value ? safeName(value?.name || value?.itemName || value, '已装备') : '未装备',
+                onClick: locked ? undefined : () => {
+                    this.equipmentPickerSlot = key;
+                    this.inventoryDetailItem = value || null;
+                    this.inventoryDetailOpen = true;
+                    this.renderUtilityModal();
+                },
             };
         });
         const lineage = selected?.lineage || {};
@@ -1516,7 +1538,15 @@ export class MainUI extends Component {
         if (!this.pageRoot) return;
         this.ensureExperienceSelections();
         const eggItems = GameStore.inventory.filter((item) => this.isEggItem(item));
-        const allItems = GameStore.inventory.filter((item) => !this.isEggItem(item));
+        const stackItems = GameStore.inventory.filter((item) => !this.isEggItem(item));
+        const equipmentItems = this.equipmentItems.map((item) => ({
+            ...item,
+            itemCode: `equipment:${Number(item?.id || 0)}`,
+            quantity: 1,
+            type: 'equipment',
+            usable: false,
+        }));
+        const allItems = [...stackItems, ...equipmentItems];
         const targetPet = this.inventoryTargetPet();
         const targetPets = GameStore.pets.filter((pet) => !pet?.isEgg && String(pet?.tradeStatus || '') !== 'listed');
         const targetIndex = targetPets.findIndex((pet) => Number(pet?.id) === Number(targetPet?.id));
@@ -2140,10 +2170,11 @@ export class MainUI extends Component {
         try{
             const result=await ApiClient.post(kind==='nest'?'/exploration/settle-nest':'/exploration/settle-explore',{regionCode:String(region?.code||''),sessionId:Number(session.id)});
             this.applyWorldExploration(result);
-            const [profile,pets,inventory,eggs]=await Promise.all([ApiClient.get('/user/profile'),ApiClient.get('/pet/my'),ApiClient.get('/inventory'),result?.egg?ApiClient.get('/hatchery/eggs'):Promise.resolve(null)]);
+            const [profile,pets,inventory,equipment,eggs]=await Promise.all([ApiClient.get('/user/profile'),ApiClient.get('/pet/my'),ApiClient.get('/inventory'),ApiClient.get('/equipment'),result?.egg?ApiClient.get('/hatchery/eggs'):Promise.resolve(null)]);
             if(profile?.success!==false)GameStore.setProfile(profile);
             if(pets?.success!==false)GameStore.setPets(pets);
             if(inventory?.success!==false)GameStore.setList('inventory',inventory);
+            if(equipment?.success!==false)this.equipmentItems=this.resultList(equipment,['equipment','items','data','list']);
             if(eggs?.success!==false&&eggs)GameStore.setList('eggs',eggs);
             this.showToast(result?.message||'世界主线进度已更新');
             if(result?.success===false)void AudioDirector.playSfx('error');else void AudioDirector.playSfx('confirm');
@@ -3097,7 +3128,7 @@ export class MainUI extends Component {
         this.captureScrollOffsets(this.utilityLayer);
         clearNode(this.utilityLayer);
         const active = Boolean(this.secondaryConfirmation)
-            || (this.inventoryDetailOpen && Boolean(this.inventoryDetailItem))
+            || (this.inventoryDetailOpen && (Boolean(this.inventoryDetailItem) || Boolean(this.equipmentPickerSlot)))
             || this.shopPurchaseOpen
             || this.hatchAcceleratorOpen
             || this.homePetPickerOpen
@@ -3129,6 +3160,54 @@ export class MainUI extends Component {
             text(card, 'Guard', processing ? '正在处理，请稍候…' : '确认后将立即同步到服务器', 0, -88, 450, 30, 13, processing ? CuteTheme.peachDark : CuteTheme.mintDark, 'center', true);
             button(card, 'Cancel', '再想想', -105, -158, 180, 56, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 24, disabled: processing });
             button(card, 'Confirm', processing ? '处理中…' : confirmation.confirmText, 110, -158, 190, 56, () => void this.runSecondaryConfirmation(), { fill: accent, fontSize: 16, radius: 24, disabled: processing });
+            return;
+        }
+
+        if (this.inventoryDetailOpen && this.equipmentPickerSlot) {
+            const selectedPet = GameStore.currentPet || GameStore.pets.find((pet) => !pet?.isEgg) || null;
+            const petId = Number(selectedPet?.id || 0);
+            const candidates = this.equipmentItems.filter((item) =>
+                String(item?.slotType || '') === this.equipmentPickerSlot
+                && (!Number(item?.equippedPetId || 0) || Number(item?.equippedPetId || 0) === petId));
+            const current = candidates.find((item) => Number(item?.equippedPetId || 0) === petId) || this.inventoryDetailItem;
+            const card = panel(this.utilityLayer, 'EquipmentPickerDialog', 0, 0, 610, 760, new Color(255, 250, 235, 255), 36, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', `${this.equipmentSlotLabel(this.equipmentPickerSlot)}装备`, 0, 330, 190, CuteTheme.sky);
+            text(card, 'Pet', `当前宠物：${this.petDisplayName(selectedPet, '宠物')}`, 0, 280, 500, 34, 16, CuteTheme.caramel, 'center', true);
+            text(card, 'Current', current ? `当前：${safeName(current?.name, '装备')}` : '当前：未装备', 0, 244, 500, 30, 14, CuteTheme.muted, 'center', true);
+            if (!candidates.length) {
+                text(card, 'Empty', '背包中没有该部位的可用装备', 0, 35, 450, 80, 19, CuteTheme.muted, 'center', true);
+            } else {
+                candidates.slice(0, 6).forEach((item, index) => {
+                    const y = 180 - index * 78;
+                    const equipped = Number(item?.equippedPetId || 0) === petId;
+                    const row = panel(card, `EquipmentChoice_${item?.id || index}`, 0, y, 530, 68, equipped ? CuteTheme.sky : CuteTheme.paperWarm, 18, false, CuteTheme.white, 2);
+                    text(row, 'Name', safeName(item?.name, '装备'), -232, 12, 230, 26, 15, CuteTheme.caramel, 'left', true);
+                    text(row, 'Stats', this.equipmentStatText(item), -232, -14, 310, 24, 12, CuteTheme.muted, 'left');
+                    tag(row, 'Rarity', `${Number(item?.rarity || 1)}星`, 90, 0, 64, CuteTheme.lilac);
+                    button(row, 'Action', equipped ? '卸下' : '装备', 204, 0, 92, 42,
+                        () => void (equipped ? this.unequipItem(item) : this.equipItem(item, petId)),
+                        { fill: equipped ? CuteTheme.peach : CuteTheme.honey, fontSize: 13, radius: 17, disabled: this.busy.has('equipment:change') });
+                });
+            }
+            button(card, 'Close', '关闭', 0, -330, 170, 54, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 23 });
+            return;
+        }
+
+        if (this.inventoryDetailOpen && this.inventoryDetailItem && String(this.inventoryDetailItem?.type || '') === 'equipment') {
+            const item = this.inventoryDetailItem;
+            const targetPet = this.inventoryTargetPet() || GameStore.currentPet;
+            const equipped = Number(item?.equippedPetId || 0) > 0;
+            const card = panel(this.utilityLayer, 'EquipmentDetailDialog', 0, 0, 570, 600, new Color(255, 250, 235, 255), 36, true, CuteTheme.caramelSoft, 4);
+            headingTag(card, 'Title', '装备详情', 0, 250, 170, CuteTheme.sky);
+            text(card, 'Icon', '◆', 0, 176, 90, 80, 44, CuteTheme.honeyDark, 'center', true);
+            text(card, 'Name', safeName(item?.name, '装备'), 0, 112, 450, 38, 23, CuteTheme.caramel, 'center', true);
+            text(card, 'Meta', `${this.equipmentSlotLabel(String(item?.slotType || ''))} · ${Number(item?.rarity || 1)}星 · Lv.${Number(item?.level || 1)}`, 0, 72, 440, 30, 14, CuteTheme.muted, 'center', true);
+            text(card, 'Stats', this.equipmentStatText(item), 0, 12, 450, 70, 18, CuteTheme.caramel, 'center', true);
+            text(card, 'State', equipped ? `已装备给宠物 #${Number(item?.equippedPetId || 0)}` : `将装备给：${this.petDisplayName(targetPet, '宠物')}`, 0, -64, 460, 36, 14, CuteTheme.muted, 'center', true);
+            button(card, 'Close', '关闭', -105, -218, 170, 54, () => this.closeUtilityModal(), { fill: CuteTheme.paperWarm, fontSize: 15, radius: 23 });
+            button(card, 'Action', equipped ? '卸下' : '装备', 105, -218, 180, 54,
+                () => void (equipped ? this.unequipItem(item) : this.equipItem(item, Number(targetPet?.id || 0))),
+                { fill: equipped ? CuteTheme.peach : CuteTheme.honey, fontSize: 15, radius: 23, disabled: !equipped && !Number(targetPet?.id || 0) });
             return;
         }
 
@@ -3342,6 +3421,7 @@ export class MainUI extends Component {
         this.hatchAcceleratorEggId=0;
         this.homePetPickerOpen=false;
         this.inventoryDetailOpen=false;
+        this.equipmentPickerSlot='';
         this.inventoryUseCount=1;
         this.shopPurchaseOpen=false;
         this.fusionPickerSide=null;
@@ -3513,6 +3593,74 @@ export class MainUI extends Component {
         } finally {
             this.busy.delete(key);
             this.renderCurrentPage(false);
+        }
+    }
+
+    private equipmentSlotLabel(slotType: string) {
+        const labels: Record<string, string> = {
+            head: '头部', necklace: '项链', amulet: '护符', accessory: '饰品', emblem: '徽记', spiritStone: '灵石',
+        };
+        return labels[String(slotType || '')] || '装备';
+    }
+
+    private equipmentStatText(item: any) {
+        const labels: Record<string, string> = {
+            hp: '生命', attack: '物攻', magic: '法攻', defense: '防御', magicDefense: '法防', speed: '速度',
+        };
+        const stats = item?.stats || { ...(item?.mainStat || {}), ...(item?.subStats || {}) };
+        const lines = Object.entries(stats || {})
+            .filter(([, value]) => Number(value || 0) !== 0)
+            .map(([key, value]) => `${labels[key] || key} +${Number(value || 0)}`);
+        return lines.join('　') || '无附加属性';
+    }
+
+    private async equipItem(item: any, petId: number) {
+        if (!item?.id || !petId || this.busy.has('equipment:change')) return;
+        this.busy.add('equipment:change');
+        try {
+            const result = await ApiClient.post('/equipment/equip', { equipmentId: Number(item.id), petId });
+            if (result?.success === false) return this.showToast(result?.message || '装备失败');
+            await this.refreshEquipmentState(petId);
+            CuteFeedback.playSuccess();
+            this.showToast(`${safeName(item?.name, '装备')}已装备`);
+        } catch (error) {
+            console.error('[CuteMainUI] equip item failed:', error);
+            this.showToast('装备失败，请检查后端连接');
+        } finally {
+            this.busy.delete('equipment:change');
+            this.renderUtilityModal();
+            this.renderCurrentPage(false);
+        }
+    }
+
+    private async unequipItem(item: any) {
+        if (!item?.id || this.busy.has('equipment:change')) return;
+        this.busy.add('equipment:change');
+        try {
+            const result = await ApiClient.post('/equipment/unequip', { equipmentId: Number(item.id) });
+            if (result?.success === false) return this.showToast(result?.message || '卸下失败');
+            await this.refreshEquipmentState(Number(item?.equippedPetId || GameStore.currentPet?.id || 0));
+            this.showToast(`${safeName(item?.name, '装备')}已卸下`);
+        } catch (error) {
+            console.error('[CuteMainUI] unequip item failed:', error);
+            this.showToast('卸下失败，请检查后端连接');
+        } finally {
+            this.busy.delete('equipment:change');
+            this.renderUtilityModal();
+            this.renderCurrentPage(false);
+        }
+    }
+
+    private async refreshEquipmentState(petId = 0) {
+        const [equipment, pets] = await Promise.all([ApiClient.get('/equipment'), ApiClient.get('/pet/my')]);
+        if (equipment?.success !== false) this.equipmentItems = this.resultList(equipment, ['equipment', 'items', 'data', 'list']);
+        if (pets?.success !== false) GameStore.setPets(pets);
+        if (petId > 0) GameStore.selectPet(petId);
+        await GameStore.ensureCurrentPetDetail(true);
+        if (this.equipmentPickerSlot) {
+            const selected = GameStore.currentPet;
+            const source = selected?.equipment || {};
+            this.inventoryDetailItem = source?.[this.equipmentPickerSlot] || null;
         }
     }
 
@@ -3793,18 +3941,20 @@ export class MainUI extends Component {
     }
 
     private async refreshAfterBattle() {
-        const [profile, pets, team, tower, ranking] = await Promise.all([
+        const [profile, pets, team, tower, ranking, equipment] = await Promise.all([
             ApiClient.get('/user/profile'),
             ApiClient.get('/pet/my'),
             ApiClient.get('/team'),
             ApiClient.get('/tower/status'),
             ApiClient.get('/ranking/tower'),
+            ApiClient.get('/equipment'),
         ]);
         if (profile?.success !== false) GameStore.setProfile(profile);
         if (pets?.success !== false) GameStore.setPets(pets);
         this.applyTeamResult(team);
         if (tower?.success !== false) GameStore.setTower(tower);
         if (ranking?.success !== false) GameStore.setList('ranking', ranking);
+        if (equipment?.success !== false) this.equipmentItems = this.resultList(equipment, ['equipment', 'items', 'data', 'list']);
     }
 
     private renderBattleResultModal() {
@@ -4967,12 +5117,14 @@ export class MainUI extends Component {
     }
 
     private inventoryItemCategory(item: any): InventoryItemCategoryV6 {
+        if (String(item?.type || '').toLowerCase() === 'equipment') return 'equipment';
         if (this.isSkillBook(item)) return 'skill';
         if (Boolean(item?.usable)) return 'consumable';
         return 'material';
     }
 
     private inventoryItemVisual(item: any) {
+        if (String(item?.type || '').toLowerCase() === 'equipment') return { kind: 'icon' as const, value: 'core' };
         if (this.isSkillBook(item)) return { kind: 'art' as const, value: this.skillBookIconPath(item) };
         return { kind: 'icon' as const, value: this.inventoryIcon(item) };
     }

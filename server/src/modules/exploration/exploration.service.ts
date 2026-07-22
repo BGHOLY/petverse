@@ -5,6 +5,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { BattleSessionV10 } from '../battle/battle-session.entity';
 import { battleRewardConfig } from '../battle/battle-reward.config';
 import { EconomyService } from '../economy/economy.service';
+import { EquipmentService } from '../equipment/equipment.service';
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
@@ -47,6 +48,7 @@ export class ExplorationService {
     private readonly eggService: EggService,
     private readonly petService: PetService,
     private readonly economyService: EconomyService,
+    private readonly equipmentService: EquipmentService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -308,6 +310,13 @@ export class ExplorationService {
       const saved = await this.petService.addExp(pet, Number(rewards.petExp || 0), manager);
       rewards.petUpdates.push({ petId, name: this.cleanPetName(saved.nickname || saved.species), before, after: { level: saved.level, exp: saved.exp }, gainedExp: Number(rewards.petExp || 0) });
     }
+    const equipment = await this.equipmentService.grantBattleDrop(
+      manager,
+      battle.userId,
+      battle.battleId,
+      Boolean(battle.bossBattle),
+    );
+    rewards.equipment = equipment ? [equipment] : [];
   }
 
   private regionSettlementSnapshot(battle: BattleSessionV10, won: boolean, reward: any, state: any, boss: boolean, unlockedRegionCode: string) {

@@ -25,7 +25,7 @@ import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
 
-export type InventoryCategoryV6 = 'all' | 'consumable' | 'material' | 'skill';
+export type InventoryCategoryV6 = 'all' | 'consumable' | 'material' | 'skill' | 'equipment';
 export type InventoryItemCategoryV6 = Exclude<InventoryCategoryV6, 'all'>;
 
 export type InventoryVisualV6 = {
@@ -67,17 +67,20 @@ const CATEGORY_TABS: Array<[InventoryCategoryV6, string]> = [
     ['consumable', '道具'],
     ['material', '材料'],
     ['skill', '技能书'],
+    ['equipment', '装备'],
 ];
 
 function categoryLabel(category: InventoryItemCategoryV6) {
     if (category === 'consumable') return '道具';
     if (category === 'skill') return '技能书';
+    if (category === 'equipment') return '装备';
     return '材料';
 }
 
 function categoryColor(category: InventoryItemCategoryV6) {
     if (category === 'consumable') return CuteTheme.mint;
     if (category === 'skill') return CuteTheme.lilac;
+    if (category === 'equipment') return CuteTheme.sky;
     return new Color(226, 191, 142, 255);
 }
 
@@ -113,7 +116,9 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
 
     text(card, 'Name', safeName(item?.name || item?.itemCode, '道具'), 0, -18, 138, 34, 13, CuteTheme.caramel, 'center', true);
     tag(card, 'Category', categoryLabel(category), -43, -50, 58, categoryColor(category));
-    text(card, 'Quantity', `×${Number(item?.quantity || 0)}`, 43, -50, 58, 24, 13, CuteTheme.caramel, 'center', true);
+    text(card, 'Quantity', category === 'equipment'
+        ? (Number(item?.equippedPetId || 0) > 0 ? '已装备' : '可装备')
+        : `×${Number(item?.quantity || 0)}`, 43, -50, 68, 24, 12, CuteTheme.caramel, 'center', true);
     hitArea(card, 'OpenItem', 0, 0, 154, 134, () => options.onItem(item));
 }
 
@@ -209,7 +214,7 @@ export function renderInventoryPageV6(parent: Node, options: InventoryPageV6Opti
     const tabs = panel(page, 'InventoryCategoryTabs', 0, cursor - tabsHeight / 2, V6_PAGE_WIDTH, tabsHeight, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 225), 2);
     cursor -= tabsHeight + V6_PANEL_GAP;
     CATEGORY_TABS.forEach(([key, label], index) => {
-        button(tabs, `Category_${key}`, label, -246 + index * 164, 0, 150, 48, () => options.onCategory(key), {
+        button(tabs, `Category_${key}`, label, -260 + index * 130, 0, 120, 48, () => options.onCategory(key), {
             selected: options.category === key,
             fill: options.category === key ? CuteTheme.honey : new Color(255, 252, 239, 245),
             fontSize: 14,

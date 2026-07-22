@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { EconomyService } from '../economy/economy.service';
+import { EquipmentService } from '../equipment/equipment.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { DailyTaskService } from '../daily-task/daily-task.service';
 import { FormationService } from '../formation/formation.service';
@@ -92,6 +93,7 @@ export class BattleV10Service {
     private readonly dailyTaskService: DailyTaskService,
     private readonly seasonService: SeasonService,
     private readonly economyService: EconomyService,
+    private readonly equipmentService: EquipmentService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -753,6 +755,13 @@ export class BattleV10Service {
       petUpdates.push({ petId, name: this.cleanPetName(saved.nickname || saved.species), before, after: { level: saved.level, exp: saved.exp }, gainedExp: Number(reward.petExp || 0) });
     }
     reward.petUpdates = petUpdates;
+    const equipment = await this.equipmentService.grantBattleDrop(
+      manager,
+      session.userId,
+      session.battleId,
+      Boolean(session.bossBattle),
+    );
+    reward.equipment = equipment ? [equipment] : [];
 
     if (session.mode === 'tower') {
       const towerRepository = manager.getRepository(TowerRecord);

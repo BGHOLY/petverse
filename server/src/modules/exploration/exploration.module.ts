@@ -5,12 +5,13 @@ import { BattleSessionV10 } from '../battle/battle-session.entity';
 import { EconomyModule } from '../economy/economy.module';
 import { EggModule } from '../egg/egg.module';
 import { PetModule } from '../pet/pet.module';
+import { EquipmentModule } from '../equipment/equipment.module';
 import { ExplorationController } from './exploration.controller';
 import { ExplorationService } from './exploration.service';
 import { WorldExplorationProgress } from './world-exploration.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WorldExplorationProgress, BattleSessionV10]), EconomyModule, EggModule, PetModule],
+  imports: [TypeOrmModule.forFeature([WorldExplorationProgress, BattleSessionV10]), EconomyModule, EggModule, PetModule, EquipmentModule],
   controllers: [ExplorationController],
   providers: [ExplorationService],
   exports: [ExplorationService],

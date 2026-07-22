@@ -38,6 +38,7 @@ import { DevModule } from './modules/dev/dev.module';
 import { FormationModule } from './modules/formation/formation.module';
 import { GuildModule } from './modules/guild/guild.module';
 import { ExplorationModule } from './modules/exploration/exploration.module';
+import { EquipmentModule } from './modules/equipment/equipment.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { ExplorationModule } from './modules/exploration/exploration.module';
     FormationModule,
     GuildModule,
     ExplorationModule,
+    EquipmentModule,
     DevModule,
   ],
   controllers: [AppController],
