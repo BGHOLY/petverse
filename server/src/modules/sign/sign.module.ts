@@ -3,14 +3,15 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DailyTaskModule } from '../daily-task/daily-task.module';
-import { EconomyModule } from '../economy/economy.module';
+import { RewardModule } from '../reward/reward.module';
+import { SignClaim } from './sign-claim.entity';
 import { SignController } from './sign.controller';
 import { SignRecord } from './sign-record.entity';
 import { SignService } from './sign.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SignRecord]),
+    TypeOrmModule.forFeature([SignRecord, SignClaim]),
     JwtModule.register({
       secret:
         process.env.JWT_SECRET ||
@@ -20,7 +21,7 @@ import { SignService } from './sign.service';
       },
     }),
     DailyTaskModule,
-    EconomyModule,
+    RewardModule,
   ],
   controllers: [SignController],
   providers: [SignService],

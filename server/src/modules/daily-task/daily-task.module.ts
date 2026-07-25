@@ -2,14 +2,20 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { EconomyModule } from '../economy/economy.module';
+import { RewardModule } from '../reward/reward.module';
+import { DailyTaskProgress } from './daily-task-progress.entity';
+import { TaskEventRecord } from './task-event-record.entity';
 import { DailyTaskController } from './daily-task.controller';
 import { DailyTask } from './daily-task.entity';
 import { DailyTaskService } from './daily-task.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DailyTask]),
+    TypeOrmModule.forFeature([
+      DailyTask,
+      DailyTaskProgress,
+      TaskEventRecord,
+    ]),
     JwtModule.register({
       secret:
         process.env.JWT_SECRET ||
@@ -18,7 +24,7 @@ import { DailyTaskService } from './daily-task.service';
         expiresIn: '7d',
       },
     }),
-    EconomyModule,
+    RewardModule,
   ],
   controllers: [DailyTaskController],
   providers: [DailyTaskService],

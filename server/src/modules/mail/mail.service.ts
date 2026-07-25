@@ -10,6 +10,7 @@ import {
   EconomyReward,
   EconomyService,
 } from '../economy/economy.service';
+import { RewardService } from '../reward/reward.service';
 import {
   Mail,
   MailAttachment,
@@ -28,6 +29,7 @@ export class MailService {
     private readonly mailRepository: Repository<Mail>,
 
     private readonly economyService: EconomyService,
+    private readonly rewardService: RewardService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -284,10 +286,18 @@ export class MailService {
                 },
               ));
 
-            await this.economyService.grant(
+            await this.rewardService.grantWithManager(
               manager,
               userId,
+              'mail',
+              String(mail.id),
               reward,
+              {
+                mailId: mail.id,
+                sourceType: mail.sourceType,
+                sourceId: mail.sourceId,
+              },
+              `mail:${userId}:${mail.id}`,
             );
 
             mail.claimed = true;
@@ -321,8 +331,7 @@ export class MailService {
         duplicate: result.duplicate,
         requestId,
         ...result.response,
-        wallet:
-          await this.economyService.getWallet(userId),
+        wallet: await this.rewardService.wallet(userId),
       };
     } catch (error: any) {
       return {
@@ -424,13 +433,23 @@ export class MailService {
               ));
 
             if (claimable.length) {
-              await this.economyService.grant(
-                manager,
-                userId,
-                reward,
-              );
-
               for (const mail of claimable) {
+                await this.rewardService.grantWithManager(
+                  manager,
+                  userId,
+                  'mail',
+                  String(mail.id),
+                  this.attachmentsToReward(
+                    this.getAttachments(mail),
+                  ),
+                  {
+                    mailId: mail.id,
+                    sourceType: mail.sourceType,
+                    sourceId: mail.sourceId,
+                    batchRequestId: requestId,
+                  },
+                  `mail:${userId}:${mail.id}`,
+                );
                 mail.claimed = true;
                 mail.readed = true;
                 mail.claimRequestId = requestId;
@@ -467,8 +486,7 @@ export class MailService {
         duplicate: result.duplicate,
         requestId,
         ...result.response,
-        wallet:
-          await this.economyService.getWallet(userId),
+        wallet: await this.rewardService.wallet(userId),
       };
     } catch (error: any) {
       return {

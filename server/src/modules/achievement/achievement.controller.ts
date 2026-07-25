@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
   Req,
   UseGuards,
@@ -9,6 +10,7 @@ import {
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { AchievementService } from './achievement.service';
 import { ClaimAchievementDto } from './dto/claim-achievement.dto';
 
@@ -34,9 +36,9 @@ export class AchievementController {
   }
 
   @Get('list')
-  listBeta() {
+  listBeta(@Headers('x-user-id') userId?: string) {
     return this.achievementService.getMyAchievements(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
     );
   }
 
@@ -50,10 +52,11 @@ export class AchievementController {
 
   @Post('claim')
   claimBeta(
+    @Headers('x-user-id') userId: string,
     @Body() dto: ClaimAchievementDto,
   ) {
     return this.achievementService.claimAchievement(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(dto?.achievementId || 0),
     );
   }

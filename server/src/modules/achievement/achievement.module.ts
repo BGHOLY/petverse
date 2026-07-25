@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { EconomyModule } from '../economy/economy.module';
+import { RewardModule } from '../reward/reward.module';
 import { Friend } from '../friend/friend.entity';
 import { FusionRecord } from '../fusion/fusion-record.entity';
 import { Marriage } from '../marriage/marriage.entity';
@@ -32,7 +32,7 @@ import { AchievementService } from './achievement.service';
         expiresIn: '7d',
       },
     }),
-    EconomyModule,
+    RewardModule,
   ],
   controllers: [AchievementController],
   providers: [AchievementService],

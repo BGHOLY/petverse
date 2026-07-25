@@ -5,7 +5,7 @@ import {
   Repository,
 } from 'typeorm';
 
-import { EconomyService } from '../economy/economy.service';
+import { RewardService } from '../reward/reward.service';
 import { Friend } from '../friend/friend.entity';
 import { FusionRecord } from '../fusion/fusion-record.entity';
 import { Marriage } from '../marriage/marriage.entity';
@@ -122,7 +122,7 @@ export class AchievementService {
     @InjectRepository(Marriage)
     private readonly marriageRepository: Repository<Marriage>,
 
-    private readonly economyService: EconomyService,
+    private readonly rewardService: RewardService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -348,10 +348,16 @@ export class AchievementService {
               this.parseReward(
                 achievement,
               );
-            await this.economyService.grant(
+            await this.rewardService.grantWithManager(
               manager,
               userId,
+              'achievement',
+              achievement.achievementCode,
               reward,
+              {
+                achievementId: achievement.id,
+                achievementCode: achievement.achievementCode,
+              },
             );
 
             achievement.claimed = true;
@@ -371,10 +377,7 @@ export class AchievementService {
 
       return {
         ...result,
-        wallet:
-          await this.economyService.getWallet(
-            userId,
-          ),
+        wallet: await this.rewardService.wallet(userId),
       };
     } catch (error: any) {
       return {

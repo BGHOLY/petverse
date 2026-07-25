@@ -6,7 +6,9 @@ import {
 } from 'typeorm';
 
 import { DailyTaskService } from '../daily-task/daily-task.service';
-import { EconomyService } from '../economy/economy.service';
+import { RewardService, UnifiedReward } from '../reward/reward.service';
+import { ServerTimeService } from '../server-time/server-time.service';
+import { SignClaim } from './sign-claim.entity';
 import { SignRecord } from './sign-record.entity';
 
 @Injectable()
@@ -16,22 +18,14 @@ export class SignService {
     private readonly signRecordRepository: Repository<SignRecord>,
 
     private readonly dailyTaskService: DailyTaskService,
-    private readonly economyService: EconomyService,
+    private readonly rewardService: RewardService,
+    private readonly serverTime: ServerTimeService,
     private readonly dataSource: DataSource,
   ) {}
 
-  private isSameDay(a: Date, b: Date) {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
-  }
-
   private isYesterday(last: Date, now: Date) {
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    return this.isSameDay(last, yesterday);
+    const previous = new Date(this.serverTime.startOfDay(now).getTime() - 86_400_000);
+    return this.serverTime.dayKey(last) === this.serverTime.dayKey(previous);
   }
 
   async getMySignInfo(userId: number) {
@@ -54,15 +48,38 @@ export class SignService {
         );
     }
 
-    const today = new Date();
+    const today = this.serverTime.now();
+    const dayKey = this.serverTime.dayKey(today);
+    const claim = await this.dataSource.getRepository(SignClaim).findOne({
+      where: { userId, rewardDate: dayKey },
+    });
+    const nextDay = (Number(record.totalDays || 0) % 7) + 1;
+    const cycleNumber = Math.floor(Number(record.totalDays || 0) / 7) + 1;
+    const claims = await this.dataSource.getRepository(SignClaim).find({
+      where: {
+        userId,
+        cycleId: `cycle-${cycleNumber}`,
+      },
+      order: { dayIndex: 'ASC' },
+    });
+    const claimedDays = new Set(claims.map((item) => item.dayIndex));
     return {
       record,
-      canSign:
-        !record.lastSignTime ||
-        !this.isSameDay(
-          new Date(record.lastSignTime),
-          today,
-        ),
+      canSign: !claim,
+      cycleId: `cycle-${cycleNumber}`,
+      nextDay,
+      dayKey,
+      days: Array.from({ length: 7 }, (_, index) => {
+        const dayIndex = index + 1;
+        return {
+          dayIndex,
+          reward: this.getReward(dayIndex),
+          claimed: claimedDays.has(dayIndex),
+          current: dayIndex === nextDay && !claim,
+          locked: dayIndex > nextDay,
+        };
+      }),
+      clock: this.serverTime.clock(today),
     };
   }
 
@@ -94,22 +111,21 @@ export class SignService {
               );
             }
 
-            const now = new Date();
-            if (
-              record.lastSignTime &&
-              this.isSameDay(
-                new Date(
-                  record.lastSignTime,
-                ),
-                now,
-              )
-            ) {
+            const now = this.serverTime.now();
+            const rewardDate = this.serverTime.dayKey(now);
+            const claimRepository = manager.getRepository(SignClaim);
+            const existingClaim = await claimRepository.findOne({
+              where: { userId, rewardDate },
+              lock: { mode: 'pessimistic_write' },
+            });
+            if (existingClaim) {
               return {
                 success: false,
                 message:
                   '今天已经签到过了',
                 record,
                 alreadySigned: true,
+                claim: existingClaim,
               };
             }
 
@@ -144,17 +160,35 @@ export class SignService {
               1;
             const reward =
               this.getReward(rewardDay);
-
-            await this.economyService.grant(
+            const cycleId = `cycle-${Math.floor(
+              (Number(record.totalDays || 1) - 1) / 7,
+            ) + 1}`;
+            const idempotencyKey = `sign:${userId}:${rewardDate}`;
+            await this.rewardService.grantWithManager(
               manager,
               userId,
+              'sign',
+              rewardDate,
               reward,
+              { cycleId, rewardDay, rewardDate },
+              idempotencyKey,
             );
             const saved =
               await manager.save(
                 SignRecord,
                 record,
               );
+            const claim = await claimRepository.save(
+              claimRepository.create({
+                userId,
+                cycleId,
+                dayIndex: rewardDay,
+                rewardDate,
+                claimedAt: now,
+                idempotencyKey,
+                reward,
+              }),
+            );
 
             return {
               success: true,
@@ -162,21 +196,21 @@ export class SignService {
               rewardDay,
               reward,
               record: saved,
+              claim,
             };
           },
         );
 
-      await this.dailyTaskService.completeTask(
-        userId,
-        'signCompleted',
-      );
+      if (result.success) {
+        await this.dailyTaskService.completeTask(
+          userId,
+          'signCompleted',
+        );
+      }
 
       return {
         ...result,
-        wallet:
-          await this.economyService.getWallet(
-            userId,
-          ),
+        wallet: await this.rewardService.wallet(userId),
       };
     } catch (error: any) {
       return {
@@ -188,8 +222,8 @@ export class SignService {
     }
   }
 
-  private getReward(day: number) {
-    const rewards: Record<number, any> = {
+  private getReward(day: number): UnifiedReward {
+    const rewards: Record<number, UnifiedReward> = {
       1: { gold: 100 },
       2: { gold: 200 },
       3: { gold: 300 },
@@ -205,9 +239,8 @@ export class SignService {
         },
       },
       7: {
-        items: {
-          common_pet_egg: 1,
-        },
+        diamond: 30,
+        eggs: [{ rarityPotential: 2, source: 'seven_day_sign' }],
       },
     };
     return rewards[day] || {

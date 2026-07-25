@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Headers,
   Post,
   Req,
   UseGuards,
@@ -8,6 +9,7 @@ import {
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { SignService } from './sign.service';
 
 @Controller('sign')
@@ -17,13 +19,13 @@ export class SignController {
   ) {}
 
   @Get()
-  async getBetaSignInfo() {
-    return this.signService.getMySignInfo(DEFAULT_USER_ID);
+  async getBetaSignInfo(@Headers('x-user-id') userId?: string) {
+    return this.signService.getMySignInfo(resolveRequestUserId(userId));
   }
 
   @Post('today-beta')
-  async signTodayBeta() {
-    return this.signService.signToday(DEFAULT_USER_ID);
+  async signTodayBeta(@Headers('x-user-id') userId?: string) {
+    return this.signService.signToday(resolveRequestUserId(userId));
   }
 
   @Get('me')

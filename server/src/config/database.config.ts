@@ -8,7 +8,10 @@ import { Inventory } from '../modules/inventory/inventory.entity';
 import { Battle } from '../modules/battle/battle.entity';
 import { TowerRecord } from '../modules/tower/tower-record.entity';
 import { SignRecord } from '../modules/sign/sign-record.entity';
+import { SignClaim } from '../modules/sign/sign-claim.entity';
 import { DailyTask } from '../modules/daily-task/daily-task.entity';
+import { DailyTaskProgress } from '../modules/daily-task/daily-task-progress.entity';
+import { TaskEventRecord } from '../modules/daily-task/task-event-record.entity';
 import { OfflineReward } from '../modules/offline-reward/offline-reward.entity';
 import { Friend } from '../modules/friend/friend.entity';
 import { FriendRequest } from '../modules/friend/friend-request.entity';
@@ -41,6 +44,7 @@ import { GuildExpedition } from '../modules/guild/guild-expedition.entity';
 import { GuildHelpRequest } from '../modules/guild/guild-help.entity';
 import { WorldExplorationProgress } from '../modules/exploration/world-exploration.entity';
 import { EquipmentItem } from '../modules/equipment/equipment.entity';
+import { RewardClaim } from '../modules/reward/reward-claim.entity';
 
 dotenv.config();
 
@@ -60,7 +64,10 @@ export const databaseConfig: TypeOrmModuleOptions = {
     Battle,
     TowerRecord,
     SignRecord,
+    SignClaim,
     DailyTask,
+    DailyTaskProgress,
+    TaskEventRecord,
     OfflineReward,
     Friend,
     FriendRequest,
@@ -93,6 +100,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     GuildHelpRequest,
     WorldExplorationProgress,
     EquipmentItem,
+    RewardClaim,
   ],
   synchronize: true,
 };

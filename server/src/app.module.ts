@@ -39,6 +39,8 @@ import { FormationModule } from './modules/formation/formation.module';
 import { GuildModule } from './modules/guild/guild.module';
 import { ExplorationModule } from './modules/exploration/exploration.module';
 import { EquipmentModule } from './modules/equipment/equipment.module';
+import { RewardModule } from './modules/reward/reward.module';
+import { ServerTimeModule } from './modules/server-time/server-time.module';
 
 @Module({
   imports: [
@@ -80,6 +82,8 @@ import { EquipmentModule } from './modules/equipment/equipment.module';
     GuildModule,
     ExplorationModule,
     EquipmentModule,
+    RewardModule,
+    ServerTimeModule,
     DevModule,
   ],
   controllers: [AppController],
