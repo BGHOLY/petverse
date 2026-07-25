@@ -1,4 +1,4 @@
-import { Color, Graphics, Node, Rect, Size, Sprite, SpriteFrame, Vec2 } from 'cc';
+import { Color, Graphics, Node } from 'cc';
 import {
     CuteTheme,
     artImage,
@@ -10,7 +10,6 @@ import {
     progress,
     setRect,
     text,
-    loadSpriteFrameResource,
 } from '../cute/CuteUiKit';
 import { MAIN_TABS, MainTab, UiIconName } from './AppRoutes';
 
@@ -324,60 +323,16 @@ export function renderBottomNavigation(
     notificationCount = 0,
 ) {
     clearNode(parent);
-    // The five tabs are a single finished illustration. Rendering the source once
-    // keeps its shared paper base, borders, labels and icon scale intact; slicing it
-    // into separate sprites introduced seams and mixed visual sizes.
-    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 0, 700, 126);
-
-    // The source illustration intentionally makes the Home house much taller than
-    // the other normal icons. Preserve the shared bar and label, but replace only
-    // that icon area with a smaller crop from the same artwork. This keeps one art
-    // style while matching Pet, Shop and More visually.
-    panel(parent, 'HomeIconClear', -267, 10, 126, 72, new Color(255, 246, 216, 255), 20, false, CuteTheme.transparent, 0);
-    const homeIcon = new Node('HomeIcon');
-    parent.addChild(homeIcon);
-    setRect(homeIcon, -267, 10, 78, 66);
-    const homeSprite = homeIcon.addComponent(Sprite);
-    homeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    loadSpriteFrameResource('ui/home-v4/bottom-navigation-v4', (asset) => {
-        if (!homeIcon.isValid) return;
-        const source = asset.rect;
-        const frame = new SpriteFrame();
-        frame.reset({
-            texture: asset.texture,
-            rect: new Rect(source.x + source.width * (20 / 720), source.y + source.height * (20 / 205), source.width * (130 / 720), source.height * (125 / 205)),
-            originalSize: new Size(130, 125),
-            offset: new Vec2(),
-            isRotate: false,
-        });
-        homeSprite.spriteFrame = frame;
-        homeSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        setRect(homeIcon, -267, 10, 78, 66);
-    });
+    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
 
     MAIN_TABS.forEach((item, index) => {
         const selected = item.key === active;
         const x = -276 + index * 138;
         const isAdventure = item.key === 'adventure';
-        const centerY = isAdventure ? 7 : 0;
-        const hitWidth = isAdventure ? 148 : 112;
-        const hitHeight = isAdventure ? 124 : 104;
         if (selected) {
-            panel(
-                parent,
-                `Selected_${item.key}`,
-                x,
-                -53,
-                isAdventure ? 78 : 62,
-                6,
-                HandPaintedTheme.leaf,
-                3,
-                false,
-                CuteTheme.transparent,
-                0,
-            );
+            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220), 3);
         }
-        const tab = hitArea(parent, `Tab_${item.key}`, x, centerY, hitWidth, hitHeight, () => onNavigate(item.key));
+        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
         if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });
 }
