@@ -12,6 +12,7 @@ import {
   EconomyService,
 } from '../economy/economy.service';
 import { EggService } from '../egg/egg.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { Egg } from '../egg/egg.entity';
 import { Friend } from '../friend/friend.entity';
 import { DEFAULT_USER_ID } from '../game-data';
@@ -58,6 +59,7 @@ export class MarriageService {
     private readonly economyService: EconomyService,
     private readonly lineageService: LineageService,
     private readonly mailService: MailService,
+    private readonly dailyTaskService: DailyTaskService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -441,6 +443,22 @@ export class MarriageService {
             sourceId: String(proposalId),
           },
         );
+      }
+      if (result?.accepted && !result?.duplicate && result?.marriage?.id) {
+        const marriageId = Number(result.marriage.id);
+        const participants = [
+          Number(result.marriage.ownerAId || proposerUserId),
+          Number(result.marriage.ownerBId || userId),
+        ].filter((id, index, values) => id > 0 && values.indexOf(id) === index);
+        for (const participantId of participants) {
+          await this.dailyTaskService.recordEvent(
+            participantId,
+            'social_completed',
+            `marriage:${marriageId}`,
+            1,
+            { marriageId },
+          );
+        }
       }
       return result;
     } catch (error: any) {

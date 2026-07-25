@@ -3,8 +3,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { RewardModule } from '../reward/reward.module';
+import { ActivityProgress } from '../retention/activity-progress.entity';
 import { DailyTaskProgress } from './daily-task-progress.entity';
 import { TaskEventRecord } from './task-event-record.entity';
+import { TaskActivityClaim } from './task-activity-claim.entity';
 import { DailyTaskController } from './daily-task.controller';
 import { DailyTask } from './daily-task.entity';
 import { DailyTaskService } from './daily-task.service';
@@ -15,6 +17,8 @@ import { DailyTaskService } from './daily-task.service';
       DailyTask,
       DailyTaskProgress,
       TaskEventRecord,
+      TaskActivityClaim,
+      ActivityProgress,
     ]),
     JwtModule.register({
       secret:

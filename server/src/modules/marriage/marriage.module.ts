@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EconomyModule } from '../economy/economy.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 import { EggModule } from '../egg/egg.module';
 import { Friend } from '../friend/friend.entity';
 import { MailModule } from '../mail/mail.module';
@@ -27,6 +28,7 @@ import { MarriageService } from './marriage.service';
     PetModule,
     EconomyModule,
     MailModule,
+    DailyTaskModule,
   ],
   controllers: [MarriageController],
   providers: [MarriageService, LineageService],

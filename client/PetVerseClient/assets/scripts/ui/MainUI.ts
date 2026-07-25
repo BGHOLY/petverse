@@ -64,6 +64,11 @@ import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
 import { renderPetPageV6 } from './v6/pages/PetPage';
 import { PetAttributeViewV6, PetEquipmentSlotV6, PetTabV6 } from './v6/components/PetTypes';
 import { ShopCategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
+import {
+    BenefitModeV6,
+    TaskCategoryV6,
+    renderBenefitsPageV6,
+} from './v6/pages/BenefitsPage';
 
 const { ccclass, executeInEditMode, property } = _decorator;
 
@@ -249,9 +254,14 @@ export class MainUI extends Component {
     private shopBuyCount = 1;
     private shopPurchaseOpen = false;
 
-    private benefitMode: 'sign' | 'daily' | 'achievement' | 'month' | 'pass' = 'sign';
+    private benefitMode: BenefitModeV6 = 'sign';
+    private benefitTaskCategory: TaskCategoryV6 = 'daily';
+    private selectedActivityId = '';
     private signInfo: any = null;
     private dailyTask: any = null;
+    private newcomerInfo: any = null;
+    private activityInfo: any = null;
+    private redDotInfo: any = null;
     private achievements: any[] = [];
 
     private guideActive = false;
@@ -308,8 +318,11 @@ export class MainUI extends Component {
     }
 
     private handleAppShow() {
-        if (EDITOR || this.currentPage !== 'hatchery') return;
-        void this.refreshPageData('hatchery');
+        if (EDITOR) return;
+        void (async () => {
+            await ApiClient.post('/retention/session', {});
+            await this.refreshPageData(this.currentPage);
+        })();
     }
 
     update(dt: number) {
@@ -448,6 +461,7 @@ export class MainUI extends Component {
             } else {
                 GameStore.setProfile(profile);
             }
+            await ApiClient.post('/retention/session', {});
 
             const results = await Promise.all([
                 ApiClient.get('/inventory'),
@@ -468,6 +482,7 @@ export class MainUI extends Component {
                 ApiClient.get('/marriage/proposals?direction=incoming'),
                 ApiClient.get('/exploration/world'),
                 ApiClient.get('/equipment'),
+                ApiClient.get('/retention/overview'),
             ]);
 
             GameStore.setList('inventory', results[0]);
@@ -489,6 +504,7 @@ export class MainUI extends Component {
             this.marriageProposals = this.resultList(results[15], ['proposals', 'data', 'items', 'list']);
             this.applyWorldExploration(results[16]);
             this.equipmentItems = this.resultList(results[17], ['equipment', 'items', 'data', 'list']);
+            this.applyRetentionOverview(results[18]);
             this.ensureSelectedShopItem();
             this.ensureSelectedFriend();
             this.ensureMarriageSelection();
@@ -513,7 +529,7 @@ export class MainUI extends Component {
         try {
             switch (page) {
                 case 'home': {
-                    const [profile, tower, mail, sign, daily, achievements, friendRequests, marriageRequests, eggs] = await Promise.all([
+                    const [profile, tower, mail, sign, daily, achievements, friendRequests, marriageRequests, eggs, retention] = await Promise.all([
                         ApiClient.get('/user/profile'),
                         ApiClient.get('/tower/status'),
                         ApiClient.get('/mail/list'),
@@ -523,6 +539,7 @@ export class MainUI extends Component {
                         ApiClient.get('/friend/requests'),
                         ApiClient.get('/marriage/proposals?direction=incoming'),
                         ApiClient.get('/hatchery/eggs'),
+                        ApiClient.get('/retention/overview'),
                     ]);
                     if (profile?.success !== false) GameStore.setProfile(profile);
                     if (tower?.success !== false) GameStore.setTower(tower);
@@ -533,6 +550,7 @@ export class MainUI extends Component {
                     this.achievements = this.resultList(achievements, ['achievements', 'data', 'items', 'list']);
                     this.incomingFriendRequests = this.resultList(friendRequests, ['requests', 'data', 'items', 'list']);
                     this.marriageProposals = this.resultList(marriageRequests, ['proposals', 'data', 'items', 'list']);
+                    this.applyRetentionOverview(retention);
                     break;
                 }
                 case 'profile': {
@@ -601,13 +619,14 @@ export class MainUI extends Component {
                     break;
                 }
                 case 'benefits': {
-                    const [sign, daily, achievements, profile, inventory, season] = await Promise.all([
+                    const [sign, daily, achievements, profile, inventory, season, retention] = await Promise.all([
                         ApiClient.get('/sign'),
                         ApiClient.get('/daily-task'),
                         ApiClient.get('/achievement/list'),
                         ApiClient.get('/user/profile'),
                         ApiClient.get('/inventory'),
                         ApiClient.get('/season/me'),
+                        ApiClient.get('/retention/overview'),
                     ]);
                     this.signInfo = sign?.data || sign || this.signInfo;
                     this.dailyTask = daily?.data || daily || this.dailyTask;
@@ -615,6 +634,7 @@ export class MainUI extends Component {
                     if (profile?.success !== false) GameStore.setProfile(profile);
                     if (inventory?.success !== false) GameStore.setList('inventory', inventory);
                     this.seasonSummary = season?.data || season || this.seasonSummary;
+                    this.applyRetentionOverview(retention);
                     break;
                 }
                 case 'hatchery': {
@@ -708,6 +728,8 @@ export class MainUI extends Component {
                     break;
                 }
             }
+            const redDots = await ApiClient.get('/retention/red-dots');
+            if (redDots?.success !== false) this.redDotInfo = redDots?.data || redDots;
         } catch (error) {
             console.error(`[CuteMainUI] refresh ${page} failed:`, error);
         } finally {
@@ -960,13 +982,19 @@ export class MainUI extends Component {
         renderHomePage(this.pageRoot, {
             pet: this.homePet(),
             notificationCount: this.pageNotificationCount('benefits'),
+            notificationCounts: {
+                sign: Number(this.redDotInfo?.sources?.sign || 0),
+                newcomer: Number(this.redDotInfo?.sources?.newcomer || 0),
+                daily: Number(this.redDotInfo?.sources?.tasks || 0),
+                events: Number(this.redDotInfo?.sources?.activities || 0),
+            },
             onSelectPet: () => this.openHomePetPicker(),
             onActivity: (activity: HomeActivity) => {
                 const modes: Record<HomeActivity, typeof this.benefitMode> = {
                     sign: 'sign',
-                    newcomer: 'month',
-                    daily: 'daily',
-                    events: 'achievement',
+                    newcomer: 'newcomer',
+                    daily: 'tasks',
+                    events: 'activities',
                 };
                 this.benefitMode = modes[activity];
                 this.showPage('benefits');
@@ -1640,37 +1668,36 @@ export class MainUI extends Component {
 
     private renderBenefits() {
         if (!this.pageRoot) return;
-        const root = this.pageRoot;
-
-        const page = panel(root, 'BenefitPage', 0, -2, 692, 910, new Color(255, 248, 228, 255), 40, true, CuteTheme.caramelSoft, 4);
-
-        const tabs: Array<['sign' | 'daily' | 'achievement' | 'month' | 'pass', string, string]> = [
-            ['sign', '签到', '📅'],
-            ['daily', '每日', '✅'],
-            ['achievement', '成就', '🏅'],
-            ['month', '月卡', '🌙'],
-            ['pass', '战令', '🎖'],
-        ];
-        tabs.forEach(([mode, title, icon], index) => button(
-            page,
-            `BenefitTab_${mode}`,
-            title,
-            -252 + index * 126,
-            374,
-            116,
-            54,
-            () => {
+        renderBenefitsPageV6(this.pageRoot, {
+            mode: this.benefitMode,
+            taskCategory: this.benefitTaskCategory,
+            selectedActivityId: this.selectedActivityId,
+            sign: this.signInfo,
+            newcomer: this.newcomerInfo,
+            tasks: this.dailyTask,
+            activities: this.activityInfo,
+            achievements: this.achievements,
+            busy: (key) => this.busy.has(key),
+            onMode: (mode) => {
                 this.benefitMode = mode;
                 this.renderCurrentPage(false);
             },
-            { icon, selected: this.benefitMode === mode, fill: this.benefitMode === mode ? CuteTheme.honey : CuteTheme.paper, fontSize: 13, radius: 22 },
-        ));
-
-        if (this.benefitMode === 'sign') this.renderSignBenefits(page);
-        else if (this.benefitMode === 'daily') this.renderDailyBenefits(page);
-        else if (this.benefitMode === 'achievement') this.renderAchievementBenefits(page);
-        else if (this.benefitMode === 'month') this.renderMonthCard(page);
-        else this.renderBattlePass(page);
+            onTaskCategory: (category) => {
+                this.benefitTaskCategory = category;
+                this.renderCurrentPage(false);
+            },
+            onActivitySelect: (activityId) => {
+                this.selectedActivityId = activityId;
+                this.renderCurrentPage(false);
+            },
+            onSign: () => void this.claimSignToday(),
+            onClaimNewcomer: (tier) => void this.claimNewcomerTier(tier),
+            onClaimTask: (task) => void this.claimTaskReward(task),
+            onClaimAllTasks: (category) => void this.claimAllTaskRewards(category),
+            onClaimActivityChest: (chest) => void this.claimTaskActivityChest(chest),
+            onClaimActivity: (activity, tier) => void this.claimActivityTier(activity, tier),
+            onClaimAchievement: (item) => void this.claimAchievement(item),
+        });
     }
 
     private renderSignBenefits(parent: Node) {
@@ -1791,7 +1818,7 @@ export class MainUI extends Component {
             text(paid, 'Icon', '🔒', 0, 16, 54, 46, 26, CuteTheme.peachDark, 'center', true);
             text(paid, 'Level', `Lv.${lv}`, 0, -25, 70, 24, 12, CuteTheme.caramel, 'center', true);
         }
-        button(parent, 'PassTask', '查看每日任务', -126, -290, 220, 62, () => { this.benefitMode = 'daily'; this.renderCurrentPage(false); }, { icon: '✅', fill: CuteTheme.mint, fontSize: 16, radius: 26 });
+        button(parent, 'PassTask', '查看每日任务', -126, -290, 220, 62, () => { this.benefitMode = 'tasks'; this.renderCurrentPage(false); }, { icon: '✅', fill: CuteTheme.mint, fontSize: 16, radius: 26 });
         button(parent, 'PassPremium', '高级战令待开放', 126, -290, 220, 62, () => this.showToast('当前Beta版本不开放真实付费'), { icon: '🔒', fill: new Color(220, 216, 208, 255), fontSize: 15, radius: 26, disabled: true });
         text(parent, 'PassHint', '完成战斗、爬塔和每日任务会累计赛季进度。正式充值系统接入后再开放高级奖励轨。', 0, -354, 610, 42, 13, CuteTheme.muted, 'center', true);
     }
@@ -2908,6 +2935,7 @@ export class MainUI extends Component {
     }
 
     private benefitNotificationCount() {
+        if (this.redDotInfo) return Number(this.redDotInfo?.benefits || 0);
         let count = this.signInfo?.canSign ? 1 : 0;
         const task = this.dailyTask?.data || this.dailyTask || {};
         if (task?.allCompleted && !task?.rewardClaimed) count += 1;
@@ -2923,29 +2951,31 @@ export class MainUI extends Component {
     }
 
     private pageNotificationCount(page: PageName) {
+        const sources = this.redDotInfo?.sources || {};
         switch (page) {
             case 'benefits':
                 return this.benefitNotificationCount();
             case 'hatchery':
-                return this.hatchNotificationCount();
+                return Number(sources.hatchery ?? this.hatchNotificationCount());
             case 'friends':
-                return this.incomingFriendRequests.filter((item) => String(item?.status || 'pending') === 'pending').length;
+                return Number(sources.friends ?? this.incomingFriendRequests.filter((item) => String(item?.status || 'pending') === 'pending').length);
             case 'marriage': {
                 const myId = Number(GameStore.user?.id || 0);
-                return this.marriageProposals.filter((item) => {
+                return Number(sources.marriage ?? this.marriageProposals.filter((item) => {
                     if (String(item?.status || 'pending') !== 'pending') return false;
                     const targetId = Number(item?.targetUserId || 0);
                     return !myId || !targetId || targetId === myId;
-                }).length;
+                }).length);
             }
             case 'mail':
-                return Math.max(this.mailUnreadCount, this.mailClaimableCount);
+                return Number(sources.mail ?? Math.max(this.mailUnreadCount, this.mailClaimableCount));
             default:
                 return 0;
         }
     }
 
     private totalNotificationCount() {
+        if (this.redDotInfo) return Math.min(99, Number(this.redDotInfo?.total || 0));
         return Math.min(99, ['benefits', 'hatchery', 'friends', 'marriage', 'mail']
             .reduce((sum, page) => sum + this.pageNotificationCount(page as PageName), 0));
     }
@@ -4056,6 +4086,22 @@ export class MainUI extends Component {
         return [];
     }
 
+    private applyRetentionOverview(result: any) {
+        const overview = result?.data || result;
+        if (!overview || overview?.success === false) return;
+        if (overview.sign) this.signInfo = overview.sign?.data || overview.sign;
+        if (overview.tasks) this.dailyTask = overview.tasks?.data || overview.tasks;
+        if (overview.newcomer) this.newcomerInfo = overview.newcomer?.data || overview.newcomer;
+        if (overview.activities) this.activityInfo = overview.activities?.data || overview.activities;
+        if (overview.redDots) this.redDotInfo = overview.redDots?.data || overview.redDots;
+        const activities = Array.isArray(this.activityInfo?.activities)
+            ? this.activityInfo.activities
+            : [];
+        if (!this.selectedActivityId || !activities.some((item: any) => item.activityId === this.selectedActivityId)) {
+            this.selectedActivityId = String(activities[0]?.activityId || '');
+        }
+    }
+
     private applyMailResult(result: any) {
         if (result?.success === false) return;
         this.mails = this.resultList(result, ['mails', 'data', 'items', 'list']);
@@ -4528,17 +4574,7 @@ export class MainUI extends Component {
             if (result?.success === false) return this.showToast(result?.message || '签到失败');
             CuteFeedback.playSuccess();
             this.showToast(`签到成功：${this.rewardSummary(result?.reward)}`);
-            this.signInfo = await ApiClient.get('/sign');
-            this.dailyTask = await ApiClient.get('/daily-task');
-            const [profile, inventory, eggs] = await Promise.all([
-                ApiClient.get('/user/profile'),
-                ApiClient.get('/inventory'),
-                ApiClient.get('/hatchery/eggs'),
-            ]);
-            if (profile?.success !== false) GameStore.setProfile(profile);
-            if (inventory?.success !== false) GameStore.setList('inventory', inventory);
-            if (eggs?.success !== false) GameStore.setList('eggs', eggs);
-            await this.syncEggItemsToHatchery();
+            await this.refreshRetentionRewards();
         } finally {
             this.busy.delete('benefit:sign');
             this.refreshAllVisuals();
@@ -4561,6 +4597,121 @@ export class MainUI extends Component {
             this.busy.delete('benefit:daily');
             this.refreshAllVisuals();
         }
+    }
+
+    private async claimNewcomerTier(tier: any) {
+        const tierCode = String(tier?.tierCode || '');
+        const key = `newcomer:${tierCode}`;
+        if (!tierCode || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/retention/newcomer/claim', {
+                tierCode,
+                requestId: this.requestId(`newcomer-${tierCode}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '礼包领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`${safeName(tier?.title, '萌新礼包')}：${this.rewardSummary(result?.reward)}`);
+            await this.refreshRetentionRewards();
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimTaskReward(task: any) {
+        const taskId = Number(task?.id || 0);
+        const key = `task:${taskId}`;
+        if (!taskId || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/daily-task/claim', {
+                taskId,
+                requestId: this.requestId(`task-${taskId}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '任务奖励领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`${safeName(task?.title, '任务')}：${this.rewardSummary(result?.reward)}`);
+            await this.refreshRetentionRewards();
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimAllTaskRewards(category: TaskCategoryV6) {
+        const key = 'task:claim-all';
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/daily-task/claim-all', {
+                category,
+                requestId: this.requestId(`task-all-${category}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '一键领取失败');
+            if (Number(result?.claimedCount || 0) > 0) CuteFeedback.playSuccess();
+            this.showToast(result?.message || '没有可领取的任务奖励');
+            await this.refreshRetentionRewards();
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimTaskActivityChest(chest: any) {
+        const threshold = Number(chest?.threshold || 0);
+        const key = `task-chest:${threshold}`;
+        if (!threshold || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/daily-task/activity-claim', {
+                threshold,
+                requestId: this.requestId(`task-chest-${threshold}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '活跃宝箱领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`活跃宝箱：${this.rewardSummary(result?.reward)}`);
+            await this.refreshRetentionRewards();
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async claimActivityTier(activity: any, tier: any) {
+        const activityId = String(activity?.activityId || '');
+        const tierCode = String(tier?.tierCode || '');
+        const key = `activity:${activityId}:${tierCode}`;
+        if (!activityId || !tierCode || this.busy.has(key)) return;
+        this.busy.add(key);
+        try {
+            const result = await ApiClient.post('/retention/activities/claim', {
+                activityId,
+                tierCode,
+                requestId: this.requestId(`activity-${activityId}-${tierCode}`),
+            });
+            if (result?.success === false) return this.showToast(result?.message || '活动奖励领取失败');
+            CuteFeedback.playSuccess();
+            this.showToast(`${safeName(activity?.title, '精彩活动')}：${this.rewardSummary(result?.reward)}`);
+            await this.refreshRetentionRewards();
+        } finally {
+            this.busy.delete(key);
+            this.refreshAllVisuals();
+        }
+    }
+
+    private async refreshRetentionRewards() {
+        const [overview, profile, inventory, eggs] = await Promise.all([
+            ApiClient.get('/retention/overview'),
+            ApiClient.get('/user/profile'),
+            ApiClient.get('/inventory'),
+            ApiClient.get('/hatchery/eggs'),
+        ]);
+        this.applyRetentionOverview(overview);
+        if (profile?.success !== false) GameStore.setProfile(profile);
+        if (inventory?.success !== false) GameStore.setList('inventory', inventory);
+        if (eggs?.success !== false) GameStore.setList('eggs', eggs);
+        await this.syncEggItemsToHatchery();
     }
 
     private async claimAchievement(item: any) {

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 
 import { Pet } from '../pet/pet.entity';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import {
   EQUIPMENT_SLOTS,
   EQUIPMENT_TEMPLATES,
@@ -17,6 +18,7 @@ export class EquipmentService {
     private readonly equipmentRepository: Repository<EquipmentItem>,
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+    private readonly dailyTaskService: DailyTaskService,
   ) {}
 
   async list(userId: number) {
@@ -56,7 +58,7 @@ export class EquipmentService {
   }
 
   async equip(userId: number, equipmentId: number, petId: number) {
-    return this.equipmentRepository.manager.transaction(async (manager) => {
+    const result = await this.equipmentRepository.manager.transaction(async (manager) => {
       const equipmentRepository = manager.getRepository(EquipmentItem);
       const petRepository = manager.getRepository(Pet);
       const item = await equipmentRepository.findOne({ where: { id: equipmentId, ownerId: userId }, lock: { mode: 'pessimistic_write' } });
@@ -85,6 +87,16 @@ export class EquipmentService {
         replaced: current && current.id !== item.id ? this.view(current) : null,
       };
     });
+    if (result.success) {
+      await this.dailyTaskService.recordEvent(
+        userId,
+        'equipment_equipped',
+        `equip:${equipmentId}:${petId}:${Date.now()}`,
+        1,
+        { equipmentId, petId },
+      );
+    }
+    return result;
   }
 
   async unequip(userId: number, equipmentId: number) {

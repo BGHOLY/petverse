@@ -151,3 +151,13 @@ export const ALL_TASK_DEFINITIONS = [
   ...DAILY_TASK_DEFINITIONS,
   ...WEEKLY_TASK_DEFINITIONS,
 ];
+
+export const DAILY_ACTIVITY_CHESTS = [
+  { threshold: 20, reward: { gold: 100 } },
+  { threshold: 50, reward: { gold: 250, items: { exp_potion_small: 1 } } },
+  { threshold: 80, reward: { diamond: 5 } },
+  {
+    threshold: 100,
+    reward: { diamond: 10, items: { hatch_sandglass_small: 1 } },
+  },
+] as const;

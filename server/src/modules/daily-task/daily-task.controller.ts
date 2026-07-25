@@ -68,6 +68,18 @@ export class DailyTaskController {
     );
   }
 
+  @Post('activity-claim')
+  claimActivity(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.dailyTaskService.claimActivityChest(
+      resolveRequestUserId(userId),
+      Number(body?.threshold || 0),
+      String(body?.requestId || ''),
+    );
+  }
+
   @Post('reward-auth')
   @UseGuards(JwtAuthGuard)
   claimReward(@Req() req: any) {

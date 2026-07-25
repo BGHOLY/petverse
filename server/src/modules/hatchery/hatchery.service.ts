@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 
 import { Egg } from '../egg/egg.entity';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { InventoryService } from '../inventory/inventory.service';
@@ -15,6 +16,7 @@ export class HatcheryService {
     private readonly eggService: EggService,
     private readonly petService: PetService,
     private readonly inventoryService: InventoryService,
+    private readonly dailyTaskService: DailyTaskService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -363,6 +365,18 @@ export class HatcheryService {
 
       const pets = await this.petService.getUserPets(userId);
       const eggs = await this.eggService.getUserEggViews(userId, true);
+      if (!transactionResult.duplicate) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'pet_hatched',
+          `hatch:${transactionResult.egg.id}`,
+          1,
+          {
+            eggId: transactionResult.egg.id,
+            petId: transactionResult.pet?.id,
+          },
+        );
+      }
 
       return {
         success: true,

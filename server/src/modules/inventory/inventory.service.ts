@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 
 import { EggService } from '../egg/egg.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { Item } from '../item/item.entity';
 import { Pet } from '../pet/pet.entity';
 import { Inventory } from './inventory.entity';
@@ -24,6 +25,7 @@ export class InventoryService {
     private readonly itemRepository: Repository<Item>,
 
     private readonly eggService: EggService,
+    private readonly dailyTaskService: DailyTaskService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -291,6 +293,15 @@ export class InventoryService {
       }
 
       const inventory = await this.getUserInventory(userId);
+      await this.dailyTaskService.recordEvent(
+        userId,
+        'item_used',
+        `inventory-use:${userId}:${normalizedCode}:${eggs
+          .map((egg: any) => egg.id)
+          .join('-')}`,
+        normalizedQuantity,
+        { itemCode: normalizedCode, quantity: normalizedQuantity },
+      );
       return {
         success: true,
         message: 'Egg moved to hatchery',
@@ -362,6 +373,19 @@ export class InventoryService {
       );
 
       const inventory = await this.getUserInventory(userId);
+      await this.dailyTaskService.recordEvent(
+        userId,
+        'item_used',
+        `inventory-use:${userId}:${normalizedCode}:${Number(
+          result?.id || petId || 0,
+        )}:${Date.now()}`,
+        normalizedQuantity,
+        {
+          itemCode: normalizedCode,
+          quantity: normalizedQuantity,
+          petId: Number(result?.id || petId || 0),
+        },
+      );
       return {
         success: true,
         message: 'Item used',

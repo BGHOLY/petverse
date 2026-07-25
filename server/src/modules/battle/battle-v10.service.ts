@@ -7,6 +7,7 @@ import { EconomyService } from '../economy/economy.service';
 import { EquipmentService } from '../equipment/equipment.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { DailyTaskService } from '../daily-task/daily-task.service';
+import { RetentionService } from '../retention/retention.service';
 import { FormationService } from '../formation/formation.service';
 import { formationLevelMultiplier, getFormationConfig } from '../formation/formation.config';
 import { findPetSpeciesConfig, PET_SPECIES_CONFIGS } from '../pet/config/pet-species.config';
@@ -91,6 +92,7 @@ export class BattleV10Service {
     private readonly petService: PetService,
     private readonly formationService: FormationService,
     private readonly dailyTaskService: DailyTaskService,
+    private readonly retentionService: RetentionService,
     private readonly seasonService: SeasonService,
     private readonly economyService: EconomyService,
     private readonly equipmentService: EquipmentService,
@@ -242,7 +244,8 @@ export class BattleV10Service {
     const sessionId = Number(body?.sessionId || 0);
     const battleId = String(body?.battleId || '').trim();
     const settlementKey = String(body?.settlementKey || `battle-settle:${battleId || sessionId}`).trim();
-    return this.dataSource.transaction(async (manager) => {
+    const bonuses = await this.retentionService.getActiveBonuses();
+    const result = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(BattleSessionV10);
       const query = repository.createQueryBuilder('battle').setLock('pessimistic_write')
         .where('battle.userId = :userId', { userId });
@@ -259,7 +262,20 @@ export class BattleV10Service {
       }
 
       const won = session.winnerSide === 'left';
-      const reward = won ? this.rewardForSession(session) : this.emptyReward();
+      const reward: any = won
+        ? this.rewardForSession(session)
+        : this.emptyReward();
+      if (won) {
+        reward.gold = Math.floor(
+          Number(reward.gold || 0) *
+            Number(bonuses.battleGoldMultiplier || 1),
+        );
+        reward.petExp = Math.floor(
+          Number(reward.petExp || 0) *
+            Number(bonuses.petExpMultiplier || 1),
+        );
+        reward.activityBonuses = { ...bonuses };
+      }
       if (won) await this.grantReward(manager, session, reward);
       const snapshot = this.buildSettlementSnapshot(session, reward, won);
       session.rewards = reward;
@@ -278,6 +294,48 @@ export class BattleV10Service {
         data: this.toSessionView(session),
       };
     });
+    if (
+      result?.success &&
+      !result?.duplicate &&
+      result?.session?.winnerSide === 'left'
+    ) {
+      const battleId = String(
+        result?.session?.battleId || result?.session?.id || sessionId,
+      );
+      await this.dailyTaskService.recordEvent(
+        userId,
+        'adventure_completed',
+        `battle:${battleId}`,
+        1,
+        {
+          battleId,
+          boss: Boolean(result?.session?.bossBattle),
+          mode: result?.session?.mode,
+        },
+      );
+      if (result?.session?.bossBattle) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'boss_defeated',
+          `battle-boss:${battleId}`,
+          1,
+          { battleId },
+        );
+      }
+      const equipmentCount = Array.isArray(result?.settlement?.reward?.equipment)
+        ? result.settlement.reward.equipment.length
+        : 0;
+      if (equipmentCount > 0) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'equipment_obtained',
+          `battle-equipment:${battleId}`,
+          equipmentCount,
+          { battleId },
+        );
+      }
+    }
+    return result;
   }
 
   async arena(userId = DEFAULT_USER_ID, body: any = {}) {

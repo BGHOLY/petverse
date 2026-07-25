@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EconomyModule } from '../economy/economy.module';
+import { DailyTaskModule } from '../daily-task/daily-task.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { Item } from '../item/item.entity';
 import { ItemModule } from '../item/item.module';
@@ -27,6 +28,7 @@ import { ShopService } from './shop.service';
     ItemModule,
     InventoryModule,
     EconomyModule,
+    DailyTaskModule,
   ],
   controllers: [ShopController],
   providers: [ShopService],

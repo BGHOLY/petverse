@@ -25,5 +25,6 @@ import { SignService } from './sign.service';
   ],
   controllers: [SignController],
   providers: [SignService],
+  exports: [SignService, TypeOrmModule],
 })
 export class SignModule {}

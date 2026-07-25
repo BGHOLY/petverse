@@ -6,6 +6,7 @@ import {
 } from 'typeorm';
 
 import { EconomyService } from '../economy/economy.service';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { InventoryService } from '../inventory/inventory.service';
 import {
   SHOP_ITEM_CONFIGS,
@@ -27,6 +28,7 @@ export class ShopService {
     private readonly itemService: ItemService,
     private readonly inventoryService: InventoryService,
     private readonly economyService: EconomyService,
+    private readonly dailyTaskService: DailyTaskService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -283,7 +285,7 @@ export class ShopService {
           },
         );
 
-      return {
+      const response = {
         ...result,
         wallet:
           await this.economyService.getWallet(
@@ -294,6 +296,19 @@ export class ShopService {
             userId,
           ),
       };
+      if (!response.duplicate) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'shop_purchase',
+          `shop:${requestId}`,
+          count,
+          {
+            shopItemId: shopItem.id,
+            itemCode: shopItem.itemCode,
+          },
+        );
+      }
+      return response;
     } catch (error: any) {
       const duplicate =
         await this.economyService.getOperation(

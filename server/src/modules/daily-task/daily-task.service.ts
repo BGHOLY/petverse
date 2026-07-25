@@ -3,14 +3,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { RewardService, UnifiedReward } from '../reward/reward.service';
+import { ACTIVITY_DEFINITIONS } from '../retention/activity.config';
+import { ActivityProgress } from '../retention/activity-progress.entity';
 import { ServerTimeService } from '../server-time/server-time.service';
 import {
   ALL_TASK_DEFINITIONS,
+  DAILY_ACTIVITY_CHESTS,
   TaskDefinition,
 } from './daily-task.config';
 import { DailyTaskProgress } from './daily-task-progress.entity';
 import { DailyTask } from './daily-task.entity';
 import { TaskEventRecord } from './task-event-record.entity';
+import { TaskActivityClaim } from './task-activity-claim.entity';
 
 @Injectable()
 export class DailyTaskService {
@@ -21,6 +25,10 @@ export class DailyTaskService {
     private readonly progressRepository: Repository<DailyTaskProgress>,
     @InjectRepository(TaskEventRecord)
     private readonly eventRepository: Repository<TaskEventRecord>,
+    @InjectRepository(TaskActivityClaim)
+    private readonly activityClaimRepository: Repository<TaskActivityClaim>,
+    @InjectRepository(ActivityProgress)
+    private readonly activityProgressRepository: Repository<ActivityProgress>,
     private readonly rewardService: RewardService,
     private readonly serverTime: ServerTimeService,
     private readonly dataSource: DataSource,
@@ -129,6 +137,12 @@ export class DailyTaskService {
             changed.push(task.id);
           }
         }
+        await this.incrementActivities(
+          manager,
+          userId,
+          normalizedType,
+          normalizedAmount,
+        );
         return { duplicate: false, updatedTaskIds: changed };
       });
       return {
@@ -163,6 +177,15 @@ export class DailyTaskService {
         (sum, task) => sum + this.definition(task.taskCode).activityPoints,
         0,
       );
+    const activityClaims = await this.activityClaimRepository.find({
+      where: {
+        userId,
+        periodKey: this.serverTime.dayKey(),
+      },
+    });
+    const claimedThresholds = new Set(
+      activityClaims.map((claim) => Number(claim.threshold || 0)),
+    );
 
     return {
       success: true,
@@ -175,6 +198,14 @@ export class DailyTaskService {
       claimableCount: claimable.length,
       dailyActivity,
       dailyActivityMax: 100,
+      activityChests: DAILY_ACTIVITY_CHESTS.map((chest) => ({
+        threshold: chest.threshold,
+        reward: chest.reward,
+        claimed: claimedThresholds.has(chest.threshold),
+        canClaim:
+          dailyActivity >= chest.threshold &&
+          !claimedThresholds.has(chest.threshold),
+      })),
       signCompleted:
         legacy.signCompleted ||
         this.completedTarget(daily, 'login'),
@@ -315,6 +346,78 @@ export class DailyTaskService {
     );
   }
 
+  async claimActivityChest(
+    userId: number,
+    threshold: number,
+    rawRequestId = '',
+  ) {
+    const config = DAILY_ACTIVITY_CHESTS.find(
+      (item) => item.threshold === Number(threshold || 0),
+    );
+    if (!config) {
+      return { success: false, message: '活跃度宝箱不存在' };
+    }
+    try {
+      const result = await this.dataSource.transaction(async (manager) => {
+        const tasks = await this.ensureTasks(userId, manager);
+        const activity = tasks
+          .filter(
+            (task) =>
+              task.category === 'daily' &&
+              task.currentValue >= task.targetValue,
+          )
+          .reduce(
+            (sum, task) =>
+              sum + this.definition(task.taskCode).activityPoints,
+            0,
+          );
+        if (activity < config.threshold) {
+          throw new Error('活跃度不足');
+        }
+        const repository = manager.getRepository(TaskActivityClaim);
+        const periodKey = this.serverTime.dayKey();
+        const existing = await repository.findOne({
+          where: { userId, periodKey, threshold: config.threshold },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (existing) {
+          return { duplicate: true, reward: config.reward };
+        }
+        await this.rewardService.grantWithManager(
+          manager,
+          userId,
+          'task_activity',
+          `${periodKey}:${config.threshold}`,
+          config.reward,
+          { threshold: config.threshold, activity },
+          rawRequestId ||
+            `task-activity:${userId}:${periodKey}:${config.threshold}`,
+        );
+        await repository.save(
+          repository.create({
+            userId,
+            periodKey,
+            threshold: config.threshold,
+            claimedAt: this.serverTime.now(),
+          }),
+        );
+        return { duplicate: false, reward: config.reward };
+      });
+      return {
+        success: true,
+        message: result.duplicate ? '活跃度奖励已领取' : '活跃度奖励领取成功',
+        ...result,
+        wallet: await this.rewardService.wallet(userId),
+        status: await this.getStatus(userId),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: String(error?.message || '活跃度奖励领取失败'),
+      };
+    }
+  }
+
   private async ensureTasks(userId: number, manager?: EntityManager) {
     const repository = manager
       ? manager.getRepository(DailyTaskProgress)
@@ -352,6 +455,46 @@ export class DailyTaskService {
       result.push(task);
     }
     return result;
+  }
+
+  private async incrementActivities(
+    manager: EntityManager,
+    userId: number,
+    eventType: string,
+    amount: number,
+  ) {
+    const now = this.serverTime.now();
+    const repository = manager.getRepository(ActivityProgress);
+    for (const activity of ACTIVITY_DEFINITIONS.filter(
+      (item) =>
+        item.taskRules.eventType === eventType &&
+        new Date(item.startTime).getTime() <= now.getTime() &&
+        new Date(item.endTime).getTime() > now.getTime(),
+    )) {
+      const cycleId =
+        activity.taskRules.cycle === 'monthly'
+          ? this.serverTime.monthKey(now)
+          : this.serverTime.weekKey(now);
+      let progress = await repository.findOne({
+        where: { userId, activityId: activity.activityId, cycleId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!progress) {
+        progress = repository.create({
+          userId,
+          activityId: activity.activityId,
+          cycleId,
+          points: 0,
+          lastProgressAt: null,
+        });
+      }
+      progress.points =
+        Number(progress.points || 0) +
+        Math.max(1, Number(activity.taskRules.pointsPerEvent || 1)) *
+          Math.max(1, amount);
+      progress.lastProgressAt = now;
+      await repository.save(progress);
+    }
   }
 
   private view(task: DailyTaskProgress) {

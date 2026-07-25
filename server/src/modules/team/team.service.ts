@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
 import { DEFAULT_USER_ID } from '../game-data';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { Pet } from '../pet/pet.entity';
 import { getFormationConfig } from '../formation/formation.config';
 import { EquipmentService } from '../equipment/equipment.service';
@@ -15,6 +16,7 @@ export class TeamService {
     private readonly teamRepository: Repository<PetTeam>,
     @InjectRepository(Pet)
     private readonly petRepository: Repository<Pet>,
+    private readonly dailyTaskService: DailyTaskService,
     private readonly equipmentService: EquipmentService,
   ) {}
 
@@ -114,6 +116,17 @@ export class TeamService {
     team.tactics = tactics;
     team.version = '10.0.0';
     team = await this.teamRepository.save(team);
+    await this.dailyTaskService.recordEvent(
+      userId,
+      'team_saved',
+      `team:${team.id}:${new Date(team.updatedAt || Date.now()).getTime()}`,
+      1,
+      {
+        petIds,
+        formationCode,
+        slotAssignments,
+      },
+    );
 
     const petMap = new Map(pets.map((pet) => [pet.id, pet]));
     const orderedPets = petIds.map((id) => petMap.get(id));

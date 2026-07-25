@@ -41,6 +41,7 @@ import { ExplorationModule } from './modules/exploration/exploration.module';
 import { EquipmentModule } from './modules/equipment/equipment.module';
 import { RewardModule } from './modules/reward/reward.module';
 import { ServerTimeModule } from './modules/server-time/server-time.module';
+import { RetentionModule } from './modules/retention/retention.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { ServerTimeModule } from './modules/server-time/server-time.module';
     EquipmentModule,
     RewardModule,
     ServerTimeModule,
+    RetentionModule,
     DevModule,
   ],
   controllers: [AppController],

@@ -10,6 +10,7 @@ export type HomeShortcut = 'adventure' | 'hatchery' | 'formation';
 export type HomePageOptions = {
     pet: any;
     notificationCount: number;
+    notificationCounts?: Partial<Record<HomeActivity, number>>;
     onSelectPet: () => void;
     onActivity: (activity: HomeActivity) => void;
     onShortcut: (shortcut: HomeShortcut) => void;
@@ -63,7 +64,8 @@ function renderInteractions(parent: Node, options: HomePageOptions) {
     ACTIVITY_BUTTONS.forEach(([activity, y, path, height]) => {
         artImage(parent, `ActivityArt_${activity}`, path, -307, y, 98, height);
         const area = hitArea(parent, `Activity_${activity}`, -307, y, 106, 122, () => options.onActivity(activity));
-        if (activity === 'daily') createNotificationDot(area, options.notificationCount, 38, 42);
+        const count = Number(options.notificationCounts?.[activity] ?? (activity === 'daily' ? options.notificationCount : 0));
+        createNotificationDot(area, count, 38, 42);
     });
     SHORTCUT_BUTTONS.forEach(([shortcut, y, path, height]) => {
         artImage(parent, `ShortcutArt_${shortcut}`, path, 307, y, 98, height);

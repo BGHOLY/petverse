@@ -4,12 +4,15 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { BattleSessionV10 } from '../battle/battle-session.entity';
 import { battleRewardConfig } from '../battle/battle-reward.config';
+import { DailyTaskService } from '../daily-task/daily-task.service';
 import { EconomyService } from '../economy/economy.service';
 import { EquipmentService } from '../equipment/equipment.service';
 import { EggService } from '../egg/egg.service';
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
+import { RetentionService } from '../retention/retention.service';
+import { ServerTimeService } from '../server-time/server-time.service';
 import { User } from '../user/user.entity';
 import { WorldExplorationProgress } from './world-exploration.entity';
 
@@ -49,6 +52,9 @@ export class ExplorationService {
     private readonly petService: PetService,
     private readonly economyService: EconomyService,
     private readonly equipmentService: EquipmentService,
+    private readonly dailyTaskService: DailyTaskService,
+    private readonly retentionService: RetentionService,
+    private readonly serverTimeService: ServerTimeService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -67,6 +73,7 @@ export class ExplorationService {
   }
 
   private async settleRegionBattle(userId: number, regionCode: string, sessionId: number, boss: boolean) {
+    const bonuses = await this.retentionService.getActiveBonuses();
     const outcome = await this.dataSource.transaction(async (manager) => {
       const progressRepository = manager.getRepository(WorldExplorationProgress);
       const sessionRepository = manager.getRepository(BattleSessionV10);
@@ -193,6 +200,15 @@ export class ExplorationService {
         message = firstClear && unlockedRegionCode ? `首领巢穴胜利，${region.chapter}完成并解锁下一地区` : `首领巢穴胜利，获得${region.speciesName}宠物蛋`;
       }
 
+      rewards.gold = Math.floor(
+        Number(rewards.gold || 0) *
+          Number(bonuses.battleGoldMultiplier || 1),
+      );
+      rewards.petExp = Math.floor(
+        Number(rewards.petExp || 0) *
+          Number(bonuses.petExpMultiplier || 1),
+      );
+      rewards.activityBonuses = { ...bonuses };
       await this.grantBattleRewards(manager, battle, rewards);
       progress.currentRegionCode = region.code;
       progress.regions[region.code] = state;
@@ -208,6 +224,39 @@ export class ExplorationService {
       return { progress, success: true, won: true, message, settlement, event: state.lastEvent, egg: egg ? this.eggService.toEggView(egg) : null, unlockedRegionCode, chapterCompleted: boss && firstClear };
     });
 
+    if (outcome?.success && outcome?.won && !outcome?.duplicate) {
+      const battleId = String(outcome?.settlement?.battleId || sessionId);
+      await this.dailyTaskService.recordEvent(
+        userId,
+        'adventure_completed',
+        `exploration:${battleId}`,
+        1,
+        { battleId, regionCode, boss },
+      );
+      if (boss) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'boss_defeated',
+          `exploration-boss:${battleId}`,
+          1,
+          { battleId, regionCode },
+        );
+      }
+      const equipmentCount = Array.isArray(
+        outcome?.settlement?.reward?.equipment,
+      )
+        ? outcome.settlement.reward.equipment.length
+        : 0;
+      if (equipmentCount > 0) {
+        await this.dailyTaskService.recordEvent(
+          userId,
+          'equipment_obtained',
+          `exploration-equipment:${battleId}`,
+          equipmentCount,
+          { battleId, regionCode, boss },
+        );
+      }
+    }
     return { ...outcome, ...(await this.toWorldView(outcome.progress)) };
   }
 
@@ -438,7 +487,7 @@ export class ExplorationService {
   }
 
   private today() {
-    return new Date().toISOString().slice(0, 10);
+    return this.serverTimeService.dayKey();
   }
 
   private stageSequence() {

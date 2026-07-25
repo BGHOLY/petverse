@@ -12,6 +12,10 @@ import { SignClaim } from '../modules/sign/sign-claim.entity';
 import { DailyTask } from '../modules/daily-task/daily-task.entity';
 import { DailyTaskProgress } from '../modules/daily-task/daily-task-progress.entity';
 import { TaskEventRecord } from '../modules/daily-task/task-event-record.entity';
+import { TaskActivityClaim } from '../modules/daily-task/task-activity-claim.entity';
+import { ActivityProgress } from '../modules/retention/activity-progress.entity';
+import { ActivityRewardClaim } from '../modules/retention/activity-reward-claim.entity';
+import { NewcomerClaim } from '../modules/retention/newcomer-claim.entity';
 import { OfflineReward } from '../modules/offline-reward/offline-reward.entity';
 import { Friend } from '../modules/friend/friend.entity';
 import { FriendRequest } from '../modules/friend/friend-request.entity';
@@ -68,6 +72,10 @@ export const databaseConfig: TypeOrmModuleOptions = {
     DailyTask,
     DailyTaskProgress,
     TaskEventRecord,
+    TaskActivityClaim,
+    ActivityProgress,
+    ActivityRewardClaim,
+    NewcomerClaim,
     OfflineReward,
     Friend,
     FriendRequest,
