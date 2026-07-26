@@ -21,6 +21,15 @@ export class Achievement {
   @Column()
   achievementCode: string;
 
+  @Column({ default: 'general' })
+  category: string;
+
+  @Column({ default: '' })
+  groupCode: string;
+
+  @Column({ default: 1 })
+  tier: number;
+
   @Column()
   title: string;
 

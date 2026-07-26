@@ -235,8 +235,9 @@ export class MainUI extends Component {
     private mailUnreadCount = 0;
     private mailClaimableCount = 0;
 
-    private rankingMode: 'tower' | 'level' | 'power' | 'season' = 'tower';
+    private rankingMode: 'player-level' | 'pet-power' | 'team-power' | 'exploration' | 'boss' = 'pet-power';
     private rankingEntries: any[] = [];
+    private rankingMyRank: any = null;
     private seasonSummary: any = null;
 
     private tradeMode: 'market' | 'mine' | 'history' | 'list' = 'market';
@@ -470,7 +471,7 @@ export class MainUI extends Component {
                 ApiClient.get('/marriage'),
                 ApiClient.get('/friend/list'),
                 ApiClient.get('/tower/status'),
-                ApiClient.get('/ranking/tower'),
+                ApiClient.get('/ranking/board/pet-power'),
                 ApiClient.get('/team'),
                 ApiClient.get('/mail/list'),
                 ApiClient.get('/season/me'),
@@ -492,7 +493,8 @@ export class MainUI extends Component {
             GameStore.setList('friends', results[4]);
             GameStore.setTower(results[5]);
             GameStore.setList('ranking', results[6]);
-            this.rankingEntries = this.resultList(results[6], ['ranking', 'rankings', 'data', 'list']);
+            this.rankingEntries = this.resultList(results[6], ['leaderboard', 'ranking', 'rankings', 'data', 'list']);
+            this.rankingMyRank = results[6]?.myRank || null;
             this.applyTeamResult(results[7]);
             this.applyMailResult(results[8]);
             this.seasonSummary = results[9]?.data || results[9] || null;
@@ -719,10 +721,11 @@ export class MainUI extends Component {
                 }
                 case 'ranking': {
                     const [ranking, season] = await Promise.all([
-                        ApiClient.get(`/ranking/${this.rankingMode}`),
+                        ApiClient.get(`/ranking/board/${this.rankingMode}`),
                         ApiClient.get('/season/me'),
                     ]);
                     this.rankingEntries = this.resultList(ranking, ['leaderboard', 'ranking', 'rankings', 'data', 'list']);
+                    this.rankingMyRank = ranking?.myRank || null;
                     GameStore.ranking = [...this.rankingEntries];
                     this.seasonSummary = season?.data || season || null;
                     break;
@@ -2573,11 +2576,17 @@ export class MainUI extends Component {
         const root = this.pageRoot;
 
         const tabs = panel(root, 'RankingTabs', 0, 382, 666, 68, CuteTheme.paper, 25, true, CuteTheme.caramelSoft, 3);
-        const modes: Array<['tower' | 'level' | 'power' | 'season', string, string]> = [['tower', '爬塔', '🗼'], ['level', '等级', '⭐'], ['power', '战力', '⚔'], ['season', '赛季', '🏅']];
-        modes.forEach(([key, title, icon], index) => button(tabs, `RankTab_${key}`, title, -246 + index * 164, 0, 148, 48, () => void this.changeRankingMode(key), { icon, selected: this.rankingMode === key, fill: this.rankingMode === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 13, radius: 20 }));
+        const modes: Array<[typeof this.rankingMode, string, string]> = [
+            ['player-level', '玩家等级', '⭐'],
+            ['pet-power', '宠物战力', '⚔'],
+            ['team-power', '编队战力', '🐾'],
+            ['exploration', '探索', '🗺'],
+            ['boss', '首领', '👑'],
+        ];
+        modes.forEach(([key, title, icon], index) => button(tabs, `RankTab_${key}`, title, -264 + index * 132, 0, 122, 48, () => void this.changeRankingMode(key), { icon, selected: this.rankingMode === key, fill: this.rankingMode === key ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 20 }));
         const card = panel(root, 'RankingCard', 0, -24, 660, 730, CuteTheme.paper, 38, true, CuteTheme.caramelSoft, 3);
-        const season = this.seasonSummary?.season || this.seasonSummary?.data?.season || {}; const player = this.seasonSummary?.player || this.seasonSummary?.data?.player || {};
-        text(card, 'Season', `${safeName(season?.name, '当前赛季')} · 我的积分 ${Number(player?.points || 0)} · 评级 ${Number(player?.rating || 1000)}`, 0, 309, 590, 34, 14, CuteTheme.peachDark, 'center', true);
+        const myRank = this.rankingMyRank;
+        text(card, 'Mine', myRank ? `我的排名 ${Number(myRank.rank || 0)} · ${this.rankingScoreText(myRank)}` : '我的排名：暂未上榜', 0, 309, 590, 34, 14, CuteTheme.peachDark, 'center', true);
         if (!this.rankingEntries.length) { text(card, 'Empty', '当前榜单还没有记录\n完成爬塔、培养宝宝或好友切磋后即可上榜。', 0, 80, 520, 110, 19, CuteTheme.muted, 'center', true); return; }
         const area = this.createScrollArea(card, 'RankingScroll', 0, -18, 620, 610, 620, this.rankingEntries.length * 93 + 10, 'vertical');
         this.rankingEntries.forEach((item, index) => {
@@ -2585,7 +2594,7 @@ export class MainUI extends Component {
             const row = panel(area.content, `Rank_${rank}`, 0, -45 - index * 93, 604, 78, rank <= 3 ? new Color(255, 247, 220, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 21, false, CuteTheme.white, 2);
             text(row, 'Medal', rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank), -270, 0, 50, 48, rank <= 3 ? 26 : 18, CuteTheme.honeyDark, 'center', true);
             if (item?.petName || item?.speciesCode) image(row, 'PetThumb', getPetArtPath(item, 'thumb'), -222, 0, 54, 54, CuteTheme.paperWarm);
-            text(row, 'Name', safeName(item?.petName || item?.playerName || item?.nickname, `玩家${item?.userId || ''}`), -184, 14, 226, 30, 17, CuteTheme.caramel, 'left', true);
+            text(row, 'Name', item?.petName || item?.speciesCode ? this.petDisplayName(item, `宝宝${item?.petId || ''}`) : safeName(item?.playerName || item?.nickname, `玩家${item?.userId || ''}`), -184, 14, 226, 30, 17, CuteTheme.caramel, 'left', true);
             text(row, 'Owner', item?.petName ? safeName(item?.playerName, '玩家') : `ID ${item?.userId || '-'}`, -184, -15, 226, 24, 12, CuteTheme.muted, 'left', true);
             text(row, 'Score', this.rankingScoreText(item), 265, 0, 170, 34, 16, CuteTheme.peachDark, 'right', true);
         });
@@ -2724,7 +2733,7 @@ export class MainUI extends Component {
         text(seasonCard, 'Name', safeName(season?.name, '本月赛季'), 0, 28, 250, 30, 16, CuteTheme.caramel, 'center', true);
         text(seasonCard, 'Points', `积分 ${Number(player?.points || 0)} · 评级 ${Number(player?.rating || 1000)}`, 0, -8, 250, 28, 14, CuteTheme.muted, 'center', true);
         text(seasonCard, 'Battle', `${Number(player?.wins || 0)}胜 ${Number(player?.losses || 0)}负 ${Number(player?.draws || 0)}平`, 0, -41, 250, 28, 14, CuteTheme.peachDark, 'center', true);
-        button(seasonCard, 'Ranking', '查看赛季榜', 0, -72, 164, 42, () => { this.rankingMode = 'season'; this.showPage('ranking'); }, { icon: '🏅', fill: CuteTheme.honey, fontSize: 13, radius: 18 });
+        button(seasonCard, 'Ranking', '查看排行榜', 0, -72, 164, 42, () => { this.rankingMode = 'pet-power'; this.showPage('ranking'); }, { icon: '🏅', fill: CuteTheme.honey, fontSize: 13, radius: 18 });
 
         const shortcuts = panel(book, 'Shortcuts', 0, -167, 616, 190, new Color(249, 245, 231, 255), 30, false, CuteTheme.white, 2);
         text(shortcuts, 'Title', '手账快捷入口', -270, 63, 250, 34, 18, CuteTheme.caramel, 'left', true);
@@ -4363,16 +4372,17 @@ export class MainUI extends Component {
         return parts.join('、') || '奖励已到账';
     }
 
-    private async changeRankingMode(mode: 'tower' | 'level' | 'power' | 'season') {
+    private async changeRankingMode(mode: 'player-level' | 'pet-power' | 'team-power' | 'exploration' | 'boss') {
         this.rankingMode = mode;
         this.renderCurrentPage(false);
         await this.refreshPageData('ranking');
     }
 
     private rankingScoreText(item: any) {
-        if (this.rankingMode === 'tower') return `最高 ${Number(item?.maxFloor ?? item?.highestTower ?? 0)}层`;
-        if (this.rankingMode === 'level') return `Lv.${Number(item?.level || 0)}`;
-        if (this.rankingMode === 'season') return `${Number(item?.points || 0)}分`;
+        if (this.rankingMode === 'player-level') return `Lv.${Number(item?.level || 0)} · ${Number(item?.exp || 0)}经验`;
+        if (this.rankingMode === 'team-power') return `编队 ${formatNumber(item?.power || 0)}`;
+        if (this.rankingMode === 'exploration') return `探索 ${Number(item?.exploration || 0)}%`;
+        if (this.rankingMode === 'boss') return `首领 ${Number(item?.bossClears || 0)}区`;
         return `战力 ${formatNumber(item?.power || item?.score || 0)}`;
     }
 

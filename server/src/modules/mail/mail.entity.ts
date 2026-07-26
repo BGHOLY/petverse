@@ -45,6 +45,9 @@ export class Mail {
   @Column({ default: '' })
   sourceId: string;
 
+  @Column({ nullable: true, unique: true })
+  idempotencyKey: string | null;
+
   @Column({ default: false })
   claimed: boolean;
 

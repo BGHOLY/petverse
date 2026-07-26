@@ -36,18 +36,18 @@ export class AchievementController {
   }
 
   @Get('list')
-  listBeta(@Headers('x-user-id') userId?: string) {
-    return this.achievementService.getMyAchievements(
+  async listBeta(@Headers('x-user-id') userId?: string) {
+    const achievements = await this.achievementService.getMyAchievements(
       resolveRequestUserId(userId),
     );
+    return { success: true, achievements, data: achievements, list: achievements };
   }
 
   @Get('list-auth')
   @UseGuards(JwtAuthGuard)
-  list(@Req() req: any) {
-    return this.achievementService.getMyAchievements(
-      req.user.sub,
-    );
+  async list(@Req() req: any) {
+    const achievements = await this.achievementService.getMyAchievements(req.user.sub);
+    return { success: true, achievements, data: achievements, list: achievements };
   }
 
   @Post('claim')

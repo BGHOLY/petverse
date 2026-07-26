@@ -1,7 +1,8 @@
 
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Headers, Param, Query } from '@nestjs/common';
 
-import { RankingService } from './ranking.service';
+import { resolveRequestUserId } from '../../common/request-user.util';
+import { RankingService, RankingType } from './ranking.service';
 
 @Controller('ranking')
 export class RankingController {
@@ -10,8 +11,29 @@ export class RankingController {
   ) {}
 
   @Get()
-  getRanking() {
-    return this.rankingService.getMainRanking();
+  getRanking(@Headers('x-user-id') userId?: string) {
+    return this.rankingService.getMainRanking(resolveRequestUserId(userId));
+  }
+
+  @Get('board/:type')
+  getBoard(
+    @Param('type') type: RankingType,
+    @Headers('x-user-id') userId?: string,
+    @Query('refresh') refresh?: string,
+  ) {
+    const allowed: RankingType[] = [
+      'player-level',
+      'pet-power',
+      'team-power',
+      'exploration',
+      'boss',
+    ];
+    const normalized = allowed.includes(type) ? type : 'pet-power';
+    return this.rankingService.getRanking(
+      normalized,
+      resolveRequestUserId(userId),
+      refresh === '1',
+    );
   }
 
   @Get('tower')

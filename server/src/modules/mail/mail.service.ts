@@ -20,6 +20,7 @@ interface CreateMailOptions {
   sourceType?: string;
   sourceId?: string;
   expiresAt?: Date | null;
+  idempotencyKey?: string;
 }
 
 @Injectable()
@@ -79,6 +80,16 @@ export class MailService {
     rewardValue = '',
   ) {
     const normalized = this.normalizeAttachments(attachments);
+    const sourceType = String(options.sourceType || 'system').slice(0, 50);
+    const sourceId = String(options.sourceId || '').slice(0, 100);
+    const idempotencyKey = String(
+      options.idempotencyKey ||
+      (sourceId ? `mail:${userId}:${sourceType}:${sourceId}` : ''),
+    ).slice(0, 180) || null;
+    if (idempotencyKey) {
+      const existing = await this.mailRepository.findOne({ where: { idempotencyKey } });
+      if (existing) return existing;
+    }
     const mail = this.mailRepository.create({
       userId,
       title: String(title || '系统邮件').slice(0, 100),
@@ -86,8 +97,9 @@ export class MailService {
       rewardType,
       rewardValue,
       attachments: normalized,
-      sourceType: options.sourceType || 'system',
-      sourceId: String(options.sourceId || '').slice(0, 100),
+      sourceType,
+      sourceId,
+      idempotencyKey,
       claimed: false,
       readed: false,
       claimRequestId: '',
@@ -95,7 +107,15 @@ export class MailService {
       expiresAt: options.expiresAt || null,
     });
 
-    return this.mailRepository.save(mail);
+    try {
+      return await this.mailRepository.save(mail);
+    } catch (error: any) {
+      if (idempotencyKey) {
+        const existing = await this.mailRepository.findOne({ where: { idempotencyKey } });
+        if (existing) return existing;
+      }
+      throw error;
+    }
   }
 
   async seedWelcomeMail(userId: number) {
