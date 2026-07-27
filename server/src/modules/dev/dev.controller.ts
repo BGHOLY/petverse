@@ -20,4 +20,9 @@ export class DevController {
   async seedSocial() {
     return this.devService.seedSocial();
   }
+
+  @Post('seed-fusion-pets')
+  async seedFusionPets() {
+    return this.devService.seedFusionPets();
+  }
 }

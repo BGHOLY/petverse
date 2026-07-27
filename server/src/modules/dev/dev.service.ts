@@ -11,9 +11,15 @@ import { InventoryService } from '../inventory/inventory.service';
 import { ItemService } from '../item/item.service';
 import { MailService } from '../mail/mail.service';
 import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
+import {
+  getAptitudeRange,
+  getGrowthRange,
+  PET_SPECIES_CONFIGS,
+} from '../pet/config/pet-species.config';
 import { PetService } from '../pet/pet.service';
 import { ShopService } from '../shop/shop.service';
 import { SeasonService } from '../season/season.service';
+import { isSpecialSkill } from '../skill/config/skill.config';
 import { SkillService } from '../skill/skill.service';
 import { TeamService } from '../team/team.service';
 import { TowerService } from '../tower/tower.service';
@@ -251,6 +257,217 @@ export class DevService {
       message: 'Two idempotent social test accounts are ready',
       accounts,
       previewUrls: accounts.map((entry) => `?userId=${entry.user.id}`),
+    };
+  }
+
+  async seedFusionPets() {
+    if (process.env.NODE_ENV === 'production') {
+      return {
+        success: false,
+        message: 'Fusion test seeding is disabled in production',
+      };
+    }
+
+    const sourceType = 'fusion_test_seed_v1';
+    const user = await this.userService.getOrCreateDefaultUser();
+    const userId = user.id || DEFAULT_USER_ID;
+
+    await this.skillService.seedDefaultSkills();
+    await this.itemService.seedDefaultItems();
+
+    const before = await this.petService.getUserPets(userId);
+    const existingPets = before.pets.filter((pet) => !pet.isEgg);
+    const existingSeedNames = new Set(
+      existingPets
+        .filter((pet) => pet.sourceType === sourceType)
+        .map((pet) => String(pet.nickname)),
+    );
+
+    const expectedNames = PET_SPECIES_CONFIGS.flatMap((species) =>
+      [true, false].flatMap((isMutant) =>
+        ['A', 'B'].map(
+          (suffix) =>
+            `炼妖${isMutant ? '变异' : '普通'}-${species.speciesCode}-${suffix}`,
+        ),
+      ),
+    );
+    const missingCount = expectedNames.filter(
+      (nickname) => !existingSeedNames.has(nickname),
+    ).length;
+    const requiredCapacity = existingPets.length + missingCount;
+
+    if (requiredCapacity > Number(user.petCapacity || 50)) {
+      user.petCapacity = Math.max(100, requiredCapacity);
+      await this.userService.save(user);
+    }
+
+    let createdCount = 0;
+    for (
+      let speciesIndex = 0;
+      speciesIndex < PET_SPECIES_CONFIGS.length;
+      speciesIndex += 1
+    ) {
+      const species = PET_SPECIES_CONFIGS[speciesIndex];
+      for (const isMutant of [true, false]) {
+        for (let variantIndex = 0; variantIndex < 2; variantIndex += 1) {
+          const suffix = variantIndex === 0 ? 'A' : 'B';
+          const nickname = `炼妖${isMutant ? '变异' : '普通'}-${species.speciesCode}-${suffix}`;
+          if (existingSeedNames.has(nickname)) continue;
+
+          const percentile =
+            0.28 +
+            ((speciesIndex * 2 + variantIndex + (isMutant ? 1 : 0)) % 6) *
+              0.12;
+          const aptitude = (key: 'hp' | 'attack' | 'defense' | 'magic' | 'speed') => {
+            const [min, max] = getAptitudeRange(species, key, isMutant);
+            return Math.round(min + (max - min) * percentile);
+          };
+          const [growthMin, growthMax] = getGrowthRange(
+            species,
+            isMutant,
+          );
+
+          await this.petService.createPet(userId, {
+            nickname,
+            speciesCode: species.speciesCode,
+            isMutant,
+            gender:
+              (speciesIndex + variantIndex + (isMutant ? 1 : 0)) % 2 === 0
+                ? 'male'
+                : 'female',
+            rarity:
+              2 +
+              ((speciesIndex + variantIndex + (isMutant ? 2 : 0)) % 5),
+            skillSlotCount:
+              4 +
+              ((speciesIndex + variantIndex + (isMutant ? 1 : 0)) % 3),
+            aptitudes: {
+              hp: aptitude('hp'),
+              attack: aptitude('attack'),
+              defense: aptitude('defense'),
+              magic: aptitude('magic'),
+              speed: aptitude('speed'),
+            },
+            growth:
+              Math.round(
+                (growthMin + (growthMax - growthMin) * percentile) * 1000,
+              ) / 1000,
+            sourceType,
+          });
+          createdCount += 1;
+        }
+      }
+    }
+
+    await this.inventoryService.ensureItemQuantity(
+      userId,
+      'fusion_core',
+      200,
+    );
+    await this.inventoryService.ensureItemQuantity(
+      userId,
+      'skill_lock',
+      100,
+    );
+    await this.inventoryService.ensureItemQuantity(
+      userId,
+      'mutation_essence',
+      30,
+    );
+    await this.economyService.ensureMinimumBalance(
+      userId,
+      100000,
+      1000,
+    );
+
+    const after = await this.petService.getUserPets(userId);
+    const seededPets = after.pets.filter(
+      (pet) => !pet.isEgg && pet.sourceType === sourceType,
+    );
+    const petList = seededPets.map((pet) => {
+      const skills = Array.isArray(pet.skills) ? pet.skills : [];
+      return {
+        id: pet.id,
+        nickname: pet.nickname,
+        species: pet.species,
+        speciesCode: pet.speciesCode,
+        isMutant: Boolean(pet.isMutant),
+        gender: pet.gender,
+        rarity: pet.rarity,
+        quality: pet.quality,
+        growth: pet.growth,
+        aptitudes: {
+          hp: pet.hpAptitude,
+          attack: pet.attackAptitude,
+          defense: pet.defenseAptitude,
+          magic: pet.magicAptitude,
+          speed: pet.speedAptitude,
+        },
+        skillSlotCount: pet.skillSlotCount,
+        skills: skills.map((skill) => ({
+          skillCode: skill.skillCode,
+          name: skill.name,
+          tier: skill.tier,
+        })),
+        specialSkillCount: skills.filter((skill) =>
+          isSpecialSkill(skill),
+        ).length,
+      };
+    });
+
+    const mutantPets = petList.filter((pet) => pet.isMutant);
+    const normalPets = petList.filter((pet) => !pet.isMutant);
+    const speciesCoverage = Object.fromEntries(
+      PET_SPECIES_CONFIGS.map((species) => {
+        const speciesPets = petList.filter(
+          (pet) => pet.speciesCode === species.speciesCode,
+        );
+        return [
+          species.speciesCode,
+          {
+            mutant: speciesPets.filter((pet) => pet.isMutant).length,
+            normal: speciesPets.filter((pet) => !pet.isMutant).length,
+          },
+        ];
+      }),
+    );
+    const validation = {
+      total: petList.length === 40,
+      mutant: mutantPets.length === 20,
+      normal: normalPets.length === 20,
+      speciesCoverage: Object.values(speciesCoverage).every(
+        (entry) => entry.mutant === 2 && entry.normal === 2,
+      ),
+      mutantSpecialSkills: mutantPets.every(
+        (pet) => pet.specialSkillCount >= 1,
+      ),
+      normalNoSpecialSkills: normalPets.every(
+        (pet) => pet.specialSkillCount === 0,
+      ),
+      skillsWithinSlots: petList.every(
+        (pet) => pet.skills.length <= pet.skillSlotCount,
+      ),
+    };
+    const wallet = await this.economyService.getWallet(userId);
+    const capacity = await this.petCapacityService.getStatus(userId);
+
+    return {
+      success: Object.values(validation).every(Boolean),
+      message:
+        createdCount > 0
+          ? 'Fusion test pets created for the default user'
+          : 'Fusion test pets already exist for the default user',
+      duplicate: createdCount === 0,
+      sourceType,
+      userId,
+      existingPetCountBefore: existingPets.length,
+      createdCount,
+      testPetCount: petList.length,
+      capacity,
+      wallet,
+      speciesCoverage,
+      validation,
+      pets: petList,
     };
   }
 }
