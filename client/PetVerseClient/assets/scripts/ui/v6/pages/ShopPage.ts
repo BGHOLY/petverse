@@ -22,6 +22,7 @@ import {
     text,
 } from '../../cute/CuteUiKit';
 import { drawUiIcon } from '../../v2/HandPaintedUi';
+import type { UiIconName } from '../../v2/AppRoutes';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
 
@@ -47,13 +48,13 @@ export type ShopPageV6Options = {
     countLabel?: string;
 };
 
-const CATEGORY_ROWS: Array<[ShopCategoryV6, string, string]> = [
+const CATEGORY_ROWS: Array<[ShopCategoryV6, string, UiIconName]> = [
     ['featured', '每日精选', 'shop'],
     ['nurture', '宝宝养成', 'pet'],
-    ['skills', '技能书', 'skill'],
-    ['materials', '培养材料', 'bag'],
-    ['hatch', '孵化用品', 'egg'],
-    ['special', '限定珍藏', 'star'],
+    ['skills', '技能书', 'skills'],
+    ['materials', '培养材料', 'material'],
+    ['hatch', '孵化用品', 'hatchery'],
+    ['special', '限定珍藏', 'core'],
 ];
 
 function currencyType(item: any) {

@@ -28,7 +28,7 @@ export type PageName =
     | 'food'
     | 'material';
 
-export type MainTab = 'home' | 'pet' | 'adventure' | 'shop' | 'more';
+export type MainTab = 'home' | 'pet' | 'adventure' | 'hatchery' | 'shop';
 
 export type UiIconName =
     | 'home'
@@ -50,7 +50,15 @@ export type UiIconName =
     | 'settings'
     | 'profile'
     | 'formation'
-    | 'guild';
+    | 'guild'
+    | 'gold'
+    | 'diamond'
+    | 'potion'
+    | 'hourglass'
+    | 'breed-token'
+    | 'core'
+    | 'food'
+    | 'material';
 
 export type MainTabDefinition = {
     key: MainTab;
@@ -66,11 +74,11 @@ export type MoreEntryDefinition = {
 };
 
 export const MAIN_TABS: MainTabDefinition[] = [
-    { key: 'home', title: '家园', icon: 'home' },
+    { key: 'home', title: '首页', icon: 'home' },
     { key: 'pet', title: '宠物', icon: 'pet' },
     { key: 'adventure', title: '冒险', icon: 'adventure' },
+    { key: 'hatchery', title: '孵化', icon: 'hatchery' },
     { key: 'shop', title: '商店', icon: 'shop' },
-    { key: 'more', title: '更多', icon: 'more' },
 ];
 
 export const MORE_ENTRIES: MoreEntryDefinition[] = [
@@ -92,11 +100,18 @@ export const MORE_ENTRIES: MoreEntryDefinition[] = [
 ];
 
 export function isMainPage(page: PageName): page is MainTab {
-    return page === 'home' || page === 'pet' || page === 'adventure' || page === 'shop' || page === 'more';
+    return page === 'home'
+        || page === 'pet'
+        || page === 'adventure'
+        || page === 'hatchery'
+        || page === 'shop';
 }
 
 export function mainTabForPage(page: PageName): MainTab {
     if (isMainPage(page)) return page;
-    if (page === 'formation' || page === 'guild') return 'adventure';
-    return 'more';
+    if (page === 'formation' || page === 'inventory' || page === 'skills' || page === 'fusion') return 'pet';
+    if (page === 'guild' || page === 'ranking') return 'adventure';
+    if (page === 'gold' || page === 'diamond' || page === 'trade') return 'shop';
+    if (page === 'marriage') return 'hatchery';
+    return 'home';
 }

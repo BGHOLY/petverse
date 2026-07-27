@@ -1,17 +1,14 @@
 import { BlockInputEvents, Node, screen, sys } from 'cc';
 import { DESIGN_HEIGHT, DESIGN_WIDTH, clearNode, getOrCreate, setRect } from '../cute/CuteUiKit';
 import { PageName } from './AppRoutes';
-import {
-    V6_BOTTOM_NAV_CENTER_Y,
-    V6_BOTTOM_NAV_HEIGHT,
-    V6_CONTENT_CENTER_Y,
-    V6_CONTENT_HEIGHT,
-    V6_TOP_BAR_CENTER_Y,
-    V6_TOP_BAR_HEIGHT,
-} from '../v6/UiMetrics';
+import { V6_CONTENT_HEIGHT } from '../v6/UiMetrics';
 
 export type AppShellLayers = {
     root: Node;
+    pet3dLayer: Node;
+    mainHudLayer: Node;
+    pageLayer: Node;
+    popupLayer: Node;
     globalBackground: Node;
     topBar: Node;
     pageRoot: Node;
@@ -107,53 +104,80 @@ function layer(root: Node, name: string, aliases: string[] = []) {
 }
 
 export function resolveAppShell(canvas: Node): AppShellLayers {
-    const root = getOrCreate(canvas, 'PetVerseUIRoot');
+    const legacyRoot = canvas.getChildByName('PetVerseUIRoot')
+        || canvas.getChildByName('LegacyUIRoot');
+    if (legacyRoot) {
+        legacyRoot.name = 'LegacyUIRoot';
+        legacyRoot.active = false;
+    }
+
+    const root = getOrCreate(canvas, 'GameRoot');
     setRect(root, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
     if (!root.getComponent(BlockInputEvents)) root.addComponent(BlockInputEvents);
+    root.active = true;
 
     for (const name of LEGACY_CANVAS_LAYERS) {
         const legacyLayer = canvas.getChildByName(name);
         if (legacyLayer && legacyLayer !== root) legacyLayer.active = false;
     }
 
+    const backgroundLayer = layer(root, 'BackgroundLayer');
+    const pet3dLayer = layer(root, 'Pet3DLayer');
+    const mainHudLayer = layer(root, 'MainHudLayer');
+    const pageLayer = layer(root, 'PageLayer');
+    const popupLayer = layer(root, 'PopupLayer');
+    const toastLayer = layer(root, 'ToastLayer');
+    const guideLayer = layer(root, 'GuideLayer');
+    const loadingLayer = layer(root, 'LoadingLayer');
+
     const result: AppShellLayers = {
         root,
-        globalBackground: layer(root, 'GlobalBackground', ['BackgroundLayer', 'Background']),
-        topBar: layer(root, 'TopBar', ['CuteTopBar']),
-        pageRoot: layer(root, 'PageRoot', ['CutePageRoot']),
-        bottomNavigation: layer(root, 'BottomNavigation', ['CuteBottomNav']),
-        drawerLayer: layer(root, 'DrawerLayer', ['CuteDrawerLayer']),
-        modalLayer: layer(root, 'ModalLayer', ['CuteModalLayer']),
-        utilityLayer: layer(root, 'UtilityLayer', ['CuteUtilityLayer']),
-        battleLayer: layer(root, 'BattleLayer', ['CuteBattleResultLayer']),
-        revealLayer: layer(root, 'RevealLayer', ['CuteRevealLayer']),
-        guideLayer: layer(root, 'GuideLayer', ['CuteGuideLayer']),
-        toastLayer: layer(root, 'ToastLayer', ['CuteToastLayer']),
-        loadingLayer: layer(root, 'LoadingLayer', ['CuteLoadingLayer']),
+        pet3dLayer,
+        mainHudLayer,
+        pageLayer,
+        popupLayer,
+        globalBackground: backgroundLayer,
+        topBar: layer(mainHudLayer, 'TopBar', ['CuteTopBar']),
+        pageRoot: layer(pageLayer, 'PageRoot', ['CutePageRoot']),
+        bottomNavigation: layer(mainHudLayer, 'BottomNavigation', ['CuteBottomNav']),
+        drawerLayer: layer(popupLayer, 'DrawerLayer', ['CuteDrawerLayer']),
+        modalLayer: layer(popupLayer, 'ModalLayer', ['CuteModalLayer']),
+        utilityLayer: layer(popupLayer, 'UtilityLayer', ['CuteUtilityLayer']),
+        battleLayer: layer(popupLayer, 'BattleLayer', ['CuteBattleResultLayer']),
+        revealLayer: layer(popupLayer, 'RevealLayer', ['CuteRevealLayer']),
+        guideLayer,
+        toastLayer,
+        loadingLayer,
     };
 
     const safe = safeAreaInsets();
-    setRect(result.topBar, 0, V6_TOP_BAR_CENTER_Y - safe.top, DESIGN_WIDTH, V6_TOP_BAR_HEIGHT);
-    setRect(result.pageRoot, 0, V6_CONTENT_CENTER_Y + (safe.bottom - safe.top) / 2, DESIGN_WIDTH, V6_CONTENT_HEIGHT);
-    setRect(result.bottomNavigation, 0, V6_BOTTOM_NAV_CENTER_Y + safe.bottom, DESIGN_WIDTH, V6_BOTTOM_NAV_HEIGHT);
+    setRect(result.topBar, 0, 570 - safe.top, DESIGN_WIDTH, 140);
+    setRect(result.pageRoot, 0, -5 + (safe.bottom - safe.top) / 2, DESIGN_WIDTH, 1010);
+    setRect(result.bottomNavigation, 0, -537.5 + safe.bottom, DESIGN_WIDTH, 205);
     preparePageContainers(result.pageRoot);
 
     const ordered = [
         result.globalBackground,
-        result.topBar,
-        result.pageRoot,
-        result.bottomNavigation,
+        result.pet3dLayer,
+        result.mainHudLayer,
+        result.pageLayer,
+        result.popupLayer,
+        result.toastLayer,
+        result.guideLayer,
+        result.loadingLayer,
+    ];
+    ordered.forEach((node, index) => node.setSiblingIndex(index));
+    result.topBar.setSiblingIndex(0);
+    result.bottomNavigation.setSiblingIndex(1);
+    [
         result.drawerLayer,
         result.modalLayer,
         result.utilityLayer,
         result.battleLayer,
         result.revealLayer,
-        result.guideLayer,
-        result.toastLayer,
-        result.loadingLayer,
-    ];
-    ordered.forEach((node, index) => node.setSiblingIndex(index));
+    ].forEach((node, index) => node.setSiblingIndex(index));
     applyLayerRecursively(root, canvas.layer);
+    root.setSiblingIndex(Math.max(0, canvas.children.length - 1));
 
     result.drawerLayer.active = false;
     result.revealLayer.active = false;

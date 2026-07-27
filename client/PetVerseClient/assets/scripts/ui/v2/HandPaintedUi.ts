@@ -320,19 +320,63 @@ export function renderBottomNavigation(
     parent: Node,
     active: MainTab,
     onNavigate: (page: MainTab) => void,
-    notificationCount = 0,
+    _notificationCount = 0,
 ) {
     clearNode(parent);
-    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
+    panel(
+        parent,
+        'NavigationSurface',
+        0,
+        -8,
+        704,
+        174,
+        new Color(255, 247, 221, 255),
+        34,
+        true,
+        new Color(234, 196, 127, 255),
+        3,
+    );
 
     MAIN_TABS.forEach((item, index) => {
-        const selected = item.key === active;
-        const x = -276 + index * 138;
         const isAdventure = item.key === 'adventure';
+        const selected = item.key === active;
+        const x = -282 + index * 141;
+        const tab = button(
+            parent,
+            `Tab_${item.key}`,
+            item.title,
+            x,
+            isAdventure ? 1 : -9,
+            isAdventure ? 140 : 108,
+            isAdventure ? 158 : 132,
+            () => onNavigate(item.key),
+            {
+                icon: ' ',
+                selected,
+                fill: selected
+                    ? new Color(255, 215, 105, 255)
+                    : isAdventure
+                        ? new Color(255, 244, 209, 255)
+                        : new Color(255, 251, 237, 255),
+                fontSize: 15,
+                radius: isAdventure ? 36 : 28,
+                border: selected ? CuteTheme.honeyDark : CuteTheme.white,
+            },
+        );
+        drawUiIcon(
+            tab,
+            'NavigationIcon',
+            item.icon,
+            0,
+            isAdventure ? 28 : 20,
+            isAdventure ? 47 : 40,
+            selected ? CuteTheme.honeyDark : CuteTheme.caramel,
+        );
         if (selected) {
-            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220), 3);
+            const sparkle = new Node('SelectedSpark');
+            tab.addChild(sparkle);
+            setRect(sparkle, 36, isAdventure ? 53 : 44, 12, 12);
+            circle(sparkle, 6, CuteTheme.peach, CuteTheme.white, 1);
         }
-        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
-        if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
     });
 }

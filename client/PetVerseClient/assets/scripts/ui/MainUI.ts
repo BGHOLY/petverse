@@ -57,7 +57,12 @@ import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
 import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
 import { drawUiIcon, renderBottomNavigation } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
-import { HomeActivity, HomeShortcut, renderHomePage } from './v2/pages/HomePage';
+import {
+    HomeActivity,
+    HomeShortcut,
+    renderHomePage,
+    renderHomePetStage,
+} from './v2/pages/HomePage';
 import { renderInventoryDetailModalV6 } from './v6/pages/InventoryDetailModal';
 import { InventoryCategoryV6, InventoryItemCategoryV6, renderInventoryPageV6 } from './v6/pages/InventoryPage';
 import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
@@ -146,6 +151,8 @@ export class MainUI extends Component {
 
     private canvas: Node | null = null;
     private root: Node | null = null;
+    private backgroundLayer: Node | null = null;
+    private pet3dLayer: Node | null = null;
     private topBar: Node | null = null;
     private pageHost: Node | null = null;
     private pageRoot: Node | null = null;
@@ -277,6 +284,7 @@ export class MainUI extends Component {
     private toastToken = 0;
     private unsubscribeStore: (() => void) | null = null;
     private editorLayoutSignature = '';
+    private homeVisualSignature = '';
 
     onLoad() {
         MainUI.instance = this;
@@ -358,12 +366,6 @@ export class MainUI extends Component {
         if (changed && this.currentPage === 'hatchery') this.renderCurrentPage(false);
     }
 
-    lateUpdate() {
-        if (this.root && this.canvas) {
-            this.root.setSiblingIndex(Math.max(0, this.canvas.children.length - 1));
-        }
-    }
-
     public showHome() { this.showPage('home'); }
     public showPet() { this.showPage('pet'); }
     public showInventory() { this.showPage('inventory'); }
@@ -402,6 +404,7 @@ export class MainUI extends Component {
         this.secondaryConfirmation = null;
         if (changed) CuteFeedback.playPage();
         if (page !== 'adventure') void AudioDirector.playBgm('home');
+        this.renderPageBackground();
         this.renderCurrentPage(true);
         this.renderTopBar();
         this.renderBottomNav();
@@ -419,6 +422,7 @@ export class MainUI extends Component {
         if (isMainPage(this.currentPage) && this.currentPage !== 'home') {
             this.currentPage = this.router.reset('home');
             CuteFeedback.playPage();
+            this.renderPageBackground();
             this.renderTopBar();
             this.renderBottomNav();
             this.renderCurrentPage(true);
@@ -428,6 +432,7 @@ export class MainUI extends Component {
         this.currentPage = this.router.back(mainTabForPage(this.currentPage));
         this.detailSkill = null;
         CuteFeedback.playPage();
+        this.renderPageBackground();
         this.renderTopBar();
         this.renderBottomNav();
         this.renderCurrentPage(true);
@@ -447,6 +452,12 @@ export class MainUI extends Component {
         if (liveBattle) {
             this.renderTopBar();
             this.renderBottomNav();
+            return;
+        }
+        if (this.currentPage === 'home') {
+            this.renderTopBar();
+            const signature = this.currentHomeVisualSignature();
+            if (signature !== this.homeVisualSignature) this.renderCurrentPage(false);
             return;
         }
         this.refreshAllVisuals();
@@ -746,6 +757,8 @@ export class MainUI extends Component {
         this.canvas = canvas;
         const shell = resolveAppShell(canvas);
         this.root = shell.root;
+        this.backgroundLayer = shell.globalBackground;
+        this.pet3dLayer = shell.pet3dLayer;
         this.topBar = shell.topBar;
         this.pageHost = shell.pageRoot;
         this.pageRoot = resolvePageContainer(shell.pageRoot, this.currentPage);
@@ -759,11 +772,11 @@ export class MainUI extends Component {
         this.toastLayer = shell.toastLayer;
         this.loadingLayer = shell.loadingLayer;
 
-        clearNode(shell.globalBackground);
-        this.buildBackground(shell.globalBackground);
+        this.renderPageBackground();
     }
 
     private buildBackground(root: Node) {
+        clearNode(root);
         const background = panel(root, 'Background', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(86, 56, 35, 255), 0, false, CuteTheme.woodDark, 0);
         panel(background, 'OuterWoodFrame', 0, 0, 710, 1270, new Color(192, 132, 76, 255), 18, false, new Color(111, 70, 40, 255), 5);
         panel(background, 'InnerPaper', 0, -4, 690, 1240, new Color(255, 247, 223, 255), 15, false, new Color(245, 212, 157, 255), 3);
@@ -778,8 +791,27 @@ export class MainUI extends Component {
         }
     }
 
+    private renderPageBackground() {
+        if (!this.backgroundLayer) return;
+        clearNode(this.backgroundLayer);
+        if (this.currentPage === 'home') {
+            artImage(
+                this.backgroundLayer,
+                'HomeRoomBackground',
+                'ui/home-v3/home-room-v3',
+                0,
+                -5,
+                720,
+                1010,
+            );
+            return;
+        }
+        this.buildBackground(this.backgroundLayer);
+    }
+
     private refreshAllVisuals() {
         if (!this.root) return;
+        this.renderPageBackground();
         this.renderTopBar();
         this.renderBottomNav();
         this.renderCurrentPage(false);
@@ -794,24 +826,30 @@ export class MainUI extends Component {
         clearNode(this.topBar);
 
         if (this.currentPage === 'home' || this.currentPage === 'adventure') {
+            const hasProfile = Number(GameStore.user?.id || 0) > 0;
+            const profileName = hasProfile ? safeName(GameStore.user?.nickname, '玩家') : '未登录';
+            const levelText = hasProfile ? `Lv.${Number(GameStore.user?.level || 1)}` : 'Lv.--';
+            const vipText = hasProfile ? `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}` : '';
+            const goldText = hasProfile ? formatNumber(GameStore.user?.gold) : '--';
+            const diamondText = hasProfile ? formatNumber(GameStore.user?.diamond) : '--';
             image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -294, 2, 82, 82, CuteTheme.paperWarm);
             artImage(this.topBar, 'HomeTopArt', 'ui/home-v3/top-overlay-v3', 0, -5, 720, 140);
             if (this.currentPage === 'adventure') {
                 panel(this.topBar, 'AdventureTitleBack', 6, -5, 214, 76, new Color(255, 246, 219, 252), 22, true, CuteTheme.caramelSoft, 2);
                 text(this.topBar, 'AdventureTitle', '绘本冒险', 6, -3, 174, 36, 23, CuteTheme.caramel, 'center', true);
             }
-            text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -238, 18, 150, 28, 17, CuteTheme.caramel, 'left', true);
-            text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -238, -13, 62, 20, 12, CuteTheme.honeyDark, 'left', true);
-            text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -176, -13, 52, 20, 10, CuteTheme.mintDark, 'left', true);
+            text(this.topBar, 'Nickname', profileName, -238, 18, 150, 28, 17, CuteTheme.caramel, 'left', true);
+            text(this.topBar, 'Level', levelText, -238, -13, 62, 20, 12, CuteTheme.honeyDark, 'left', true);
+            text(this.topBar, 'Vip', vipText, -176, -13, 52, 20, 10, CuteTheme.mintDark, 'left', true);
             const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
             const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
-            progress(this.topBar, 'PlayerExp', -191, -39, 108, 8, currentExp / nextExp, CuteTheme.honey);
+            progress(this.topBar, 'PlayerExp', -191, -39, 108, 8, hasProfile ? currentExp / nextExp : 0, CuteTheme.honey);
             const resourceValueX = 252;
             const resourceHitX = 250;
             const resourceGoldY = 2;
             const resourceDiamondY = -50;
-            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), resourceValueX, resourceGoldY, 108, 28, 15, CuteTheme.caramel, 'center', true);
-            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), resourceValueX, resourceDiamondY, 108, 28, 15, CuteTheme.caramel, 'center', true);
+            text(this.topBar, 'GoldValue', goldText, resourceValueX, resourceGoldY, 108, 28, 15, CuteTheme.caramel, 'center', true);
+            text(this.topBar, 'DiamondValue', diamondText, resourceValueX, resourceDiamondY, 108, 28, 15, CuteTheme.caramel, 'center', true);
             hitArea(this.topBar, 'Gold', resourceHitX, resourceGoldY, 190, 46, () => this.showPage('shop'));
             hitArea(this.topBar, 'Diamond', resourceHitX, resourceDiamondY, 190, 46, () => this.showPage('shop'));
             if (!GameStore.online) {
@@ -831,7 +869,7 @@ export class MainUI extends Component {
         const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
         progress(this.topBar, 'PlayerExp', -188, -39, 120, 9, currentExp / nextExp, CuteTheme.honey);
 
-        const showBack = this.currentPage !== 'home';
+        const showBack = true;
         if (showBack) {
             button(this.topBar, 'BackPage', '‹', -98, 3, 44, 44, () => this.goBackPage(), {
                 fill: CuteTheme.paperWarm, fontSize: 24, radius: 20,
@@ -888,6 +926,7 @@ export class MainUI extends Component {
     private renderCurrentPage(animatePage = false) {
         if (!this.pageHost) return;
         this.captureScrollOffsets(this.pageRoot);
+        if (this.pet3dLayer) clearNode(this.pet3dLayer);
         this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
         clearNode(this.pageRoot);
         const pageTuning = this.currentPageTuning();
@@ -982,32 +1021,36 @@ export class MainUI extends Component {
 
     private renderHome() {
         if (!this.pageRoot) return;
-        renderHomePage(this.pageRoot, {
-            pet: this.homePet(),
-            notificationCount: this.pageNotificationCount('benefits'),
+        const pet = this.homePet();
+        const teamPets = this.teamPets.length
+            ? this.teamPets.slice(0, 5)
+            : GameStore.pets.filter((item) => !item?.isEgg).slice(0, 5);
+        const options = {
+            pet,
+            teamPets,
             notificationCounts: {
-                sign: Number(this.redDotInfo?.sources?.sign || 0),
-                newcomer: Number(this.redDotInfo?.sources?.newcomer || 0),
-                daily: Number(this.redDotInfo?.sources?.tasks || 0),
-                events: Number(this.redDotInfo?.sources?.activities || 0),
+                events: this.pageNotificationCount('benefits'),
+                friends: this.pageNotificationCount('friends'),
+                bond: this.pageNotificationCount('marriage'),
+                mail: this.pageNotificationCount('mail'),
             },
             onSelectPet: () => this.openHomePetPicker(),
+            onSelectTeamPet: (petId: number) => this.setHomePet(petId),
+            onMainQuest: () => this.showPage('adventure'),
             onActivity: (activity: HomeActivity) => {
-                const modes: Record<HomeActivity, typeof this.benefitMode> = {
-                    sign: 'sign',
-                    newcomer: 'newcomer',
-                    daily: 'tasks',
-                    events: 'activities',
-                };
-                this.benefitMode = modes[activity];
+                this.benefitMode = activity === 'events' ? 'activities' : 'sign';
                 this.showPage('benefits');
             },
             onShortcut: (shortcut: HomeShortcut) => {
-                if (shortcut === 'adventure') this.showPage('adventure');
-                else if (shortcut === 'hatchery') this.showPage('hatchery');
-                else this.showPage('formation');
+                if (shortcut === 'friends') this.showPage('friends');
+                else if (shortcut === 'bond') this.showPage('marriage');
+                else this.showPage('mail');
             },
-        });
+            onAdventure: () => this.showPage('adventure'),
+        };
+        if (this.pet3dLayer) renderHomePetStage(this.pet3dLayer, options);
+        renderHomePage(this.pageRoot, options);
+        this.homeVisualSignature = this.currentHomeVisualSignature();
     }
 
     private createScrollArea(
@@ -1972,7 +2015,7 @@ export class MainUI extends Component {
             this.renderCurrentPage(false);
         },this.hatchEggFilter===key,11));
         this.flatArtControl(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度优先':'时间优先',215,112,128,34,()=>{
-            this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';
+            this.hatchEggSort=this.hatchEggSort==='rarity'?'created':'rarity';
             this.renderCurrentPage(false);
         },false,10);
         const eggRows = Math.max(1, Math.ceil(storedEggs.length / 2));
@@ -4794,6 +4837,34 @@ export class MainUI extends Component {
             || {};
     }
 
+    private currentHomeVisualSignature() {
+        const pet = this.homePet();
+        const team = this.teamPets.length
+            ? this.teamPets
+            : GameStore.pets.filter((item) => !item?.isEgg).slice(0, 5);
+        return JSON.stringify({
+            pet: [
+                Number(pet?.id || 0),
+                String(pet?.nickname || ''),
+                String(pet?.species || pet?.speciesCode || ''),
+                Number(pet?.level || 1),
+                String(pet?.element || ''),
+                String(pet?.combatRole || pet?.role || ''),
+            ],
+            team: team.slice(0, 5).map((item) => [
+                Number(item?.id || 0),
+                String(item?.species || item?.speciesCode || ''),
+                Number(item?.level || 1),
+            ]),
+            notifications: [
+                this.pageNotificationCount('benefits'),
+                this.pageNotificationCount('friends'),
+                this.pageNotificationCount('marriage'),
+                this.pageNotificationCount('mail'),
+            ],
+        });
+    }
+
     private setHomePet(id: number) {
         if (!id) return;
         this.homePetId = id;
@@ -5312,6 +5383,14 @@ export class MainUI extends Component {
             benefits: '福利成长',
             formation: '五宠阵法',
             guild: '萌宠公会',
+            gold: '金币',
+            diamond: '钻石',
+            potion: '培养药剂',
+            hourglass: '孵化沙漏',
+            'breed-token': '繁育凭证',
+            core: '培养核心',
+            food: '宠物食物',
+            material: '培养材料',
         };
         return titles[page];
     }
