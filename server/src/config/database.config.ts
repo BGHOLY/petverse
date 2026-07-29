@@ -49,6 +49,7 @@ import { GuildHelpRequest } from '../modules/guild/guild-help.entity';
 import { WorldExplorationProgress } from '../modules/exploration/world-exploration.entity';
 import { EquipmentItem } from '../modules/equipment/equipment.entity';
 import { RewardClaim } from '../modules/reward/reward-claim.entity';
+import { Expedition } from '../modules/expedition/expedition.entity';
 
 dotenv.config();
 
@@ -109,6 +110,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     WorldExplorationProgress,
     EquipmentItem,
     RewardClaim,
+    Expedition,
   ],
   synchronize: true,
 };
