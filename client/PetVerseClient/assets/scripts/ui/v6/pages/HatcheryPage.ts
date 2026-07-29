@@ -23,7 +23,7 @@ import {
 import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { getEggArtPath, getEggDisplayName } from '../../v10/EggArtRegistry';
 import { createV6PageShell } from '../AppShell';
-import { V6_CONTENT_HEIGHT, V6_PAGE_WIDTH, V6_PANEL_GAP } from '../UiMetrics';
+import { V6_PAGE_WIDTH, V6_PANEL_GAP, V6_SAFE_CONTENT_HEIGHT } from '../UiMetrics';
 import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 
 export type HatcheryEggFilterV6 = 'all' | 'normal' | 'rare' | 'mutant';
@@ -128,21 +128,18 @@ function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryP
         `WarehouseEgg_${egg?.id || index}`,
         0,
         0,
-        320,
-        130,
+        154,
+        132,
         selected ? new Color(255, 243, 193, 255) : egg?.isMutant ? new Color(255, 236, 226, 255) : new Color(255, 252, 239, 255),
         20,
         true,
         selected ? CuteTheme.honeyDark : egg?.isMutant ? CuteTheme.peachDark : new Color(211, 171, 116, 230),
         selected ? 4 : egg?.isMutant ? 3 : 2,
     );
-    artImage(card, 'EggArt', getEggArtPath(egg), -112, 1, 72, 90);
-    text(card, 'Name', getEggDisplayName(egg), -66, 40, 190, 28, 15, CuteTheme.caramel, 'left', true);
-    text(card, 'Meta', `${rarity}★${egg?.isMutant ? ' · 变异' : ''}`, -66, 14, 170, 24, 12, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'left', true);
-    text(card, 'Parents', `父母 ${parentNames(egg)}`, -66, -10, 188, 22, 11, CuteTheme.muted, 'left', true);
-    text(card, 'Time', `${String(egg?.species || egg?.speciesName || '未知')} · ${options.formatEggDuration(egg)}`, -66, -34, 188, 22, 11, CuteTheme.muted, 'left', true);
-    button(card, 'Choose', selected ? '已选择' : '选择', 88, -38, 104, 34, () => options.onChooseEgg(egg), { selected, fill: selected ? CuteTheme.mint : CuteTheme.honey, fontSize: 11, radius: 14 });
-    hitArea(card, 'OpenEgg', 0, 0, 320, 130, () => options.onChooseEgg(egg));
+    artImage(card, 'EggArt', getEggArtPath(egg), 0, 28, 56, 66);
+    text(card, 'Name', getEggDisplayName(egg), 0, -17, 136, 26, 13, CuteTheme.caramel, 'center', true);
+    text(card, 'Meta', `${rarity}★${egg?.isMutant ? ' · 变异' : ''}`, 0, -44, 136, 22, 11, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'center', true);
+    hitArea(card, 'OpenEgg', 0, 0, 154, 132, () => options.onChooseEgg(egg));
 }
 
 function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, width: number, height: number) {
@@ -152,10 +149,10 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     const mask = viewport.addComponent(Mask);
     mask.type = Mask.Type.GRAPHICS_RECT;
 
-    const rows = Math.max(1, Math.ceil(options.eggs.length / 2));
-    const cardHeight = 130;
-    const rowGap = 10;
-    const gridPadding = 8;
+    const rows = Math.max(1, Math.ceil(options.eggs.length / 4));
+    const cardHeight = 132;
+    const rowGap = 12;
+    const gridPadding = 12;
     const gridHeight = gridPadding * 2 + rows * cardHeight + Math.max(0, rows - 1) * rowGap;
     const footerHeight = 48;
     const contentHeight = Math.max(height, gridHeight + footerHeight + 24);
@@ -174,12 +171,12 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     layout.startAxis = Layout.AxisDirection.HORIZONTAL;
     layout.horizontalDirection = Layout.HorizontalDirection.LEFT_TO_RIGHT;
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.cellSize = new Size(320, cardHeight);
+    layout.cellSize = new Size(154, cardHeight);
     layout.paddingLeft = gridPadding;
     layout.paddingRight = gridPadding;
     layout.paddingTop = gridPadding;
     layout.paddingBottom = gridPadding;
-    layout.spacingX = 10;
+    layout.spacingX = 8;
     layout.spacingY = rowGap;
     options.eggs.forEach((egg, index) => renderEggCard(grid, egg, index, options));
     layout.updateLayout();
@@ -225,9 +222,9 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     const shell = createV6PageShell(parent, 'HatcheryLayoutV6');
     const page = shell.content;
     const headerHeight = 82;
-    const incubatorHeight = 344;
-    const warehouseHeight = V6_CONTENT_HEIGHT - headerHeight - incubatorHeight - V6_PANEL_GAP * 2;
-    let cursor = V6_CONTENT_HEIGHT / 2;
+    const incubatorHeight = 320;
+    const warehouseHeight = V6_SAFE_CONTENT_HEIGHT - headerHeight - incubatorHeight - V6_PANEL_GAP * 2;
+    let cursor = V6_SAFE_CONTENT_HEIGHT / 2;
 
     const header = panel(page, 'HatcheryInfoBar', 0, cursor - headerHeight / 2, V6_PAGE_WIDTH, headerHeight, new Color(255, 249, 229, 252), 24, true, new Color(198, 145, 85, 235), 2);
     cursor -= headerHeight + V6_PANEL_GAP;
@@ -237,7 +234,7 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
 
     const incubators = panel(page, 'IncubatorSection', 0, cursor - incubatorHeight / 2, V6_PAGE_WIDTH, incubatorHeight, new Color(255, 249, 230, 246), 24, true, new Color(205, 158, 103, 225), 2);
     cursor -= incubatorHeight + V6_PANEL_GAP;
-    options.slots.forEach((slot, index) => renderIncubator(incubators, slot, options, -228 + index * 228));
+    options.slots.forEach((slot, index) => renderIncubator(incubators, slot, options, -220 + index * 220));
 
     const warehouse = panel(page, 'EggWarehouse', 0, cursor - warehouseHeight / 2, V6_PAGE_WIDTH, warehouseHeight, new Color(255, 249, 230, 248), 24, true, new Color(205, 158, 103, 225), 2);
     text(warehouse, 'Title', `宝宝蛋仓库 ${options.totalStored}/${options.capacity}`, -306, warehouseHeight / 2 - 32, 300, 34, 19, CuteTheme.caramel, 'left', true);
@@ -252,8 +249,7 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     button(warehouse, 'Sort', sortLabel, 258, warehouseHeight / 2 - 78, 132, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
     const scrollHeight = warehouseHeight - 116;
     const scrollHost = panel(warehouse, 'EggListPanel', 0, -50, V6_PAGE_WIDTH - 16, scrollHeight, CuteTheme.transparent, 0, false, CuteTheme.transparent, 0);
-    // 2 * 320 cards + 10 gap + 16 padding = 666px. The former 660px
-    // viewport forced Cocos Layout to wrap every card into a single column.
+    // Four 154px cards plus three 8px gaps fit inside the 656px viewport.
     renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 16, scrollHeight - 4);
 }
 
