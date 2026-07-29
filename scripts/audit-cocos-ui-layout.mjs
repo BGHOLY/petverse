@@ -195,6 +195,20 @@ check(
         && mainUiSource.includes("245,-382,140,50"),
     'Team editing keeps its formation field, scroll list and save action within the safe viewport.',
 );
+check(
+    mainUiSource.includes("'PhotoFace'")
+        && mainUiSource.includes('286,')
+        && mainUiSource.includes('232,')
+        && mainUiSource.includes('faceSprite.enabled = false'),
+    'Friend cards replace the generic grey Prefab face with a clear cream photo card.',
+);
+check(
+    mainUiSource.includes("'RankFace'")
+        && mainUiSource.includes('604,')
+        && mainUiSource.includes('78,')
+        && mainUiSource.includes('rank <= 3 ? CuteTheme.honeyDark'),
+    'Ranking cards replace the generic grey Prefab face and distinguish the top three.',
+);
 
 const petPageSource = fs.readFileSync(path.join(
     repositoryRoot,

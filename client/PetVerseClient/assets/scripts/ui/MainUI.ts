@@ -2520,6 +2520,23 @@ export class MainUI extends Component {
                 this.showPage('adventure');
             });
             if (prefabItem) {
+                setRect(prefabItem, -156 + col * 312, -116 - rowIndex * 250, 286, 232);
+                const faceSprite = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+                if (faceSprite) faceSprite.enabled = false;
+                const photoFace = panel(
+                    prefabItem,
+                    'PhotoFace',
+                    0,
+                    0,
+                    286,
+                    232,
+                    new Color(255, 253, 242, 255),
+                    28,
+                    true,
+                    new Color(211, 171, 116, 230),
+                    3,
+                );
+                photoFace.setSiblingIndex(1);
                 prefabItem.setPosition(-156 + col * 312, -116 - rowIndex * 250);
                 return;
             }
@@ -2729,7 +2746,25 @@ export class MainUI extends Component {
                 iconPath: item?.petName || item?.speciesCode ? getPetArtPath(item, 'thumb') : undefined,
             });
             if (prefabItem) {
-                prefabItem.setPosition(0, -45 - index * 93);
+                setRect(prefabItem, 0, -45 - index * 93, 604, 78);
+                const faceSprite = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+                if (faceSprite) faceSprite.enabled = false;
+                const rankFace = panel(
+                    prefabItem,
+                    'RankFace',
+                    0,
+                    0,
+                    604,
+                    78,
+                    rank <= 3
+                        ? new Color(255, 247, 220, 255)
+                        : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)),
+                    21,
+                    true,
+                    rank <= 3 ? CuteTheme.honeyDark : new Color(211, 171, 116, 210),
+                    rank <= 3 ? 3 : 2,
+                );
+                rankFace.setSiblingIndex(1);
                 return;
             }
             const row = panel(area.content, `Rank_${rank}`, 0, -45 - index * 93, 604, 78, rank <= 3 ? new Color(255, 247, 220, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 21, false, CuteTheme.white, 2);
