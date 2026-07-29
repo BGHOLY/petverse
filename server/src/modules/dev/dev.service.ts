@@ -277,23 +277,36 @@ export class DevService {
 
     const before = await this.petService.getUserPets(userId);
     const existingPets = before.pets.filter((pet) => !pet.isEgg);
-    const existingSeedNames = new Set(
-      existingPets
-        .filter((pet) => pet.sourceType === sourceType)
-        .map((pet) => String(pet.nickname)),
+    const seededBefore = existingPets.filter(
+      (pet) => pet.sourceType === sourceType,
     );
-
-    const expectedNames = PET_SPECIES_CONFIGS.flatMap((species) =>
-      [true, false].flatMap((isMutant) =>
-        ['A', 'B'].map(
-          (suffix) =>
-            `炼妖${isMutant ? '变异' : '普通'}-${species.speciesCode}-${suffix}`,
+    const seedGroupKey = (speciesCode: string, isMutant: boolean) =>
+      `${speciesCode}:${isMutant ? 'mutant' : 'normal'}`;
+    const existingGroupCounts = new Map<string, number>();
+    for (const pet of seededBefore) {
+      const key = seedGroupKey(
+        String(pet.speciesCode || ''),
+        Boolean(pet.isMutant),
+      );
+      existingGroupCounts.set(key, (existingGroupCounts.get(key) || 0) + 1);
+    }
+    const missingCount = PET_SPECIES_CONFIGS.reduce(
+      (total, species) =>
+        total +
+        [true, false].reduce(
+          (subtotal, isMutant) =>
+            subtotal +
+            Math.max(
+              0,
+              2 -
+                (existingGroupCounts.get(
+                  seedGroupKey(species.speciesCode, isMutant),
+                ) || 0),
+            ),
+          0,
         ),
-      ),
+      0,
     );
-    const missingCount = expectedNames.filter(
-      (nickname) => !existingSeedNames.has(nickname),
-    ).length;
     const requiredCapacity = existingPets.length + missingCount;
 
     if (requiredCapacity > Number(user.petCapacity || 50)) {
@@ -309,10 +322,18 @@ export class DevService {
     ) {
       const species = PET_SPECIES_CONFIGS[speciesIndex];
       for (const isMutant of [true, false]) {
-        for (let variantIndex = 0; variantIndex < 2; variantIndex += 1) {
+        const groupKey = seedGroupKey(species.speciesCode, isMutant);
+        const existingCount = Math.min(
+          2,
+          existingGroupCounts.get(groupKey) || 0,
+        );
+        for (
+          let variantIndex = existingCount;
+          variantIndex < 2;
+          variantIndex += 1
+        ) {
           const suffix = variantIndex === 0 ? 'A' : 'B';
           const nickname = `炼妖${isMutant ? '变异' : '普通'}-${species.speciesCode}-${suffix}`;
-          if (existingSeedNames.has(nickname)) continue;
 
           const percentile =
             0.28 +
@@ -381,9 +402,20 @@ export class DevService {
     );
 
     const after = await this.petService.getUserPets(userId);
-    const seededPets = after.pets.filter(
+    const allSeededPets = after.pets.filter(
       (pet) => !pet.isEgg && pet.sourceType === sourceType,
     );
+    const selectedGroups = new Map<string, typeof allSeededPets>();
+    for (const pet of allSeededPets) {
+      const key = seedGroupKey(
+        String(pet.speciesCode || ''),
+        Boolean(pet.isMutant),
+      );
+      const group = selectedGroups.get(key) || [];
+      if (group.length < 2) group.push(pet);
+      selectedGroups.set(key, group);
+    }
+    const seededPets = [...selectedGroups.values()].flat();
     const petList = seededPets.map((pet) => {
       const skills = Array.isArray(pet.skills) ? pet.skills : [];
       return {
