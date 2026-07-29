@@ -99,6 +99,17 @@ check(
     'The home pet nameplate stays centered beneath the lifted showcase pet.',
 );
 
+for (const tab of ['home', 'pet', 'adventure', 'shop', 'more']) {
+    const faceId = nodeId(...rootPath, 'BottomNavigation', `Selected_${tab}`, 'Face');
+    const graphics = faceId === undefined ? undefined : component(faceId, 'cc.Graphics');
+    check(
+        graphics?._lineWidth === 4
+            && Number(graphics?._fillColor?.a || 0) >= 70
+            && Number(graphics?._strokeColor?.a || 0) >= 240,
+        `BottomNavigation ${tab} has a clearly visible selected-state highlight.`,
+    );
+}
+
 for (const pageName of [
     'PetPage',
     'InventoryPage',
@@ -158,6 +169,31 @@ check(
 check(
     mainUiSource.includes("'TeamQuickActions'"),
     'Adventure team actions use a dedicated card instead of overlapping the story progress footer.',
+);
+check(
+    mainUiSource.includes("'FusionPage', 0, 0, 672, 952")
+        && mainUiSource.includes("'ParentA',")
+        && mainUiSource.includes("-160, 165, 'A'")
+        && mainUiSource.includes("'ParentB',")
+        && mainUiSource.includes("160, 165, 'B'")
+        && mainUiSource.includes("'ExecuteButton'")
+        && mainUiSource.includes('0, -385, 260, 72'),
+    'Fusion keeps equal parent cards and its primary action inside the bottom safe area.',
+);
+check(
+    mainUiSource.includes("'SkillResearchPage',0,-40,672,824")
+        && mainUiSource.includes("'Current',-159,42,302,404")
+        && mainUiSource.includes("'Books',159,42,302,404")
+        && mainUiSource.includes("'Learn','")
+        && mainUiSource.includes('230,-5,160,70'),
+    'Skill learning uses balanced skill/book columns and one clear primary action.',
+);
+check(
+    mainUiSource.includes("'TeamEditor', 0, 0, 650, 850")
+        && mainUiSource.includes("'TeamPetScroll',0,-210,610,270")
+        && mainUiSource.includes("'Save','")
+        && mainUiSource.includes("245,-382,140,50"),
+    'Team editing keeps its formation field, scroll list and save action within the safe viewport.',
 );
 
 const petPageSource = fs.readFileSync(path.join(

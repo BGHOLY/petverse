@@ -838,7 +838,7 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
       "r": 245,
@@ -10656,13 +10656,13 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
-      "r": 104,
-      "g": 166,
-      "b": 103,
-      "a": 220
+      "r": 214,
+      "g": 153,
+      "b": 55,
+      "a": 245
     },
     "_lineJoin": 2,
     "_lineCap": 0,
@@ -10671,7 +10671,7 @@
       "r": 255,
       "g": 245,
       "b": 184,
-      "a": 12
+      "a": 76
     },
     "_miterLimit": 10,
     "_id": "732ShUXllN5pk1+k/f1go4"
@@ -13366,13 +13366,13 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
-      "r": 104,
-      "g": 166,
-      "b": 103,
-      "a": 220
+      "r": 214,
+      "g": 153,
+      "b": 55,
+      "a": 245
     },
     "_lineJoin": 2,
     "_lineCap": 0,
@@ -13381,7 +13381,7 @@
       "r": 255,
       "g": 245,
       "b": 184,
-      "a": 12
+      "a": 76
     },
     "_miterLimit": 10,
     "_id": "B0G6OapX6GZIBTaLwevegA"
@@ -13660,13 +13660,13 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
-      "r": 104,
-      "g": 166,
-      "b": 103,
-      "a": 220
+      "r": 214,
+      "g": 153,
+      "b": 55,
+      "a": 245
     },
     "_lineJoin": 2,
     "_lineCap": 0,
@@ -13675,7 +13675,7 @@
       "r": 255,
       "g": 245,
       "b": 184,
-      "a": 12
+      "a": 76
     },
     "_miterLimit": 10,
     "_id": "x0oJb96Wp6svMNl452EzvA"
@@ -13954,13 +13954,13 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
-      "r": 104,
-      "g": 166,
-      "b": 103,
-      "a": 220
+      "r": 214,
+      "g": 153,
+      "b": 55,
+      "a": 245
     },
     "_lineJoin": 2,
     "_lineCap": 0,
@@ -13969,7 +13969,7 @@
       "r": 255,
       "g": 245,
       "b": 184,
-      "a": 12
+      "a": 76
     },
     "_miterLimit": 10,
     "_id": "lhHrAe/XJzulhsYLMBfUUw"
@@ -14248,13 +14248,13 @@
       "b": 255,
       "a": 255
     },
-    "_lineWidth": 3,
+    "_lineWidth": 4,
     "_strokeColor": {
       "__type__": "cc.Color",
-      "r": 104,
-      "g": 166,
-      "b": 103,
-      "a": 220
+      "r": 214,
+      "g": 153,
+      "b": 55,
+      "a": 245
     },
     "_lineJoin": 2,
     "_lineCap": 0,
@@ -14263,7 +14263,7 @@
       "r": 255,
       "g": 245,
       "b": 184,
-      "a": 12
+      "a": 76
     },
     "_miterLimit": 10,
     "_id": "eH1QdiQk9JapKwHHHwUr+Q"
