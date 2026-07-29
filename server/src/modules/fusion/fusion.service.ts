@@ -13,6 +13,10 @@ import {
 import { DEFAULT_USER_ID } from '../game-data';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
+import {
+  getSkillSeedConfig,
+  isSpecialSkill,
+} from '../skill/config/skill.config';
 import { PetTeam } from '../team/pet-team.entity';
 import { FusionRecord } from './fusion-record.entity';
 
@@ -46,6 +50,7 @@ export class FusionService {
     parentBId: number,
     seed?: string,
     useMutationEssence = false,
+    requestedLockedSkillCodes: string[] = [],
   ) {
     const parents =
       await this.loadAndValidateParents(
@@ -60,6 +65,13 @@ export class FusionService {
       return parents;
     }
 
+    const lockedSkillCodes = this.validateLockedSkillCodes(
+      parents.parentA,
+      parents.parentB,
+      requestedLockedSkillCodes,
+    );
+    if (!Array.isArray(lockedSkillCodes)) return lockedSkillCodes;
+
     const blueprint =
       this.petService.buildOffspringBlueprint(
         parents.parentA,
@@ -68,9 +80,13 @@ export class FusionService {
         'fusion',
         seed,
         useMutationEssence ? 0.03 : 0,
+        lockedSkillCodes,
       );
 
-    const cost = this.buildFusionCost(useMutationEssence);
+    const cost = this.buildFusionCost(
+      useMutationEssence,
+      lockedSkillCodes.length,
+    );
 
     return {
       success: true,
@@ -96,8 +112,15 @@ export class FusionService {
     requestId: string,
     requestedSeed?: string,
     useMutationEssence = false,
+    requestedLockedSkillCodes: string[] = [],
   ) {
-    const fusionCost = this.buildFusionCost(useMutationEssence);
+    const normalizedLockedSkillCodes = this.normalizeLockedSkillCodes(
+      requestedLockedSkillCodes,
+    );
+    const fusionCost = this.buildFusionCost(
+      useMutationEssence,
+      normalizedLockedSkillCodes.length,
+    );
     const normalizedRequestId =
       this.economyService.normalizeRequestId(
         requestId,
@@ -189,11 +212,22 @@ export class FusionService {
             if (validation) {
               throw new Error(validation);
             }
+            const lockedSkillCodes = this.validateLockedSkillCodes(
+              parentA,
+              parentB,
+              normalizedLockedSkillCodes,
+            );
+            if (!Array.isArray(lockedSkillCodes)) {
+              throw new Error(lockedSkillCodes.message);
+            }
 
             await this.economyService.spend(
               manager,
               userId,
-              fusionCost,
+              this.buildFusionCost(
+                useMutationEssence,
+                lockedSkillCodes.length,
+              ),
             );
 
             const seed = String(
@@ -208,6 +242,7 @@ export class FusionService {
                 'fusion',
                 seed,
                 useMutationEssence ? 0.03 : 0,
+                lockedSkillCodes,
               );
             const createData =
               this.petService.buildPetCreateDataFromBlueprint(
@@ -323,14 +358,63 @@ export class FusionService {
     }
   }
 
-  private buildFusionCost(useMutationEssence: boolean): EconomyCost {
+  private buildFusionCost(
+    useMutationEssence: boolean,
+    lockedSkillCount = 0,
+  ): EconomyCost {
     return {
       ...FUSION_COST,
       items: {
         ...(FUSION_COST.items || {}),
         ...(useMutationEssence ? { mutation_essence: 1 } : {}),
+        ...(lockedSkillCount > 0 ? { skill_lock: lockedSkillCount } : {}),
       },
     };
+  }
+
+  private normalizeLockedSkillCodes(raw: string[]) {
+    return [
+      ...new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((skillCode) => String(skillCode || '').trim())
+          .filter(Boolean),
+      ),
+    ].slice(0, 10);
+  }
+
+  private validateLockedSkillCodes(
+    parentA: Pet,
+    parentB: Pet,
+    raw: string[],
+  ): string[] | { success: false; message: string } {
+    const requested = this.normalizeLockedSkillCodes(raw);
+    const available = new Map<string, any>(
+      [...(parentA.skills || []), ...(parentB.skills || [])]
+        .map(
+          (skill: any): [string, any] => [
+            String(skill?.skillCode || ''),
+            getSkillSeedConfig(String(skill?.skillCode || '')) || skill,
+          ],
+        )
+        .filter(([skillCode]) => Boolean(skillCode)),
+    );
+
+    for (const skillCode of requested) {
+      const skill = available.get(skillCode);
+      if (!skill) {
+        return {
+          success: false,
+          message: `Locked skill is not owned by either parent: ${skillCode}`,
+        };
+      }
+      if (skill.canLock === false || isSpecialSkill(skill)) {
+        return {
+          success: false,
+          message: `Skill cannot be locked during fusion: ${skillCode}`,
+        };
+      }
+    }
+    return requested;
   }
 
   async getHistory(

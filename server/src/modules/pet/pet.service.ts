@@ -414,6 +414,7 @@ export class PetService {
     mode: BreedingMode = 'breed',
     seed?: string,
     mutationRateBonus = 0,
+    lockedSkillCodes: string[] = [],
   ): OffspringBlueprint {
     const blueprint = this.breedingService.buildOffspring(
       parentA,
@@ -421,6 +422,7 @@ export class PetService {
       mode,
       seed,
       mutationRateBonus,
+      lockedSkillCodes,
     );
 
     if (forcedRarity) {
@@ -1170,6 +1172,9 @@ export class PetService {
         stored.inheritedSkills,
       )
         ? stored.inheritedSkills
+        : [],
+      lockedSkillCodes: Array.isArray(stored.lockedSkillCodes)
+        ? stored.lockedSkillCodes.map(String)
         : [],
       geneCode: normalizeGeneCode(
         stored.geneCode || 'AAAA',

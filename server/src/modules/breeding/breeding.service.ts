@@ -78,6 +78,7 @@ export interface OffspringBlueprint {
   generation: number;
   specialSkillCount: number;
   inheritedSkills: SkillSnapshot[];
+  lockedSkillCodes: string[];
   geneCode: string;
   geneScore: number;
   bodyType: string;
@@ -109,6 +110,7 @@ export class BreedingService {
     mode: BreedingMode = 'breed',
     requestedSeed?: string,
     mutationRateBonus = 0,
+    lockedSkillCodes: string[] = [],
   ): OffspringBlueprint {
     const seed = String(requestedSeed || createRandomSeed(mode));
     const rng = new SeededRandom(seed);
@@ -140,6 +142,7 @@ export class BreedingService {
       skillSlotCount,
       mode,
       rng,
+      lockedSkillCodes,
     );
     const geneResult = inheritGeneCode(
       normalizeGeneCode(parentA.geneCode || 'AAAA'),
@@ -167,6 +170,7 @@ export class BreedingService {
         Math.max(Number(parentA.generation || 1), Number(parentB.generation || 1)) + 1,
       specialSkillCount: skillResult.specialSkillCount,
       inheritedSkills: skillResult.skills,
+      lockedSkillCodes: skillResult.lockedSkillCodes,
       geneCode: geneResult.geneCode,
       geneScore: calculateGeneScore(geneResult.geneCode),
       bodyType: appearance.bodyType.value,
@@ -353,11 +357,33 @@ export class BreedingService {
     skillSlotCount: number,
     mode: BreedingMode,
     rng: SeededRandom,
+    requestedLockedSkillCodes: string[],
   ) {
     const config = getModeConfig(mode);
     const parentSkillsA = this.normalizeParentSkills(parentA.skills);
     const parentSkillsB = this.normalizeParentSkills(parentB.skills);
     const allParentSkills = [...parentSkillsA, ...parentSkillsB];
+    const parentSkillByCode = new Map(
+      allParentSkills.map((skill) => [skill.skillCode, skill]),
+    );
+    const lockedSkills = [
+      ...new Set(
+        (Array.isArray(requestedLockedSkillCodes)
+          ? requestedLockedSkillCodes
+          : []
+        )
+          .map(String)
+          .filter(Boolean),
+      ),
+    ]
+      .map((skillCode) => parentSkillByCode.get(skillCode))
+      .filter(
+        (skill): skill is SkillSnapshot =>
+          Boolean(skill) &&
+          skill.canLock !== false &&
+          !isSpecialSkill(skill),
+      )
+      .slice(0, skillSlotCount);
 
     const specialCounts = new Map<string, number>();
     for (const skill of allParentSkills.filter((item) => isSpecialSkill(item))) {
@@ -384,7 +410,11 @@ export class BreedingService {
     const naturalSpecial = isMutant
       ? getSkillSeedConfig(childSpecies.mutationSpecialSkillCode)
       : null;
-    const specialLimit = Math.max(0, skillSlotCount - MIN_NORMAL_SKILL_SLOTS);
+    const specialLimit = Math.max(
+      0,
+      skillSlotCount -
+        Math.max(MIN_NORMAL_SKILL_SLOTS, lockedSkills.length),
+    );
     const selectedSpecials: SkillSnapshot[] = [];
 
     if (naturalSpecial && specialLimit > 0) {
@@ -406,6 +436,10 @@ export class BreedingService {
       allParentSkills.filter((item) => !isSpecialSkill(item) && item.canInherit !== false),
     );
     const ordinarySkills: SkillSnapshot[] = [];
+
+    for (const skill of lockedSkills) {
+      this.tryAddOrdinarySkill(ordinarySkills, skill, ordinaryCapacity);
+    }
 
     for (const skill of rng.shuffle(ordinaryParentCandidates)) {
       if (ordinarySkills.length >= ordinaryCapacity) break;
@@ -434,6 +468,11 @@ export class BreedingService {
         .filter((skill) => !naturalSpecial || skill.skillCode !== naturalSpecial.skillCode)
         .map((skill) => skill.skillCode),
       rejectedSpecialSkillCodes: [...new Set(rejectedSpecialSkillCodes)],
+      lockedSkillCodes: ordinarySkills
+        .filter((skill) =>
+          lockedSkills.some((locked) => locked.skillCode === skill.skillCode),
+        )
+        .map((skill) => skill.skillCode),
     };
   }
 

@@ -32,6 +32,9 @@ export class FusionController {
         ? String(body.seed)
         : undefined,
       Boolean(body?.useMutationEssence),
+      Array.isArray(body?.lockedSkillCodes)
+        ? body.lockedSkillCodes.map(String)
+        : [],
     );
   }
 
@@ -54,6 +57,9 @@ export class FusionController {
         ? String(body.seed)
         : undefined,
       Boolean(body?.useMutationEssence),
+      Array.isArray(body?.lockedSkillCodes)
+        ? body.lockedSkillCodes.map(String)
+        : [],
     );
   }
 
