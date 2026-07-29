@@ -28,6 +28,7 @@ export class DynamicListItemView extends Component {
     actionButton: Button | null = null;
 
     private clickHandler: (() => void) | null = null;
+    private warnedMissingBindings = false;
 
     onLoad() {
         this.bindCompatibilityNodes();
@@ -45,7 +46,8 @@ export class DynamicListItemView extends Component {
         if (this.iconSprite && data.iconPath) {
             const sprite = this.iconSprite;
             loadSpriteFrameResource(data.iconPath, (frame) => {
-                if (frame && sprite.node.isValid) sprite.spriteFrame = frame;
+                if (!frame || !sprite?.node?.isValid) return;
+                sprite.spriteFrame = frame;
             });
         }
 
@@ -66,6 +68,21 @@ export class DynamicListItemView extends Component {
         this.actionButton ||= this.node.getChildByName('Button')?.getComponent(Button)
             || this.node.getComponent(Button)
             || null;
+        this.warnAboutMissingBindings();
+    }
+
+    private warnAboutMissingBindings() {
+        if (this.warnedMissingBindings) return;
+        const missing = [
+            !this.nameLabel ? 'nameLabel' : '',
+            !this.actionButton ? 'actionButton' : '',
+        ].filter(Boolean);
+        if (!missing.length) return;
+        this.warnedMissingBindings = true;
+        console.warn(
+            `[DynamicListItemView] "${this.node?.name || 'unknown'}" is missing Inspector bindings: ${missing.join(', ')}. `
+            + 'The item will remain visible, but the missing fields will be skipped.',
+        );
     }
 
     private detachClickHandler() {

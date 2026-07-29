@@ -194,7 +194,13 @@ function createItemScroll(parent: Node, options: InventoryPageV6Options, width: 
         const maxY = Math.max(0, contentHeight - height);
         const target = new Vec2(0, Math.max(0, Math.min(maxY, Number(options.initialOffset.y || 0))));
         director.once(Director.EVENT_AFTER_UPDATE, () => {
-            if (!viewport.isValid || !content.isValid || !scroll.isValid || scroll.content !== content) return;
+            if (
+                !viewport?.isValid
+                || !content?.isValid
+                || !scroll?.isValid
+                || !scroll.content?.isValid
+                || scroll.content !== content
+            ) return;
             try {
                 scroll.stopAutoScroll();
                 scroll.scrollToOffset(target, 0);

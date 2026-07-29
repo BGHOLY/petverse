@@ -207,6 +207,27 @@ for (const [kind, relativePath] of prefabIntegration) {
     );
 }
 
+const asyncSpriteSources = [
+    'client/PetVerseClient/assets/scripts/ui/MainUI.ts',
+    'client/PetVerseClient/assets/scripts/ui/v2/pages/HomePage.ts',
+    'client/PetVerseClient/assets/scripts/ui/prefab/DynamicListItemView.ts',
+];
+for (const relativePath of asyncSpriteSources) {
+    const source = read(relativePath);
+    check(
+        !/(?<!\?)\.node\.isValid\b/.test(source),
+        `${relativePath} null-checks component.node before asynchronous isValid access`,
+    );
+}
+
+const prefabRegistry = read('client/PetVerseClient/assets/scripts/ui/prefab/DynamicListPrefabRegistry.ts');
+for (const guard of ['parent?.isValid', 'prefab?.isValid', 'view?.node?.isValid']) {
+    check(
+        prefabRegistry.includes(guard),
+        `DynamicListPrefabRegistry guards ${guard}`,
+    );
+}
+
 if (failures.length) {
     console.error(`Cocos UI architecture audit failed (${failures.length} issue(s)):\n`);
     for (const failure of failures) console.error(`- ${failure}`);

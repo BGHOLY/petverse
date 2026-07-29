@@ -84,7 +84,13 @@ function renderPetRoster(parent: Node, options: PetPageV6Options) {
     };
     const restoreOffset = keepSelectedVisible(Number(options.initialOffset?.y || 0));
     director.once(Director.EVENT_AFTER_UPDATE, () => {
-        if (!viewport.isValid || !content.isValid || !scroll.isValid || scroll.content !== content) return;
+        if (
+            !viewport?.isValid
+            || !content?.isValid
+            || !scroll?.isValid
+            || !scroll.content?.isValid
+            || scroll.content !== content
+        ) return;
         try {
             scroll.stopAutoScroll();
             scroll.scrollToOffset(new Vec2(0, restoreOffset), 0);
@@ -93,7 +99,7 @@ function renderPetRoster(parent: Node, options: PetPageV6Options) {
         }
     });
     viewport.on('scroll-ended', () => {
-        if (!viewport.isValid || !scroll.isValid) return;
+        if (!viewport?.isValid || !scroll?.isValid || !scroll.content?.isValid) return;
         try {
             const snapped = snapOffset(Number(scroll.getScrollOffset()?.y || 0));
             scroll.stopAutoScroll();

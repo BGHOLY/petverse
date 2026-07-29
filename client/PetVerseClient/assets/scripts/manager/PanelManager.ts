@@ -45,19 +45,19 @@ export class PanelManager extends Component {
 
     hideAllPages() {
         for (const page of this.pages()) {
-            if (page) page.active = false;
+            if (page?.isValid) page.active = false;
         }
     }
 
     showPageNode(page: PageName) {
         this.ensurePages();
         const target = this.pageFor(page);
-        if (!target) {
+        if (!target?.isValid) {
             console.error(`[PanelManager] Missing editor-owned page node for "${page}".`);
             return null;
         }
         for (const node of this.pages()) {
-            if (node) node.active = node === target;
+            if (node?.isValid) node.active = node === target;
         }
         return target;
     }
@@ -79,6 +79,10 @@ export class PanelManager extends Component {
     showSettings() { this.mainUi()?.showSettings?.(); }
 
     private mainUi() {
+        if (!this.node?.isValid) {
+            console.warn('[PanelManager] MainUI lookup skipped because the manager node is no longer valid.');
+            return null;
+        }
         return this.node.getComponent('MainUI') as any;
     }
 

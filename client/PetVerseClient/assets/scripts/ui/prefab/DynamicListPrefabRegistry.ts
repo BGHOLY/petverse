@@ -50,11 +50,27 @@ export function instantiateDynamicListItem(
     onClick?: () => void,
 ) {
     const prefab = cache.get(kind);
-    if (!prefab) return null;
+    if (!parent?.isValid) {
+        console.warn(`[DynamicListPrefabRegistry] Skipped ${kind}: the list container is missing or no longer valid.`);
+        return null;
+    }
+    if (!prefab?.isValid) {
+        console.warn(`[DynamicListPrefabRegistry] Skipped ${kind}: the Prefab is not loaded or no longer valid.`);
+        return null;
+    }
     const node = instantiate(prefab);
+    if (!node?.isValid) {
+        console.warn(`[DynamicListPrefabRegistry] Skipped ${kind}: Cocos returned an invalid item node.`);
+        return null;
+    }
     node.name = `${kind}_${parent.children.length}`;
     parent.addChild(node);
     const view = node.getComponent(DynamicListItemView) || node.addComponent(DynamicListItemView);
+    if (!view?.node?.isValid) {
+        console.warn(`[DynamicListPrefabRegistry] Skipped ${kind}: DynamicListItemView could not be attached.`);
+        if (node.isValid) node.destroy();
+        return null;
+    }
     view.setData(data, onClick);
     return node;
 }

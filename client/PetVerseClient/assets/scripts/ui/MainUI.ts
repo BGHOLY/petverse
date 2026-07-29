@@ -332,7 +332,7 @@ export class MainUI extends Component {
 
         this.buildShell();
         void preloadDynamicListPrefabs().then(() => {
-            if (this.node.isValid) this.renderCurrentPage(false);
+            if (this.node?.isValid) this.renderCurrentPage(false);
         });
         if (this.root) {
             CuteFeedback.initialize(this.root);
@@ -1097,7 +1097,13 @@ export class MainUI extends Component {
                 Math.max(0, Math.min(maxY, Number(saved.y || 0))),
             );
             this.scheduleOnce(() => {
-                if (!view.isValid || !content.isValid || !scroll.isValid || scroll.content !== content) return;
+                if (
+                    !view?.isValid
+                    || !content?.isValid
+                    || !scroll?.isValid
+                    || !scroll.content?.isValid
+                    || scroll.content !== content
+                ) return;
                 try {
                     scroll.stopAutoScroll();
                     scroll.scrollToOffset(target, 0);
@@ -4133,7 +4139,7 @@ export class MainUI extends Component {
         toast.setScale(new Vec3(0.92, 0.92, 1));
 
         tween(opacity).to(0.18, { opacity: 255 }).delay(1.45).to(0.65, { opacity: 0 }, { easing: 'sineIn' }).call(() => {
-            if (token === this.toastToken && toast.isValid) toast.destroy();
+            if (token === this.toastToken && toast?.isValid) toast.destroy();
         }).start();
         tween(toast).to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     };

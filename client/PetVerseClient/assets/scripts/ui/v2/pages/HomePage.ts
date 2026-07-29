@@ -43,7 +43,8 @@ export function renderHomePage(parent: Node, options: HomePageOptions) {
     if (petMeta) petMeta.string = `${species.element}系 · ${rarityName(pet)} · Lv.${Number(pet?.level || 1)}`;
     if (petSprite) {
         loadSpriteFrameResource(getPetArtPath(pet, 'home'), (frame) => {
-            if (frame && petSprite.node.isValid) petSprite.spriteFrame = frame;
+            if (!frame || !petSprite?.node?.isValid) return;
+            petSprite.spriteFrame = frame;
         });
     }
 
