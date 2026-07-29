@@ -75,6 +75,7 @@ import {
     TaskCategoryV6,
     renderBenefitsPageV6,
 } from './v6/pages/BenefitsPage';
+import { V6_CONTENT_HEIGHT } from './v6/UiMetrics';
 
 const { ccclass, property } = _decorator;
 
@@ -978,6 +979,19 @@ export class MainUI extends Component {
         // nodes placed beside RuntimeContent are never cleared or repositioned.
         this.pageRoot = this.resolveRuntimeContent(editorPage);
         clearNode(this.pageRoot);
+        panel(
+            this.pageRoot,
+            'FeaturePageBackdrop',
+            0,
+            0,
+            DESIGN_WIDTH,
+            V6_CONTENT_HEIGHT,
+            new Color(250, 239, 210, 255),
+            0,
+            false,
+            CuteTheme.transparent,
+            0,
+        );
 
         switch (this.currentPage) {
             case 'pet':

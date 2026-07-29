@@ -84,6 +84,10 @@ check(
         && sameRect(rect(pageTitleId), { x: 0, y: 4, width: 190, height: 36 }),
     'TopBar contains a centered editor-owned current-page title.',
 );
+check(
+    pageTitleId !== undefined && nodeAt(pageTitleId)?._active === false,
+    'The baked top-board title is not covered by a duplicate runtime page title.',
+);
 
 for (const pageName of [
     'PetPage',
@@ -131,6 +135,15 @@ check(
     typeof mainUi?.pageTitleLabel?.__id__ === 'number'
         && records[mainUi.pageTitleLabel.__id__]?.__type__ === 'cc.Label',
     'MainUI current-page title uses an Inspector-bound Label.',
+);
+
+const mainUiSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/MainUI.ts',
+), 'utf8');
+check(
+    mainUiSource.includes("'FeaturePageBackdrop'"),
+    'Every non-home feature page receives a full-width warm backdrop.',
 );
 
 const prefabSizes = {
