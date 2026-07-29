@@ -121,14 +121,17 @@ function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryP
         meta: `父母 ${parentNames(egg)}`,
         iconPath: getEggArtPath(egg),
     }, () => options.onChooseEgg(egg));
-    if (prefabItem) return prefabItem;
+    if (prefabItem) {
+        setRect(prefabItem, 0, 0, 150, 132);
+        return prefabItem;
+    }
 
     const card = panel(
         parent,
         `WarehouseEgg_${egg?.id || index}`,
         0,
         0,
-        154,
+        150,
         132,
         selected ? new Color(255, 243, 193, 255) : egg?.isMutant ? new Color(255, 236, 226, 255) : new Color(255, 252, 239, 255),
         20,
@@ -139,7 +142,7 @@ function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryP
     artImage(card, 'EggArt', getEggArtPath(egg), 0, 28, 56, 66);
     text(card, 'Name', getEggDisplayName(egg), 0, -17, 136, 26, 13, CuteTheme.caramel, 'center', true);
     text(card, 'Meta', `${rarity}★${egg?.isMutant ? ' · 变异' : ''}`, 0, -44, 136, 22, 11, egg?.isMutant ? CuteTheme.peachDark : CuteTheme.honeyDark, 'center', true);
-    hitArea(card, 'OpenEgg', 0, 0, 154, 132, () => options.onChooseEgg(egg));
+    hitArea(card, 'OpenEgg', 0, 0, 150, 132, () => options.onChooseEgg(egg));
 }
 
 function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, width: number, height: number) {
@@ -152,7 +155,7 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     const rows = Math.max(1, Math.ceil(options.eggs.length / 4));
     const cardHeight = 132;
     const rowGap = 12;
-    const gridPadding = 12;
+    const gridPadding = 8;
     const gridHeight = gridPadding * 2 + rows * cardHeight + Math.max(0, rows - 1) * rowGap;
     const footerHeight = 48;
     const contentHeight = Math.max(height, gridHeight + footerHeight + 24);
@@ -171,7 +174,7 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     layout.startAxis = Layout.AxisDirection.HORIZONTAL;
     layout.horizontalDirection = Layout.HorizontalDirection.LEFT_TO_RIGHT;
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.cellSize = new Size(154, cardHeight);
+    layout.cellSize = new Size(150, cardHeight);
     layout.paddingLeft = gridPadding;
     layout.paddingRight = gridPadding;
     layout.paddingTop = gridPadding;
@@ -249,7 +252,7 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     button(warehouse, 'Sort', sortLabel, 258, warehouseHeight / 2 - 78, 132, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
     const scrollHeight = warehouseHeight - 116;
     const scrollHost = panel(warehouse, 'EggListPanel', 0, -50, V6_PAGE_WIDTH - 16, scrollHeight, CuteTheme.transparent, 0, false, CuteTheme.transparent, 0);
-    // Four 154px cards plus three 8px gaps fit inside the 656px viewport.
+    // Four compact cards fit with spare room, preventing a rounding wrap.
     renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 16, scrollHeight - 4);
 }
 

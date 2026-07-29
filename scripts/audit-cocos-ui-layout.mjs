@@ -136,7 +136,7 @@ check(
 const prefabSizes = {
     InventoryItem: [150, 134],
     ShopItem: [250, 154],
-    HatcheryEggItem: [154, 132],
+    HatcheryEggItem: [150, 132],
     SkillSlotItem: [438, 74],
     FriendListItem: [286, 232],
     RankingListItem: [604, 78],
