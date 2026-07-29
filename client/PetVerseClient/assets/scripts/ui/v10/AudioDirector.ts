@@ -1,4 +1,4 @@
-import { AudioClip, AudioSource, Node, resources } from 'cc';
+import { AudioClip, AudioSource, Input, Node, input, resources } from 'cc';
 
 export type BgmMode = 'home' | 'battle' | 'boss' | 'none';
 
@@ -45,11 +45,12 @@ export default class AudioDirector {
         this.bgmSource.volume = this.settings.bgmVolume;
         this.sfxSource.volume = this.settings.sfxVolume;
 
-        // Keep this listener active until a genuine touch unlocks audio.
-        host.off(Node.EventType.TOUCH_START, this.unlockFromGesture, this);
-        host.off(Node.EventType.TOUCH_END, this.unlockFromGesture, this);
-        host.on(Node.EventType.TOUCH_START, this.unlockFromGesture, this);
-        host.on(Node.EventType.TOUCH_END, this.unlockFromGesture, this);
+        // Use the global dispatcher so the full-screen SystemRoot never becomes
+        // the topmost UI event target and swallows editor-owned Button clicks.
+        input.off(Input.EventType.TOUCH_START, this.unlockFromGesture, this);
+        input.off(Input.EventType.MOUSE_DOWN, this.unlockFromGesture, this);
+        input.on(Input.EventType.TOUCH_START, this.unlockFromGesture, this);
+        input.on(Input.EventType.MOUSE_DOWN, this.unlockFromGesture, this);
     }
 
     static getSettings() { return { ...this.settings }; }

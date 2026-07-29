@@ -316,6 +316,7 @@ export class MainUI extends Component {
     private fusionUseMutationEssence = false;
     private countdownAccumulator = 0;
     private toastToken = 0;
+    private reconnectVisible = false;
     private unsubscribeStore: (() => void) | null = null;
     onLoad() {
         MainUI.instance = this;
@@ -341,8 +342,6 @@ export class MainUI extends Component {
             const audioHost = this.systemRoot || this.root;
             CuteFeedback.initialize(audioHost);
             AudioDirector.initialize(audioHost);
-            this.root.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
-            this.root.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
             void AudioDirector.playBgm('home');
         }
         this.refreshAllVisuals();
@@ -356,7 +355,6 @@ export class MainUI extends Component {
         if (MainUI.instance === this) MainUI.instance = null;
         this.unsubscribeStore?.();
         this.unsubscribeStore = null;
-        this.root?.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
         if (!EDITOR) game.off(Game.EVENT_SHOW, this.handleAppShow, this);
         ToastManager.unbind(this.showToast);
     }
@@ -474,10 +472,14 @@ export class MainUI extends Component {
     };
 
     private async bootstrap() {
+        this.reconnectVisible = false;
+        if (this.reconnectNode?.isValid) this.reconnectNode.active = false;
         this.setLoading(true, '正在布置温馨小屋…');
         try {
             const profile = await ApiClient.get('/user/profile');
             if (profile?.success === false) {
+                this.reconnectVisible = true;
+                if (this.reconnectNode?.isValid) this.reconnectNode.active = true;
                 GameStore.markRequestFailure(profile, '玩家资料加载失败');
                 this.showToast(profile?.message || '后端暂未连接，显示预览界面');
             } else {
@@ -535,6 +537,8 @@ export class MainUI extends Component {
             this.ensureExperienceSelections();
             await this.syncEggItemsToHatchery();
         } catch (error) {
+            this.reconnectVisible = true;
+            if (this.reconnectNode?.isValid) this.reconnectNode.active = true;
             console.error('[CuteMainUI] bootstrap failed:', error);
             this.showToast('数据加载失败，请确认后端已启动');
         } finally {
@@ -907,7 +911,7 @@ export class MainUI extends Component {
         if (this.goldLabel) this.goldLabel.string = formatNumber(GameStore.user?.gold);
         if (this.diamondLabel) this.diamondLabel.string = formatNumber(GameStore.user?.diamond);
         if (this.backButton) this.backButton.node.active = this.currentPage !== 'home';
-        if (this.reconnectButton) this.reconnectButton.node.active = !GameStore.online;
+        if (this.reconnectButton) this.reconnectButton.node.active = this.reconnectVisible;
     }
 
     private renderBottomNav() {

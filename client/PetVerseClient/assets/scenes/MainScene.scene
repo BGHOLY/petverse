@@ -248,9 +248,6 @@
     "_components": [
       {
         "__id__": 335
-      },
-      {
-        "__id__": 336
       }
     ],
     "_prefab": null,
@@ -11394,7 +11391,7 @@
         "__id__": 303
       }
     ],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 309
@@ -11941,6 +11938,9 @@
     "_components": [
       {
         "__id__": 314
+      },
+      {
+        "__id__": 336
       }
     ],
     "_prefab": null,
@@ -12669,7 +12669,7 @@
     "_objFlags": 0,
     "__editorExtras__": {},
     "node": {
-      "__id__": 5
+      "__id__": 313
     },
     "_enabled": true,
     "__prefab": null,
