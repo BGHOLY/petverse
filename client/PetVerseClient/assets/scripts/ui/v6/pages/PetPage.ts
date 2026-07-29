@@ -10,7 +10,7 @@ import {
 } from 'cc';
 import { CuteTheme, button, panel, setRect, text } from '../../cute/CuteUiKit';
 import { createV6PageShell } from '../AppShell';
-import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
+import { V6_PANEL_GAP, V6_PAGE_WIDTH, V6_SAFE_CONTENT_HEIGHT } from '../UiMetrics';
 import { renderPetAptitudePanelV6 } from '../components/PetAptitudePanel';
 import { renderPetAttributeGridV6, renderPetLineageV6, renderPetStatAllocationV6 } from '../components/PetAttributeGrid';
 import { renderPetEquipmentPanelV6 } from '../components/PetEquipmentPanel';
@@ -19,10 +19,10 @@ import { renderPetProfilePanelV6 } from '../components/PetProfilePanel';
 import { renderPetSkillPanelV6 } from '../components/PetSkillPanel';
 import { PetPageV6Options, PetTabV6 } from '../components/PetTypes';
 
-const LEFT_WIDTH = 150;
+const LEFT_WIDTH = 168;
 const RIGHT_WIDTH = V6_PAGE_WIDTH - LEFT_WIDTH - V6_PANEL_GAP;
 const FOOTER_HEIGHT = 64;
-const MAIN_HEIGHT = V6_CONTENT_HEIGHT - FOOTER_HEIGHT - V6_PANEL_GAP;
+const MAIN_HEIGHT = V6_SAFE_CONTENT_HEIGHT - FOOTER_HEIGHT - V6_PANEL_GAP;
 const LEFT_X = -V6_PAGE_WIDTH / 2 + LEFT_WIDTH / 2;
 const RIGHT_X = -V6_PAGE_WIDTH / 2 + LEFT_WIDTH + V6_PANEL_GAP + RIGHT_WIDTH / 2;
 const MAIN_Y = (FOOTER_HEIGHT + V6_PANEL_GAP) / 2;
@@ -111,7 +111,7 @@ function renderPetRoster(parent: Node, options: PetPageV6Options) {
 }
 
 function renderTabs(parent: Node, options: PetPageV6Options) {
-    const tabs = panel(parent, 'PetTabs', RIGHT_X, 224, RIGHT_WIDTH, 58, new Color(255, 249, 230, 248), 18, true, new Color(205, 158, 103, 220), 2);
+    const tabs = panel(parent, 'PetTabs', RIGHT_X, 229, RIGHT_WIDTH, 56, new Color(255, 249, 230, 248), 18, true, new Color(205, 158, 103, 220), 2);
     const values: Array<[PetTabV6, string]> = [
         ['attributes', '属性'],
         ['skills', '技能'],
@@ -119,7 +119,7 @@ function renderTabs(parent: Node, options: PetPageV6Options) {
         ['equipment', '装备'],
     ];
     values.forEach(([key, label], index) => {
-        button(tabs, `Tab_${key}`, label, -195 + index * 130, 0, 120, 42, () => options.onTab(key), {
+        button(tabs, `Tab_${key}`, label, -174 + index * 116, 0, 108, 42, () => options.onTab(key), {
             selected: options.tab === key,
             fill: options.tab === key ? CuteTheme.honey : CuteTheme.paperWarm,
             fontSize: 14,
@@ -129,7 +129,7 @@ function renderTabs(parent: Node, options: PetPageV6Options) {
 }
 
 function renderDetails(parent: Node, options: PetPageV6Options) {
-    const detail = panel(parent, 'PetDetailContent', RIGHT_X, -92, RIGHT_WIDTH, 550, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
+    const detail = panel(parent, 'PetDetailContent', RIGHT_X, -50, RIGHT_WIDTH, 470, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
     if (options.tab === 'attributes') {
         if (options.attributeView === 'stats') renderPetStatAllocationV6(detail, options.statDraft);
         else if (options.attributeView === 'lineage') renderPetLineageV6(detail, options.lineage);
@@ -144,16 +144,31 @@ function renderDetails(parent: Node, options: PetPageV6Options) {
 }
 
 function renderActions(parent: Node, options: PetPageV6Options) {
-    const actions = panel(parent, 'PetActions', RIGHT_X, -412, RIGHT_WIDTH, 66, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
+    const actions = panel(parent, 'PetActions', RIGHT_X, -357, RIGHT_WIDTH, 112, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
+    button(actions, 'Formation', options.profile.formationActionLabel, -116, 25, 208, 50, options.onFormation, {
+        fill: CuteTheme.mint,
+        selected: options.profile.deployment === '出战中',
+        fontSize: 14,
+        radius: 18,
+    });
+    button(actions, 'Cultivate', '培养加点', 116, 25, 208, 50, () => options.onAttributeView('stats'), {
+        fill: CuteTheme.honey,
+        selected: options.tab === 'attributes' && options.attributeView === 'stats',
+        fontSize: 14,
+        radius: 18,
+    });
     const controls: Array<[string, string, () => void, Color, boolean]> = [
-        ['Formation', options.profile.formationActionLabel, options.onFormation, CuteTheme.mint, options.profile.deployment === '出战中'],
         ['Favorite', options.profile.favorite ? '取消心仪' : '设为心仪', options.onFavorite, CuteTheme.peach, options.profile.favorite],
-        ['Stats', '加点', () => options.onAttributeView('stats'), CuteTheme.sky, options.tab === 'attributes' && options.attributeView === 'stats'],
         ['Lineage', '血脉', () => options.onAttributeView('lineage'), CuteTheme.lilac, options.tab === 'attributes' && options.attributeView === 'lineage'],
         ['Lock', options.profile.locked ? '解锁' : '锁定', options.onLock, CuteTheme.paperWarm, options.profile.locked],
     ];
     controls.forEach(([name, label, onClick, fill, selected], index) => {
-        button(actions, name, label, -208 + index * 104, 0, 96, 44, onClick, { fill, selected, fontSize: 12, radius: 16 });
+        button(actions, name, label, -150 + index * 150, -29, 136, 38, onClick, {
+            fill,
+            selected,
+            fontSize: 12,
+            radius: 15,
+        });
     });
 }
 
@@ -163,13 +178,14 @@ export function renderPetPageV6(parent: Node, options: PetPageV6Options) {
     const page = shell.content;
     renderPetRoster(page, options);
 
-    const profile = panel(page, 'PetProfile', RIGHT_X, 393, RIGHT_WIDTH, 256, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
+    const profile = panel(page, 'PetProfile', RIGHT_X, 383, RIGHT_WIDTH, 220, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
     renderPetProfilePanelV6(profile, options.profile);
     renderTabs(page, options);
     renderDetails(page, options);
     renderActions(page, options);
 
-    const footer = panel(page, 'PetFilters', 0, -489, V6_PAGE_WIDTH, FOOTER_HEIGHT, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
+    const footerY = -V6_SAFE_CONTENT_HEIGHT / 2 + FOOTER_HEIGHT / 2;
+    const footer = panel(page, 'PetFilters', 0, footerY, V6_PAGE_WIDTH, FOOTER_HEIGHT, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
     button(footer, 'RarityFilter', options.rarityFilterLabel, -230, 0, 208, 44, options.onRarityFilter, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 17 });
     button(footer, 'ElementFilter', options.elementFilterLabel, 0, 0, 208, 44, options.onElementFilter, { fill: CuteTheme.mint, fontSize: 13, radius: 17 });
     button(footer, 'Sort', options.sortLabel, 230, 0, 208, 44, options.onSort, { fill: CuteTheme.sky, fontSize: 13, radius: 17 });
