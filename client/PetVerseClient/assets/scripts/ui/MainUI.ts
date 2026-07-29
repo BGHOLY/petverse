@@ -2049,29 +2049,29 @@ export class MainUI extends Component {
     private renderSkillLearning() {
         if (!this.pageRoot) return;
         const root=this.pageRoot; const pet=GameStore.currentPet||{}; const pets=GameStore.pets.filter((item)=>!item?.isEgg);
-        const selector=this.createScrollArea(root,'SkillPetSelector',0,420,680,102,Math.max(680,pets.length*146+18),102,'horizontal');
-        pets.forEach((item,index)=>button(selector.content,`SkillPet_${item?.id||index}`,safeName(item?.nickname,`宝宝${index+1}`),72+index*146,0,136,88,()=>{GameStore.selectPet(Number(item?.id||0));this.lockedSkillCodes.clear();this.renderCurrentPage(false);},{iconPath:getPetArtPath(item,'thumb'),iconSize:56,selected:Number(item?.id)===Number(GameStore.currentPetId),fill:CuteTheme.paperWarm,fontSize:13,radius:21,subtitle:`${this.rarityName(item)} · Lv.${Number(item?.level||1)}`}));
-        const page=panel(root,'SkillResearchPage',0,-38,692,810,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
-        const header=panel(page,'Header',0,306,640,126,new Color(244,252,236,255),25,false,CuteTheme.mintDark,2);
+        const selector=this.createScrollArea(root,'SkillPetSelector',0,432,672,96,Math.max(672,pets.length*130+16),96,'horizontal');
+        pets.forEach((item,index)=>button(selector.content,`SkillPet_${item?.id||index}`,safeName(item?.nickname,`宝宝${index+1}`),64+index*130,0,120,82,()=>{GameStore.selectPet(Number(item?.id||0));this.lockedSkillCodes.clear();this.renderCurrentPage(false);},{iconPath:getPetArtPath(item,'thumb'),iconSize:50,selected:Number(item?.id)===Number(GameStore.currentPetId),fill:CuteTheme.paperWarm,fontSize:12,radius:18,subtitle:`${this.rarityName(item)} · Lv.${Number(item?.level||1)}`}));
+        const page=panel(root,'SkillResearchPage',0,-40,672,824,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
+        const header=panel(page,'Header',0,313,620,118,new Color(244,252,236,255),24,false,CuteTheme.mintDark,2);
         image(header,'Pet',getPetArtPath(pet,'thumb'),-250,0,90,90,CuteTheme.paperWarm);
-        text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,-185,24,320,34,21,CuteTheme.caramel,'left',true);
-        text(header,'Role',`定位 ${(pet?.speciesConfig?.roleTags||[getPetSpeciesMeta(pet).role||'综合']).map((value:any)=>this.petRoleLabel(value)).join(' / ')}　技能格 ${Array.isArray(pet?.skills)?pet.skills.length:0}/${Number(pet?.skillSlotCount||3)}`,-185,-18,420,32,14,CuteTheme.muted,'left',true);
-        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',-185,-50,450,28,13,CuteTheme.peachDark,'left',true);
-        const current=panel(page,'Current',-170,38,326,402,new Color(245,252,238,255),26,false,CuteTheme.mintDark,2);
+        text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,55,28,430,32,20,CuteTheme.caramel,'left',true);
+        text(header,'Role',`定位 ${(pet?.speciesConfig?.roleTags||[getPetSpeciesMeta(pet).role||'综合']).map((value:any)=>this.petRoleLabel(value)).join(' / ')}　技能格 ${Array.isArray(pet?.skills)?pet.skills.length:0}/${Number(pet?.skillSlotCount||3)}`,55,-8,430,28,13,CuteTheme.muted,'left',true);
+        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',55,-40,430,26,12,CuteTheme.peachDark,'left',true);
+        const current=panel(page,'Current',-159,42,302,404,new Color(245,252,238,255),24,false,CuteTheme.mintDark,2);
         headingTag(current,'Title','当前技能',0,170,130,CuteTheme.mint);
         const currentSkills=Array.isArray(pet?.skills)?pet.skills:[];
         const cArea=this.createScrollArea(current,'CurrentScroll',0,-10,302,312,302,Math.max(312,currentSkills.length*72+8),'vertical');
         currentSkills.forEach((skill:any,index:number)=>{const code=this.skillCode(skill);const special=this.isSpecialSkill(skill);button(cArea.content,`Skill_${index}`,this.skillName(skill),-35,-34-index*72,226,62,()=>this.showSkillDetail(skill),{iconPath:this.skillIconPath(skill),iconSize:48,fill:this.skillColor(skill),textColor:this.skillTier(skill)==='low'?CuteTheme.caramel:CuteTheme.white,fontSize:14,radius:20,subtitle:`${this.skillTierLabel(skill)} · ${safeName(skill?.description,'查看效果').slice(0,18)}`});button(cArea.content,`Lock_${index}`,this.lockedSkillCodes.has(code)?'已锁':'锁定',112,-34-index*72,58,52,()=>this.toggleSkillLock(skill),{icon:this.lockedSkillCodes.has(code)?'🔒':'🔓',fill:this.lockedSkillCodes.has(code)?CuteTheme.honey:CuteTheme.paperWarm,fontSize:10,radius:18,disabled:special});});
-        const books=panel(page,'Books',174,38,326,402,new Color(255,245,240,255),26,false,CuteTheme.peachDark,2);
+        const books=panel(page,'Books',159,42,302,404,new Color(255,245,240,255),24,false,CuteTheme.peachDark,2);
         headingTag(books,'Title','背包技能书',0,170,150,CuteTheme.peach);
         const items=this.skillBookItems(); if(!this.selectedSkillBookCode&&items.length)this.selectedSkillBookCode=String(items[0]?.itemCode||'');
         const bArea=this.createScrollArea(books,'BookScroll',0,-10,302,312,302,Math.max(312,items.length*72+8),'vertical');
         items.forEach((item,index)=>{const selected=String(item?.itemCode||'')===this.selectedSkillBookCode;button(bArea.content,`Book_${index}`,safeName(item?.name,'技能书'),0,-34-index*72,278,62,()=>{this.selectedSkillBookCode=String(item?.itemCode||'');this.renderCurrentPage(false);},{iconPath:this.skillBookIconPath(item),iconSize:48,fill:this.itemTier(item)==='high'?new Color(232,104,103,255):new Color(116,187,82,255),textColor:CuteTheme.white,fontSize:14,radius:20,selected,subtitle:`${this.itemTier(item)==='high'?'高级':'低级'} · 数量 ${Number(item?.quantity||0)}`});});
         const selectedBook=items.find((item)=>String(item?.itemCode||'')===this.selectedSkillBookCode)||null;
-        const desc=panel(page,'Description',0,-257,640,170,new Color(255,252,239,255),25,false,CuteTheme.caramelSoft,2);
-        text(desc,'Title',selectedBook?safeName(selectedBook?.name,'技能书'):'请选择技能书',-285,50,410,34,20,CuteTheme.caramel,'left',true);
-        text(desc,'Description',selectedBook?safeName(selectedBook?.description,'暂无说明'):'技能效果、触发概率、目标类型与替换风险都会在这里显示。',-285,2,430,70,15,CuteTheme.muted,'left',false);
-        text(desc,'Risk',`保护技能 ${this.lockedSkillCodes.size} 个　预计消耗锁印与技能书各1份`,-285,-52,430,30,14,CuteTheme.peachDark,'left',true);
+        const desc=panel(page,'Description',0,-267,620,166,new Color(255,252,239,255),24,false,CuteTheme.caramelSoft,2);
+        text(desc,'Title',selectedBook?safeName(selectedBook?.name,'技能书'):'请选择技能书',-70,50,430,34,20,CuteTheme.caramel,'left',true);
+        text(desc,'Description',selectedBook?safeName(selectedBook?.description,'暂无说明'):'技能效果、触发概率、目标类型与替换风险都会在这里显示。',-70,2,430,70,15,CuteTheme.muted,'left',false);
+        text(desc,'Risk',`保护技能 ${this.lockedSkillCodes.size} 个　预计消耗锁印与技能书各1份`,-70,-52,430,30,14,CuteTheme.peachDark,'left',true);
         button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{icon:'📕',fill:CuteTheme.honey,fontSize:17,radius:28,disabled:!selectedBook||!pet?.id||Boolean(pet?.isLocked)||this.busy.has('skill:learn')});
     }
 
@@ -2079,38 +2079,38 @@ export class MainUI extends Component {
         if (!this.pageRoot) return;
         this.ensureFusionParents();
         const root = this.pageRoot;
-        const page = panel(root, 'FusionPage', 0, 0, 692, 905, new Color(250, 241, 255, 255), 40, true, CuteTheme.caramelSoft, 4);
-        headingTag(page, 'Title', '炼妖研究室', 0, 390, 178, CuteTheme.lilac);
-        text(page, 'Explain', '精准选择两只宝宝。确认前完整查看成长、资质、技能、稀有度和消耗。', 0, 348, 620, 38, 15, CuteTheme.muted, 'center', true);
+        const page = panel(root, 'FusionPage', 0, 0, 672, 952, new Color(250, 241, 255, 255), 40, true, CuteTheme.caramelSoft, 4);
+        headingTag(page, 'Title', '炼妖研究室', 0, 418, 178, CuteTheme.lilac);
+        text(page, 'Explain', '精准选择两只宝宝。确认前完整查看成长、资质、技能、稀有度和消耗。', 0, 376, 620, 38, 15, CuteTheme.muted, 'center', true);
 
         const parentA = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentAId) || null;
         const parentB = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentBId) || null;
-        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -168, 135, 'A');
-        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 168, 135, 'B');
-        text(page, 'FusionMark', '＋', 0, 148, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
+        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -160, 165, 'A');
+        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 160, 165, 'B');
+        text(page, 'FusionMark', '＋', 0, 174, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
 
-        const preview = panel(page, 'OutcomeRange', 0, -150, 640, 178, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        const preview = panel(page, 'OutcomeRange', 0, -132, 620, 178, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
         headingTag(preview, 'RangeTitle', '可能结果范围', -220, 63, 190, CuteTheme.paperWarm);
         if (!parentA || !parentB) {
             text(preview, 'RangeEmpty', '分别选择父系和母系宝宝后，这里会自动显示可能出现的物种、稀有度、成长、资质、技能和变异范围。', 0, -4, 560, 92, 16, CuteTheme.muted, 'center', false);
         } else {
             const range = this.fusionOutcomeRange(parentA, parentB);
-            text(preview, 'SpeciesRange', `可能物种：${range.species.join(' / ')}　稀有度：${range.rarity}`, -292, 34, 584, 28, 15, CuteTheme.caramel, 'left', true);
-            text(preview, 'GrowthRange', `成长 ${range.growth}　品质 ${range.quality}　技能格 ${range.skillSlots}`, -292, 5, 584, 26, 13, CuteTheme.caramel, 'left', true);
-            text(preview, 'AptitudeRange', `体 ${range.aptitudes.hp}　攻 ${range.aptitudes.attack}　防 ${range.aptitudes.defense}\n法 ${range.aptitudes.magic}　速 ${range.aptitudes.speed}`, -292, -32, 584, 46, 13, CuteTheme.muted, 'left', true);
-            text(preview, 'SkillRange', `技能数 ${range.skillCount}　特殊技能 ${range.specialSkills}　变异概率 ${range.mutation}`, -292, -67, 584, 24, 12, CuteTheme.peachDark, 'left', true);
+            text(preview, 'SpeciesRange', `可能物种：${range.species.join(' / ')}　稀有度：${range.rarity}`, 0, 34, 560, 28, 15, CuteTheme.caramel, 'left', true);
+            text(preview, 'GrowthRange', `成长 ${range.growth}　品质 ${range.quality}　技能格 ${range.skillSlots}`, 0, 5, 560, 26, 13, CuteTheme.caramel, 'left', true);
+            text(preview, 'AptitudeRange', `体 ${range.aptitudes.hp}　攻 ${range.aptitudes.attack}　防 ${range.aptitudes.defense}\n法 ${range.aptitudes.magic}　速 ${range.aptitudes.speed}`, 0, -32, 560, 46, 13, CuteTheme.muted, 'left', true);
+            text(preview, 'SkillRange', `技能数 ${range.skillCount}　特殊技能 ${range.specialSkills}　变异概率 ${range.mutation}`, 0, -67, 560, 24, 12, CuteTheme.peachDark, 'left', true);
         }
 
         const coreCount=this.inventoryQuantity('fusion_core');
         const essenceCount=this.inventoryQuantity('mutation_essence');
-        const materials=panel(page,'FusionMaterials',0,-292,640,96,new Color(255,249,232,255),24,false,CuteTheme.honey,2);
-        text(materials,'AutoTitle','自动放入炼妖材料',-292,28,180,26,15,CuteTheme.caramel,'left',true);
+        const materials=panel(page,'FusionMaterials',0,-276,620,96,new Color(255,249,232,255),24,false,CuteTheme.honey,2);
+        text(materials,'AutoTitle','自动放入炼妖材料',-205,28,180,26,15,CuteTheme.caramel,'left',true);
         tag(materials,'Gold',`金币 1000 / ${formatNumber(Number(GameStore.user?.gold||0))}`,-206,-16,166,Number(GameStore.user?.gold||0)>=1000?CuteTheme.mint:CuteTheme.peach);
         tag(materials,'Core',`合宠核心 1 / ${coreCount}`,-24,-16,166,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
         button(materials,'Essence',this.fusionUseMutationEssence?`✓ 变异精华 1 / ${essenceCount}`:`＋ 变异精华 0 / ${essenceCount}`,205,-4,220,56,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选：变异率 +3%'});
 
-        button(page, 'ExecuteButton', '确认并炼妖', 0, -382, 240, 58, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 17, radius: 26, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
-        text(page, 'Cost', '父母会被消耗；核心自动放入，变异精华由玩家决定是否使用', 0, -424, 620, 26, 13, CuteTheme.peachDark, 'center', true);
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -385, 260, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        text(page, 'Cost', '父母会被消耗；核心自动放入，变异精华由玩家决定是否使用', 0, -446, 620, 26, 13, CuteTheme.peachDark, 'center', true);
     }
 
     private renderAdventure() {
@@ -3890,24 +3890,24 @@ export class MainUI extends Component {
     }
 
     private fusionParentCard(parent: Node, name: string, title: string, pet: any, x: number, y: number, side: 'A' | 'B') {
-        const card = panel(parent, name, x, y, 310, 374, CuteTheme.paper, 28, true, CuteTheme.white, 3);
-        headingTag(card, 'Title', title, 0, 157, 132, side === 'A' ? CuteTheme.mint : CuteTheme.peach);
-        if (pet) image(card, 'Portrait', getPetArtPath(pet, 'thumb'), -98, 84, 82, 82, pet?.isMutant ? CuteTheme.peach : CuteTheme.paperWarm);
-        else text(card, 'PortraitFallback', '🐾', -98, 84, 82, 70, 46, CuteTheme.honeyDark, 'center', true);
-        text(card, 'Name', pet ? safeName(pet?.nickname, '宝宝') : '未选择', -40, 112, 170, 34, 20, CuteTheme.caramel, 'left', true);
-        text(card, 'Species', pet ? safeName(pet?.species, getPetSpeciesMeta(pet).name) : '请点击选择', -40, 82, 190, 26, 14, CuteTheme.caramel, 'left', true);
-        text(card, 'Meta', pet ? `Lv.${Number(pet?.level||1)} · ${this.rarityName(pet)}${pet?.isMutant?' · 变异':''}` : '不会自动切换父母', -40, 54, 190, 26, 13, CuteTheme.muted, 'left', true);
+        const card = panel(parent, name, x, y, 300, 350, CuteTheme.paper, 28, true, CuteTheme.white, 3);
+        headingTag(card, 'Title', title, 0, 147, 132, side === 'A' ? CuteTheme.mint : CuteTheme.peach);
+        if (pet) image(card, 'Portrait', getPetArtPath(pet, 'thumb'), -96, 78, 78, 78, pet?.isMutant ? CuteTheme.peach : CuteTheme.paperWarm);
+        else text(card, 'PortraitFallback', '🐾', -96, 78, 78, 68, 44, CuteTheme.honeyDark, 'center', true);
+        text(card, 'Name', pet ? safeName(pet?.nickname, '宝宝') : '未选择', 48, 104, 164, 32, 19, CuteTheme.caramel, 'left', true);
+        text(card, 'Species', pet ? safeName(pet?.species, getPetSpeciesMeta(pet).name) : '请点击选择', 48, 76, 164, 24, 13, CuteTheme.caramel, 'left', true);
+        text(card, 'Meta', pet ? `Lv.${Number(pet?.level||1)} · ${this.rarityName(pet)}${pet?.isMutant?' · 变异':''}` : '不会自动切换父母', 48, 50, 164, 24, 12, CuteTheme.muted, 'left', true);
         if (pet) {
             const apt=this.aptitudesOf(pet);
-            text(card,'Growth',`成长 ${this.growthValue(pet).toFixed(3)}　品质 ${Number(pet?.quality||100)}`,-138,21,276,28,15,CuteTheme.caramel,'left',true);
+            text(card,'Growth',`成长 ${this.growthValue(pet).toFixed(3)}　品质 ${Number(pet?.quality||100)}`,0,17,268,28,14,CuteTheme.caramel,'left',true);
             text(card,'Apt',`体 ${apt.hp}　攻 ${apt.attack}　防 ${apt.defense}
-法 ${apt.magic}　速 ${apt.speed}`,-138,-23,276,50,13,CuteTheme.muted,'left',true);
+法 ${apt.magic}　速 ${apt.speed}`,0,-23,268,46,12,CuteTheme.muted,'left',true);
             const skills=(Array.isArray(pet?.skills)?pet.skills:[]).map((skill:any)=>this.skillName(skill)).join('、');
-            text(card,'SkillCount',`技能 ${Array.isArray(pet?.skills)?pet.skills.length:0}　特殊 ${this.specialSkills(pet).length}`,-138,-62,276,26,13,CuteTheme.peachDark,'left',true);
-            text(card,'Skills',skills||'完整技能：暂无技能',-138,-108,276,64,12,CuteTheme.muted,'left',false);
-            if(pet?.isLocked)tag(card,'Locked','🔒 已锁定',70,-145,104,CuteTheme.paperWarm);
+            text(card,'SkillCount',`技能 ${Array.isArray(pet?.skills)?pet.skills.length:0}　特殊 ${this.specialSkills(pet).length}`,0,-60,268,24,12,CuteTheme.peachDark,'left',true);
+            text(card,'Skills',skills||'完整技能：暂无技能',0,-96,268,48,11,CuteTheme.muted,'left',false);
+            if(pet?.isLocked)tag(card,'Locked','🔒 已锁定',70,-130,104,CuteTheme.paperWarm);
         }
-        button(card, 'Select', pet ? '重新选择' : '选择宝宝', 0, -164, 142, 44, () => this.openFusionPicker(side), { icon: '🔍', fill: side === 'A' ? CuteTheme.mint : CuteTheme.peach, fontSize: 13, radius: 20 });
+        button(card, 'Select', pet ? '重新选择' : '选择宝宝', 0, -151, 142, 44, () => this.openFusionPicker(side), { icon: '🔍', fill: side === 'A' ? CuteTheme.mint : CuteTheme.peach, fontSize: 13, radius: 20 });
     }
 
     private async executeFusion() {
