@@ -1,15 +1,47 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 
 import { DEFAULT_USER_ID } from '../game-data';
 import { BattleService } from './battle.service';
 import { BattleV10Service } from './battle-v10.service';
+import { BattleTacticsService } from './battle-tactics.service';
+import { resolveRequestUserId } from '../../common/request-user.util';
 
 @Controller('battle')
 export class BattleController {
   constructor(
     private readonly battleService: BattleService,
     private readonly battleV10Service: BattleV10Service,
+    private readonly battleTacticsService: BattleTacticsService,
   ) {}
+
+  @Get('tactics/options')
+  getTacticsOptions() {
+    return this.battleTacticsService.getOptions();
+  }
+
+  @Get('tactics/preset')
+  getTacticsPreset(@Headers('x-user-id') userId: string) {
+    return this.battleTacticsService.getPreset(resolveRequestUserId(userId));
+  }
+
+  @Put('tactics/preset')
+  saveTacticsPreset(
+    @Headers('x-user-id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.battleTacticsService.savePreset(
+      resolveRequestUserId(userId),
+      body,
+    );
+  }
 
   @Post('pve')
   pve(@Body() body: any) {

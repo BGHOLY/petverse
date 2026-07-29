@@ -80,6 +80,12 @@ export class BattleSessionV10 {
   @Column({ default: '' })
   settlementKey: string;
 
+  @Column({ default: '', length: 120 })
+  randomSeed: string;
+
+  @Column({ default: 0 })
+  randomCursor: number;
+
   @Column({ type: 'timestamp', nullable: true })
   finishedAt: Date;
 

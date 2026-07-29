@@ -9,6 +9,7 @@ import {
 import { DEFAULT_USER_ID } from '../game-data';
 import { ALL_SKILL_CONFIGS } from './config/skill.config';
 import { SkillService } from './skill.service';
+import { getSkillCombatTags } from '../battle/combat-reaction.config';
 
 @Controller('skill')
 export class SkillController {
@@ -30,7 +31,10 @@ export class SkillController {
     return {
       success: true,
       count: ALL_SKILL_CONFIGS.length,
-      skills: ALL_SKILL_CONFIGS,
+      skills: ALL_SKILL_CONFIGS.map((skill) => ({
+        ...skill,
+        combatTags: getSkillCombatTags(skill),
+      })),
     };
   }
 

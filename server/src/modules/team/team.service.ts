@@ -8,6 +8,7 @@ import { Pet } from '../pet/pet.entity';
 import { getFormationConfig } from '../formation/formation.config';
 import { EquipmentService } from '../equipment/equipment.service';
 import { PetTeam } from './pet-team.entity';
+import { normalizeBattleTactics } from '../battle/battle-tactics.config';
 
 @Injectable()
 export class TeamService {
@@ -200,20 +201,7 @@ export class TeamService {
   }
 
   private normalizeTactics(raw: any) {
-    const source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      focusPriority: ['lowestHp', 'highestDamage', 'healer', 'front', 'random'].includes(source.focusPriority)
-        ? source.focusPriority : 'lowestHp',
-      guardTarget: ['healer', 'highestPower', 'lowestDefense', 'off'].includes(source.guardTarget)
-        ? source.guardTarget : 'healer',
-      shieldThreshold: [80, 60, 40, 0].includes(Number(source.shieldThreshold))
-        ? Number(source.shieldThreshold) : 60,
-      cleansePriority: Array.isArray(source.cleansePriority) && source.cleansePriority.length
-        ? source.cleansePriority.slice(0, 4)
-        : ['control', 'healBlock', 'dot'],
-      ultimatePolicy: ['ready', 'bossPhase', 'lowHp'].includes(source.ultimatePolicy)
-        ? source.ultimatePolicy : 'ready',
-    };
+    return normalizeBattleTactics(raw);
   }
 
   private defaultTactics() {

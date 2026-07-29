@@ -22,6 +22,13 @@ export type FormationConfig = {
   slots: FormationSlot[];
   positions: FormationSlot[];
   teamBonuses: Record<string, number>;
+  passiveRule: {
+    code: string;
+    name: string;
+    description: string;
+    trigger: string;
+    effectData: Record<string, any>;
+  };
   counters: FormationCode[];
   counteredBy: FormationCode[];
   ultimate: {
@@ -32,6 +39,16 @@ export type FormationConfig = {
     initialCooldown: number;
     cooldown: number;
   };
+  ultimateSkill: {
+    name: string;
+    description: string;
+    energyCost: number;
+    icon: string;
+    initialCooldown: number;
+    cooldown: number;
+  };
+  ultimateEnergyRequired: number;
+  ultimateTrigger: string;
 };
 
 const BONUS_LABELS: Record<string, string> = {
@@ -62,7 +79,16 @@ const slots = (
   }).join(' / '),
 }));
 
-const FORMATION_SOURCES: Array<Omit<FormationConfig, 'positions'>> = [
+const FORMATION_SOURCES: Array<
+  Omit<
+    FormationConfig,
+    | 'positions'
+    | 'passiveRule'
+    | 'ultimateSkill'
+    | 'ultimateEnergyRequired'
+    | 'ultimateTrigger'
+  >
+> = [
   {
     id: 'dragon',
     code: 'dragon',
@@ -190,10 +216,57 @@ const FORMATION_SOURCES: Array<Omit<FormationConfig, 'positions'>> = [
   },
 ];
 
-export const FORMATION_CONFIGS: FormationConfig[] = FORMATION_SOURCES.map((config) => ({
-  ...config,
-  positions: config.slots,
-}));
+const FORMATION_PASSIVE_RULES: Record<
+  FormationCode,
+  FormationConfig['passiveRule']
+> = {
+  dragon: {
+    code: 'BALANCED_ASSAULT',
+    name: '龙威协同',
+    description: '集火目标存在时，全队对其造成的伤害提高4%。',
+    trigger: 'FOCUS_TARGET',
+    effectData: { focusedDamageRate: 0.04 },
+  },
+  turtle: {
+    code: 'BACKLINE_GUARD',
+    name: '玄甲援护',
+    description: '后排首次受到攻击时获得一次减伤援护。',
+    trigger: 'BACKLINE_FIRST_HIT',
+    effectData: { damageReductionRate: 0.12, maxPerBattle: 1 },
+  },
+  crane: {
+    code: 'OPENING_TEMPO',
+    name: '流云先机',
+    description: '全队首轮速度额外提高6%。',
+    trigger: 'BATTLE_START',
+    effectData: { speedRate: 0.06, rounds: 1 },
+  },
+  tiger: {
+    code: 'EXECUTION_FOCUS',
+    name: '白虎追猎',
+    description: '攻击生命低于30%的敌人时伤害提高8%。',
+    trigger: 'TARGET_LOW_HP',
+    effectData: { hpThreshold: 0.3, damageRate: 0.08 },
+  },
+  phoenix: {
+    code: 'FIRST_AID',
+    name: '涅槃余辉',
+    description: '首名生命低于30%的队友获得一次治疗强化。',
+    trigger: 'ALLY_LOW_HP',
+    effectData: { hpThreshold: 0.3, healingRate: 0.1, maxPerBattle: 1 },
+  },
+};
+
+export const FORMATION_CONFIGS: FormationConfig[] = FORMATION_SOURCES.map(
+  (config) => ({
+    ...config,
+    positions: config.slots,
+    passiveRule: FORMATION_PASSIVE_RULES[config.code],
+    ultimateSkill: config.ultimate,
+    ultimateEnergyRequired: config.ultimate.energyCost,
+    ultimateTrigger: 'MANUAL_OR_TACTICS',
+  }),
+);
 
 export const FORMATION_UPGRADE_COSTS: Record<number, { knowledge: number; cores: number }> = {
   1: { knowledge: 100, cores: 0 },

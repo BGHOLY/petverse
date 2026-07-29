@@ -19,6 +19,8 @@ import { TowerRecord } from '../tower/tower-record.entity';
 import { User } from '../user/user.entity';
 import { BattleSessionV10 } from './battle-session.entity';
 import { FORMATION_ENERGY_GAINS, battleRewardConfig } from './battle-reward.config';
+import { getSkillCombatTags } from './combat-reaction.config';
+import { seededBattleRandom } from './battle-random.util';
 
 type Side = 'left' | 'right';
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
@@ -77,6 +79,7 @@ type RoundDirective = {
   type: DirectiveType;
   targetId?: string;
   useUltimate?: boolean;
+  reason?: string;
 };
 
 @Injectable()
@@ -120,7 +123,10 @@ export class BattleV10Service {
       const floor = Math.max(1, Number(record?.currentFloor || 1));
       difficulty = Math.max(difficulty, Math.min(2.5, 1.08 + (floor - 1) * 0.035));
     }
-    const enemyFormationCode = getFormationConfig(body?.enemyFormationCode || this.randomFormationCode()).code;
+    const battleSeed = String(body?.seed || randomUUID());
+    const enemyFormationCode = getFormationConfig(
+      body?.enemyFormationCode || this.randomFormationCode(battleSeed),
+    ).code;
     const leftTeam = this.buildPlayerUnits(pets, teamResult.slotAssignments, formationCode, formationLevel, 'left');
     const rightTeam = this.buildEnemyUnits(averageLevel, difficulty, enemyFormationCode, bossBattle, String(body?.enemySpeciesCode || ''));
 
@@ -157,12 +163,36 @@ export class BattleV10Service {
         rightTeam,
         cooldowns: this.initialCooldownState(formationCode, enemyFormationCode),
         tactics: teamResult.tactics || {},
-        battleLog: [{ round: 0, type: 'start', text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}` }],
+        battleLog: [
+          {
+            round: 0,
+            type: 'start',
+            text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}`,
+          },
+          {
+            round: 0,
+            type: 'formation-passive',
+            side: 'left',
+            formationCode,
+            passiveRule: getFormationConfig(formationCode).passiveRule,
+            text: `我方阵法被动：${getFormationConfig(formationCode).passiveRule.name}`,
+          },
+          {
+            round: 0,
+            type: 'formation-passive',
+            side: 'right',
+            formationCode: enemyFormationCode,
+            passiveRule: getFormationConfig(enemyFormationCode).passiveRule,
+            text: `敌方阵法被动：${getFormationConfig(enemyFormationCode).passiveRule.name}`,
+          },
+        ],
         winnerSide: '',
         bossBattle,
         settled: false,
         rewardStatus: 'pending',
         settlementKey: '',
+        randomSeed: battleSeed,
+        randomCursor: 0,
         resultSnapshot: {},
         processedCommandIds: [],
         rewards: {},
@@ -214,6 +244,7 @@ export class BattleV10Service {
       if (requestId) session.processedCommandIds = [...processed, requestId].slice(-80);
 
       const enemyDirective = this.autoDirective(
+        session,
         session.rightTeam as BattleUnit[],
         session.leftTeam as BattleUnit[],
         session.cooldowns?.right || {},
@@ -354,6 +385,7 @@ export class BattleV10Service {
       const session = await this.sessionRepository.findOne({ where: { id: sessionId, userId } });
       if (!session) break;
       const directive = this.autoDirective(
+        session,
         session.leftTeam as BattleUnit[],
         session.rightTeam as BattleUnit[],
         session.cooldowns?.left || {},
@@ -421,10 +453,56 @@ export class BattleV10Service {
     const livingAllies = allies.filter((unit) => unit.alive && unit.hp > 0);
     const lowAlly = livingAllies.slice().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
     if ((actor.role === 'healer' || actor.role === 'support') && lowAlly && lowAlly.hp / lowAlly.maxHp < 0.72) {
-      const amount = Math.max(1, Math.round((actor.magic * 0.92 + lowAlly.maxHp * 0.045) * (1 + actor.healingRate)));
+      const formationCode =
+        actor.side === 'left' ? session.formationCode : session.enemyFormationCode;
+      const cooldowns = session.cooldowns?.[actor.side] || {};
+      const phoenixBoost =
+        formationCode === 'phoenix' &&
+        lowAlly.hp / lowAlly.maxHp < 0.3 &&
+        !cooldowns.phoenixFirstAidUsed
+          ? 0.1
+          : 0;
+      const amount = Math.max(
+        1,
+        Math.round(
+          (actor.magic * 0.92 + lowAlly.maxHp * 0.045) *
+            (1 + actor.healingRate + phoenixBoost),
+        ),
+      );
+      const missingHp = Math.max(0, lowAlly.maxHp - lowAlly.hp);
+      const actualHealing = Math.min(missingHp, amount);
+      const overheal = Math.max(0, amount - actualHealing);
       lowAlly.hp = Math.min(lowAlly.maxHp, lowAlly.hp + amount);
-      actor.healingDone += amount;
-      events.push({ round: session.round, type: 'heal', actorId: actor.id, targetId: lowAlly.id, value: amount, text: `${actor.name} 治疗 ${lowAlly.name}，恢复 ${amount} 生命` });
+      actor.healingDone += actualHealing;
+      events.push({ round: session.round, type: 'heal', actorId: actor.id, targetId: lowAlly.id, value: actualHealing, text: `${actor.name} 治疗 ${lowAlly.name}，恢复 ${actualHealing} 生命` });
+      if (
+        overheal > 0 &&
+        this.useReaction(session, actor.side, 'OVERHEAL_SHIELD')
+      ) {
+        const shield = Math.max(1, Math.round(overheal * 0.5));
+        lowAlly.shield += shield;
+        events.push({
+          round: session.round,
+          type: 'combat-reaction',
+          reactionCode: 'OVERHEAL_SHIELD',
+          actorId: actor.id,
+          targetId: lowAlly.id,
+          value: shield,
+          text: `生命屏障：过量治疗转化为 ${shield} 护盾`,
+        });
+      }
+      if (phoenixBoost > 0) {
+        cooldowns.phoenixFirstAidUsed = true;
+        session.cooldowns[actor.side] = cooldowns;
+        events.push({
+          round: session.round,
+          type: 'formation-passive-trigger',
+          side: actor.side,
+          formationCode,
+          passiveCode: 'FIRST_AID',
+          text: '涅槃余辉强化了本次治疗',
+        });
+      }
       this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.activeSkill, '主动技能', events);
       return;
     }
@@ -441,20 +519,84 @@ export class BattleV10Service {
     const target = this.selectAttackTarget(session, actor, enemies);
     if (!target) return;
     const useMagic = actor.magic > actor.attack * 1.08 || actor.role === 'magic' || actor.role === 'healer';
-    const skill = this.pickSkill(actor);
+    const skill = this.pickSkill(session, actor);
+    const skillTags = getSkillCombatTags(skill);
     const skillMultiplier = skill ? this.skillMultiplier(skill) : 1;
     const baseStat = useMagic ? actor.magic : actor.attack;
     const targetDefense = useMagic ? target.magicDefense : target.defense;
     let multiplier = 1 + actor.damageRate + actor.singleDamageRate + (useMagic ? actor.magicDamageRate : actor.physicalDamageRate);
     if (target.hp / target.maxHp < 0.35) multiplier += actor.executeDamageRate;
     if (target.statuses.some((status) => status.type === 'huntMark')) multiplier += 0.12;
+    if (
+      skillTags.includes('FIRE') &&
+      target.statuses.some((status) => status.type === 'dot') &&
+      this.useReaction(session, actor.side, 'BURN_FIRE_BURST')
+    ) {
+      multiplier += 0.2;
+      events.push({
+        round: session.round,
+        type: 'combat-reaction',
+        reactionCode: 'BURN_FIRE_BURST',
+        actorId: actor.id,
+        targetId: target.id,
+        text: '烈焰爆发：灼烧目标受到额外火系伤害',
+      });
+    }
+    if (
+      skillTags.includes('LIGHTNING') &&
+      target.statuses.some((status) => status.type === 'wet') &&
+      this.useReaction(session, actor.side, 'WET_LIGHTNING')
+    ) {
+      multiplier += 0.15;
+      events.push({
+        round: session.round,
+        type: 'combat-reaction',
+        reactionCode: 'WET_LIGHTNING',
+        actorId: actor.id,
+        targetId: target.id,
+        text: '感电：潮湿目标受到额外雷系伤害',
+      });
+    }
+    if (
+      skillTags.includes('HEAVY') &&
+      target.statuses.some((status) => status.type === 'freeze') &&
+      this.useReaction(session, actor.side, 'FREEZE_HEAVY')
+    ) {
+      multiplier += 0.25;
+      target.statuses = target.statuses.filter(
+        (status) => status.type !== 'freeze',
+      );
+      events.push({
+        round: session.round,
+        type: 'combat-reaction',
+        reactionCode: 'FREEZE_HEAVY',
+        actorId: actor.id,
+        targetId: target.id,
+        text: '碎冰：重击打破冻结并造成额外伤害',
+      });
+    }
+    const actorFormationCode =
+      actor.side === 'left' ? session.formationCode : session.enemyFormationCode;
+    const actorCooldowns = session.cooldowns?.[actor.side] || {};
+    if (
+      actorFormationCode === 'dragon' &&
+      actorCooldowns.focusTargetId === target.id
+    ) {
+      multiplier += 0.04;
+    }
+    if (actorFormationCode === 'tiger' && target.hp / target.maxHp < 0.3) {
+      multiplier += 0.08;
+    }
     multiplier *= skillMultiplier;
     const defenseIgnore = Math.min(0.6, actor.defenseIgnoreRate);
     let damage = Math.max(1, Math.round(baseStat * multiplier - targetDefense * 0.45 * (1 - defenseIgnore)));
-    const critical = Math.random() < Math.min(0.55, 0.05 + actor.critRate);
+    const critical =
+      this.random(session, `critical:${actor.id}:${target.id}`) <
+      Math.min(0.55, 0.05 + actor.critRate);
     if (critical) damage = Math.round(damage * 1.5);
     damage = Math.max(1, Math.round(damage * (1 - target.damageReductionRate)));
 
+    const targetShieldBefore = target.shield;
     const guard = this.guardRedirect(session, target, actor.side === 'left' ? 'right' : 'left');
     if (guard && guard.id !== target.id) {
       const redirected = Math.round(damage * 0.4);
@@ -464,12 +606,67 @@ export class BattleV10Service {
     } else {
       this.applyDamage(session, actor, target, damage, events, '', critical, skill);
     }
+    if (
+      target.alive &&
+      skillTags.includes('CHASE') &&
+      target.statuses.some((status) => status.type === 'huntMark') &&
+      this.useReaction(session, actor.side, 'MARK_CHASE')
+    ) {
+      const chaseDamage = Math.max(1, Math.round(damage * 0.35));
+      events.push({
+        round: session.round,
+        type: 'combat-reaction',
+        reactionCode: 'MARK_CHASE',
+        actorId: actor.id,
+        targetId: target.id,
+        value: chaseDamage,
+        text: '标记追击：追加一次攻击',
+      });
+      this.applyDamage(
+        session,
+        actor,
+        target,
+        chaseDamage,
+        events,
+        '标记追击',
+      );
+    }
+    const targetHasCounter = target.skills.some((targetSkill) =>
+      getSkillCombatTags(targetSkill).includes('COUNTER'),
+    );
+    if (
+      actor.alive &&
+      targetShieldBefore > 0 &&
+      targetHasCounter &&
+      this.useReaction(session, target.side, 'SHIELD_COUNTER')
+    ) {
+      const counterDamage = Math.max(1, Math.round(damage * 0.2));
+      events.push({
+        round: session.round,
+        type: 'combat-reaction',
+        reactionCode: 'SHIELD_COUNTER',
+        actorId: target.id,
+        targetId: actor.id,
+        value: counterDamage,
+        text: '坚壁回震：持盾单位触发反击',
+      });
+      this.applyDamage(
+        session,
+        target,
+        actor,
+        counterDamage,
+        events,
+        '坚壁回震',
+      );
+    }
 
     this.gainFormationEnergy(session, actor.side, skill ? FORMATION_ENERGY_GAINS.activeSkill : FORMATION_ENERGY_GAINS.normalAttack, skill ? '主动技能' : '普通攻击', events);
     if (skill && this.isSpecialSkill(skill)) {
       this.gainFormationEnergy(session, actor.side, FORMATION_ENERGY_GAINS.specialSkill, '特殊技能触发', events);
     }
-    if (skill && target.alive) this.tryApplySkillStatus(skill, actor, target, session.round, events);
+    if (skill && target.alive) {
+      this.tryApplySkillStatus(session, skill, actor, target, events);
+    }
   }
 
   private applyDamage(
@@ -483,6 +680,27 @@ export class BattleV10Service {
     skill?: any,
   ) {
     let damage = Math.max(0, Math.round(rawDamage));
+    const targetFormationCode =
+      target.side === 'left' ? session.formationCode : session.enemyFormationCode;
+    const targetCooldowns = session.cooldowns?.[target.side] || {};
+    if (
+      targetFormationCode === 'turtle' &&
+      target.slotIndex >= 3 &&
+      !targetCooldowns.turtleBacklineGuardUsed
+    ) {
+      damage = Math.max(0, Math.round(damage * 0.88));
+      targetCooldowns.turtleBacklineGuardUsed = true;
+      session.cooldowns[target.side] = targetCooldowns;
+      events.push({
+        round: session.round,
+        type: 'formation-passive-trigger',
+        side: target.side,
+        formationCode: targetFormationCode,
+        passiveCode: 'BACKLINE_GUARD',
+        targetId: target.id,
+        text: `玄甲援护降低了 ${target.name} 本次受到的伤害`,
+      });
+    }
     let absorbed = 0;
     const shieldDamage = Math.min(target.shield, damage * (1 + actor.shieldDamageRate));
     if (shieldDamage > 0) {
@@ -554,8 +772,22 @@ export class BattleV10Service {
     const enemies = (side === 'left' ? session.rightTeam : session.leftTeam) as BattleUnit[];
     const cooldowns = session.cooldowns?.[side] || {};
     const normalized = directive.type === 'auto'
-      ? this.autoDirective(allies, enemies, cooldowns, side === 'left' ? session.tactics : {})
+      ? this.autoDirective(session, allies, enemies, cooldowns, side === 'left' ? session.tactics : {})
       : directive;
+    if (directive.type === 'auto' && normalized.reason) {
+      events.push({
+        round: session.round,
+        type: 'tactic-trigger',
+        side,
+        strategy: {
+          target: session.tactics?.targetStrategy,
+          skill: session.tactics?.skillStrategy,
+          survival: session.tactics?.survivalStrategy,
+        },
+        reason: normalized.reason,
+        text: `战术触发：${normalized.reason}`,
+      });
+    }
 
     if (normalized.type === 'focus') {
       const target = enemies.find((unit) => unit.id === normalized.targetId && unit.alive) || this.lowestHpUnit(enemies);
@@ -681,7 +913,13 @@ export class BattleV10Service {
     if (taunts.length) {
       const boosted = Number(session.cooldowns?.[actor.side === 'left' ? 'right' : 'left']?.tauntBoostRounds || 0) > 0;
       const candidate = taunts.sort((a, b) => b.tauntRate - a.tauntRate)[0];
-      if (candidate && Math.random() < Math.min(0.85, candidate.tauntRate + (boosted ? 0.25 : 0))) return candidate;
+      if (
+        candidate &&
+        this.random(session, `taunt:${actor.id}:${candidate.id}`) <
+          Math.min(0.85, candidate.tauntRate + (boosted ? 0.25 : 0))
+      ) {
+        return candidate;
+      }
     }
     return focused || this.lowestHpUnit(living) || living[0];
   }
@@ -712,17 +950,40 @@ export class BattleV10Service {
     }
   }
 
-  private tryApplySkillStatus(skill: any, actor: BattleUnit, target: BattleUnit, round: number, events: any[]) {
+  private tryApplySkillStatus(
+    session: BattleSessionV10,
+    skill: any,
+    actor: BattleUnit,
+    target: BattleUnit,
+    events: any[],
+  ) {
+    const round = session.round;
     const code = String(skill?.skillCode || skill?.code || '').toUpperCase();
-    if (/FROST|FREEZE/.test(code) && Math.random() < 0.18) {
+    const tags = getSkillCombatTags(skill);
+    if (
+      /FROST|FREEZE/.test(code) &&
+      this.random(session, `freeze:${actor.id}:${target.id}`) < 0.18
+    ) {
       target.statuses.push({ type: 'freeze', rounds: 1, source: code });
       events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 被冻结` });
-    } else if (/CONTROL|STUN/.test(code) && Math.random() < 0.16) {
+    } else if (
+      /CONTROL|STUN/.test(code) &&
+      this.random(session, `stun:${actor.id}:${target.id}`) < 0.16
+    ) {
       target.statuses.push({ type: 'stun', rounds: 1, source: code });
       events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 被眩晕` });
-    } else if (/FIRE|BURN|FLAME/.test(code) && Math.random() < 0.22) {
+    } else if (
+      /FIRE|BURN|FLAME/.test(code) &&
+      this.random(session, `burn:${actor.id}:${target.id}`) < 0.22
+    ) {
       target.statuses.push({ type: 'dot', rounds: 2, value: Math.max(1, Math.round(actor.magic * 0.18)), source: code });
       events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 被附加灼烧` });
+    } else if (tags.includes('WATER')) {
+      target.statuses.push({ type: 'wet', rounds: 2, source: code });
+      events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 进入潮湿状态` });
+    } else if (tags.includes('MARK')) {
+      target.statuses.push({ type: 'huntMark', rounds: 2, source: code });
+      events.push({ round, type: 'status', actorId: actor.id, targetId: target.id, text: `${target.name} 被标记` });
     }
   }
 
@@ -1090,23 +1351,43 @@ export class BattleV10Service {
     return ordered.filter((pet) => !pet.isEgg && pet.tradeStatus !== 'listed' && !pet.tradeListingId);
   }
 
-  private autoDirective(allies: BattleUnit[], enemies: BattleUnit[], cooldowns: any, tactics: any): RoundDirective {
+  private autoDirective(
+    session: BattleSessionV10,
+    allies: BattleUnit[],
+    enemies: BattleUnit[],
+    cooldowns: any,
+    tactics: any,
+  ): RoundDirective {
     const debuffed = allies.filter((unit) => unit.alive && this.debuffScore(unit) > 0).sort((a, b) => this.debuffScore(b) - this.debuffScore(a))[0];
-    if (debuffed && Number(cooldowns.cleanse || 0) <= 0) return { type: 'cleanse', targetId: debuffed.id, useUltimate: this.autoUltimate(allies, cooldowns, tactics) };
+    if (debuffed && Number(cooldowns.cleanse || 0) <= 0) return { type: 'cleanse', targetId: debuffed.id, useUltimate: this.autoUltimate(allies, enemies, cooldowns, tactics), reason: '队友存在高优先级异常状态' };
     const threshold = Math.max(0, Number(tactics?.shieldThreshold ?? 60)) / 100;
     if (threshold > 0 && Number(cooldowns.shield || 0) <= 0 && allies.filter((unit) => unit.alive && unit.hp / unit.maxHp < threshold).length >= 2) {
-      return { type: 'shield', useUltimate: this.autoUltimate(allies, cooldowns, tactics) };
+      return { type: 'shield', useUltimate: this.autoUltimate(allies, enemies, cooldowns, tactics), reason: `至少两名队友生命低于${Math.round(threshold * 100)}%` };
     }
     const guardTarget = this.guardTargetByTactics(allies, tactics);
     if (guardTarget && guardTarget.hp / guardTarget.maxHp < 0.65 && Number(cooldowns.guard || 0) <= 0) {
-      return { type: 'guard', targetId: guardTarget.id, useUltimate: this.autoUltimate(allies, cooldowns, tactics) };
+      return { type: 'guard', targetId: guardTarget.id, useUltimate: this.autoUltimate(allies, enemies, cooldowns, tactics), reason: `保护目标 ${guardTarget.name} 生命低于65%` };
     }
-    const focus = this.focusByTactics(enemies, tactics);
-    return { type: 'focus', targetId: focus?.id, useUltimate: this.autoUltimate(allies, cooldowns, tactics) };
+    const focus = this.focusByTactics(session, enemies, tactics);
+    return { type: 'focus', targetId: focus?.id, useUltimate: this.autoUltimate(allies, enemies, cooldowns, tactics), reason: `按${String(tactics?.targetStrategy || 'LOWEST_HP')}选择攻击目标` };
   }
 
-  private autoUltimate(allies: BattleUnit[], cooldowns: any, tactics: any) {
+  private autoUltimate(allies: BattleUnit[], enemies: BattleUnit[], cooldowns: any, tactics: any) {
     if (Number(cooldowns.ultimate || 0) > 0 || Number(cooldowns.formationEnergy || 0) < Number(cooldowns.formationEnergyCost || 100)) return false;
+    const skillStrategy = String(tactics?.skillStrategy || 'CAST_IMMEDIATELY');
+    if (skillStrategy === 'CONTROL_COMBO') {
+      return enemies.some(
+        (unit) =>
+          unit.alive &&
+          unit.statuses.some((status) => ['stun', 'freeze'].includes(status.type)),
+      );
+    }
+    if (skillStrategy === 'BOSS_CAST') {
+      return enemies.some((unit) => unit.alive && unit.role === 'boss' && unit.energy >= 80);
+    }
+    if (skillStrategy === 'EXECUTE') {
+      return enemies.some((unit) => unit.alive && unit.hp / unit.maxHp < 0.3);
+    }
     const policy = String(tactics?.ultimatePolicy || 'ready');
     if (policy === 'lowHp') return this.teamHpRate(allies) < 0.55;
     if (policy === 'bossPhase') return allies.some((unit) => unit.energy >= 100) || this.teamHpRate(allies) < 0.7;
@@ -1149,9 +1430,17 @@ export class BattleV10Service {
     }
   }
 
-  private pickSkill(actor: BattleUnit) {
-    if (!actor.skills.length || Math.random() > 0.42) return null;
-    return actor.skills[Math.floor(Math.random() * actor.skills.length)] || null;
+  private pickSkill(session: BattleSessionV10, actor: BattleUnit) {
+    if (
+      !actor.skills.length ||
+      this.random(session, `skill-roll:${actor.id}`) > 0.42
+    ) {
+      return null;
+    }
+    const index = Math.floor(
+      this.random(session, `skill-pick:${actor.id}`) * actor.skills.length,
+    );
+    return actor.skills[index] || null;
   }
 
   private skillMultiplier(skill: any) {
@@ -1162,13 +1451,23 @@ export class BattleV10Service {
     return 1.06;
   }
 
-  private focusByTactics(enemies: BattleUnit[], tactics: any) {
+  private focusByTactics(
+    session: BattleSessionV10,
+    enemies: BattleUnit[],
+    tactics: any,
+  ) {
     const living = enemies.filter((unit) => unit.alive);
     const priority = String(tactics?.focusPriority || 'lowestHp');
     if (priority === 'healer') return living.find((unit) => unit.role === 'healer') || this.lowestHpUnit(living);
+    if (priority === 'boss') return living.find((unit) => unit.role === 'boss') || this.lowestHpUnit(living);
     if (priority === 'highestDamage') return living.sort((a, b) => Math.max(b.attack, b.magic) - Math.max(a.attack, a.magic))[0];
     if (priority === 'front') return living.sort((a, b) => a.slotIndex - b.slotIndex)[0];
-    if (priority === 'random') return living[Math.floor(Math.random() * living.length)];
+    if (priority === 'back') return living.sort((a, b) => b.slotIndex - a.slotIndex)[0];
+    if (priority === 'random') {
+      return living[
+        Math.floor(this.random(session, 'random-focus') * living.length)
+      ];
+    }
     return this.lowestHpUnit(living);
   }
 
@@ -1208,9 +1507,41 @@ export class BattleV10Service {
     return 0;
   }
 
-  private randomFormationCode() {
+  private randomFormationCode(seed: string) {
     const codes = ['dragon', 'turtle', 'crane', 'tiger', 'phoenix'];
-    return codes[Math.floor(Math.random() * codes.length)];
+    return codes[Math.floor(this.hashRandom(seed) * codes.length)];
+  }
+
+  private random(session: BattleSessionV10, label: string) {
+    const cursor = Math.max(0, Number(session.randomCursor || 0));
+    session.randomCursor = cursor + 1;
+    return this.hashRandom(
+      `${session.randomSeed || session.battleId}:${session.round}:${cursor}:${label}`,
+    );
+  }
+
+  private hashRandom(seed: string) {
+    return seededBattleRandom(seed);
+  }
+
+  private useReaction(
+    session: BattleSessionV10,
+    side: Side,
+    reactionCode: string,
+    maxPerRound = 1,
+  ) {
+    const cooldowns = session.cooldowns?.[side] || {};
+    if (Number(cooldowns.reactionRound || 0) !== Number(session.round || 0)) {
+      cooldowns.reactionRound = Number(session.round || 0);
+      cooldowns.reactionCounts = {};
+    }
+    const counts = cooldowns.reactionCounts || {};
+    const current = Number(counts[reactionCode] || 0);
+    if (current >= maxPerRound) return false;
+    counts[reactionCode] = current + 1;
+    cooldowns.reactionCounts = counts;
+    session.cooldowns[side] = cooldowns;
+    return true;
   }
 
   private toSessionView(session: BattleSessionV10) {

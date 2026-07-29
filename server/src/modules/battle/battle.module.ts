@@ -18,6 +18,7 @@ import { Battle } from './battle.entity';
 import { BattleService } from './battle.service';
 import { BattleV10Service } from './battle-v10.service';
 import { BattleSessionV10 } from './battle-session.entity';
+import { BattleTacticsService } from './battle-tactics.service';
 
 @Module({
   imports: [
@@ -41,7 +42,7 @@ import { BattleSessionV10 } from './battle-session.entity';
     RetentionModule,
   ],
   controllers: [BattleController],
-  providers: [BattleService, BattleV10Service],
-  exports: [BattleService, BattleV10Service],
+  providers: [BattleService, BattleV10Service, BattleTacticsService],
+  exports: [BattleService, BattleV10Service, BattleTacticsService],
 })
 export class BattleModule {}
