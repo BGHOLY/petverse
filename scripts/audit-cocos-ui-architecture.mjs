@@ -59,24 +59,63 @@ function requireScenePath(...segments) {
     return true;
 }
 
+function directChildNames(parentId) {
+    return (nodeAt(parentId)?._children || []).map(({ __id__ }) => nodeAt(__id__)?._name);
+}
+
+function requireSceneNodeId(...segments) {
+    let current = sceneNodes.find(({ entry }) => entry._name === segments[0])?.id;
+    if (current === undefined) return undefined;
+    for (const segment of segments.slice(1)) {
+        current = directChild(current, segment);
+        if (current === undefined) return undefined;
+    }
+    return current;
+}
+
 const rootSegments = ['Canvas', 'PetVerseUIRoot'];
-for (const name of [
+const expectedRootOrder = [
     'GlobalBackground',
-    'TopBar',
     'PageRoot',
+    'TopBar',
     'BottomNavigation',
+    'OverlayRoot',
+    'FullScreenRoot',
+    'SystemRoot',
+];
+const rootId = requireSceneNodeId(...rootSegments);
+check(rootId !== undefined, 'MainScene keeps Canvas/PetVerseUIRoot');
+if (rootId !== undefined) {
+    check(
+        JSON.stringify(directChildNames(rootId)) === JSON.stringify(expectedRootOrder),
+        `PetVerseUIRoot render order is ${expectedRootOrder.join(' -> ')}`,
+    );
+}
+
+for (const name of [
+    'Reconnect',
     'DrawerLayer',
     'ModalLayer',
     'UtilityLayer',
-    'BattleLayer',
     'RevealLayer',
     'GuideLayer',
     'ToastLayer',
     'LoadingLayer',
-    'V10AudioDirector',
 ]) {
-    check(requireScenePath(...rootSegments, name), `MainScene keeps ${name}`);
+    check(
+        requireScenePath(...rootSegments, 'OverlayRoot', name),
+        `MainScene keeps OverlayRoot/${name}`,
+    );
 }
+
+check(
+    requireScenePath(...rootSegments, 'FullScreenRoot', 'BattleLayer'),
+    'MainScene keeps FullScreenRoot/BattleLayer',
+);
+check(
+    requireScenePath(...rootSegments, 'SystemRoot', 'V10AudioDirector'),
+    'MainScene keeps SystemRoot/V10AudioDirector',
+);
 
 for (const name of [
     'HomePage',
@@ -91,7 +130,95 @@ for (const name of [
     check(requireScenePath(...rootSegments, 'PageRoot', name), `MainScene keeps PageRoot/${name}`);
 }
 
-check(requireScenePath(...rootSegments, 'TopBar', 'Reconnect'), 'MainScene keeps TopBar/Reconnect');
+const homePageId = requireSceneNodeId(...rootSegments, 'PageRoot', 'HomePage');
+check(homePageId !== undefined, 'MainScene keeps the editor-authored HomePage');
+if (homePageId !== undefined) {
+    check(
+        JSON.stringify(directChildNames(homePageId))
+            === JSON.stringify(['BackgroundLayer', 'StaticContent', 'RuntimeContent']),
+        'HomePage order is BackgroundLayer -> StaticContent -> RuntimeContent',
+    );
+}
+check(
+    requireScenePath(...rootSegments, 'PageRoot', 'HomePage', 'BackgroundLayer', 'RoomArt'),
+    'RoomArt stays in HomePage/BackgroundLayer',
+);
+for (const name of ['HomePetArt', 'PetNameplateArt', 'PetName', 'PetMeta', 'SwitchPet', 'PetTouchArea']) {
+    check(
+        requireScenePath(...rootSegments, 'PageRoot', 'HomePage', 'StaticContent', name),
+        `HomePage/StaticContent keeps ${name}`,
+    );
+}
+
+for (const pageName of [
+    'PetPage',
+    'InventoryPage',
+    'AdventurePage',
+    'ShopPage',
+    'HatcheryPage',
+    'MorePage',
+    'SecondaryPage',
+]) {
+    const pageId = requireSceneNodeId(...rootSegments, 'PageRoot', pageName);
+    check(pageId !== undefined, `MainScene keeps ${pageName}`);
+    if (pageId === undefined) continue;
+    check(
+        JSON.stringify(directChildNames(pageId))
+            === JSON.stringify(['PageBackground', 'StaticContent', 'RuntimeContent']),
+        `${pageName} order is PageBackground -> StaticContent -> RuntimeContent`,
+    );
+}
+
+const canvasId = requireSceneNodeId('Canvas');
+const canvasComponents = canvasId === undefined
+    ? []
+    : (nodeAt(canvasId)?._components || []).map(({ __id__ }) => nodeAt(__id__));
+const mainUiComponent = canvasComponents.find((component) => Object.hasOwn(component || {}, 'apiBaseUrl'));
+const panelManagerComponent = canvasComponents.find(
+    (component) => Object.hasOwn(component || {}, 'secondaryPage'),
+);
+check(Boolean(mainUiComponent), 'Canvas keeps MainUI');
+check(Boolean(panelManagerComponent), 'Canvas keeps PanelManager');
+for (const propertyName of [
+    'root',
+    'topBar',
+    'pageHost',
+    'bottomNav',
+    'homePage',
+    'nicknameLabel',
+    'levelLabel',
+    'vipLabel',
+    'goldLabel',
+    'diamondLabel',
+    'goldButton',
+    'diamondButton',
+    'reconnectButton',
+    'homePetSprite',
+    'homePetNameLabel',
+    'homePetMetaLabel',
+    'switchPetButton',
+    'petTouchButton',
+]) {
+    check(
+        Number.isInteger(mainUiComponent?.[propertyName]?.__id__),
+        `MainUI Inspector binds ${propertyName}`,
+    );
+}
+for (const propertyName of [
+    'homePage',
+    'petPage',
+    'inventoryPage',
+    'adventurePage',
+    'shopPage',
+    'hatcheryPage',
+    'morePage',
+    'secondaryPage',
+]) {
+    check(
+        Number.isInteger(panelManagerComponent?.[propertyName]?.__id__),
+        `PanelManager Inspector binds ${propertyName}`,
+    );
+}
 
 const fixedFiles = [
     'client/PetVerseClient/assets/scripts/ui/v2/AppShell.ts',

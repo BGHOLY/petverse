@@ -35,9 +35,10 @@ function rarityName(pet: any) {
 export function renderHomePage(parent: Node, options: HomePageOptions) {
     const pet = options.pet;
     const species = getPetSpeciesMeta(pet);
-    const petSprite = parent.getChildByName('HomePetArt')?.getComponent(Sprite);
-    const petName = parent.getChildByName('PetName')?.getComponent(Label);
-    const petMeta = parent.getChildByName('PetMeta')?.getComponent(Label);
+    const staticContent = parent.getChildByName('StaticContent') || parent;
+    const petSprite = staticContent.getChildByName('HomePetArt')?.getComponent(Sprite);
+    const petName = staticContent.getChildByName('PetName')?.getComponent(Label);
+    const petMeta = staticContent.getChildByName('PetMeta')?.getComponent(Label);
 
     if (petName) petName.string = safeName(pet?.nickname, species.name);
     if (petMeta) petMeta.string = `${species.element}系 · ${rarityName(pet)} · Lv.${Number(pet?.level || 1)}`;
@@ -48,18 +49,18 @@ export function renderHomePage(parent: Node, options: HomePageOptions) {
         });
     }
 
-    bindClick(parent.getChildByName('SwitchPet'), parent, options.onSelectPet);
-    bindClick(parent.getChildByName('PetTouchArea'), parent, options.onSelectPet);
+    bindClick(staticContent.getChildByName('SwitchPet'), parent, options.onSelectPet);
+    bindClick(staticContent.getChildByName('PetTouchArea'), parent, options.onSelectPet);
 
     const activities: HomeActivity[] = ['sign', 'newcomer', 'daily', 'events'];
     for (const activity of activities) {
-        bindClick(parent.getChildByName(`Activity_${activity}`), parent, () => options.onActivity(activity));
-        const dot = parent.getChildByName(`Activity_${activity}`)?.getChildByName('NotificationDot');
+        bindClick(staticContent.getChildByName(`Activity_${activity}`), parent, () => options.onActivity(activity));
+        const dot = staticContent.getChildByName(`Activity_${activity}`)?.getChildByName('NotificationDot');
         if (dot) dot.active = Number(options.notificationCounts?.[activity] || 0) > 0;
     }
 
     const shortcuts: HomeShortcut[] = ['adventure', 'hatchery', 'formation'];
     for (const shortcut of shortcuts) {
-        bindClick(parent.getChildByName(`Shortcut_${shortcut}`), parent, () => options.onShortcut(shortcut));
+        bindClick(staticContent.getChildByName(`Shortcut_${shortcut}`), parent, () => options.onShortcut(shortcut));
     }
 }

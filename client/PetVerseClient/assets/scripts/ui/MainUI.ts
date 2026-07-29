@@ -196,6 +196,9 @@ export class MainUI extends Component {
     private revealLayer: Node | null = null;
     private utilityLayer: Node | null = null;
     private guideLayer: Node | null = null;
+    private systemRoot: Node | null = null;
+    private reconnectNode: Node | null = null;
+    private homeStaticContent: Node | null = null;
 
     private currentPage: PageName = 'home';
     private detailSkill: any | null = null;
@@ -335,8 +338,9 @@ export class MainUI extends Component {
             if (this.node?.isValid) this.renderCurrentPage(false);
         });
         if (this.root) {
-            CuteFeedback.initialize(this.root);
-            AudioDirector.initialize(this.root);
+            const audioHost = this.systemRoot || this.root;
+            CuteFeedback.initialize(audioHost);
+            AudioDirector.initialize(audioHost);
             this.root.off(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
             this.root.on(Node.EventType.TOUCH_END, this.finishTeamDrag, this);
             void AudioDirector.playBgm('home');
@@ -776,6 +780,8 @@ export class MainUI extends Component {
         this.guideLayer = shell.guideLayer;
         this.toastLayer = shell.toastLayer;
         this.loadingLayer = shell.loadingLayer;
+        this.systemRoot = shell.systemRoot;
+        this.reconnectNode = shell.reconnect;
         this.bindEditorNodes();
     }
 
@@ -794,6 +800,7 @@ export class MainUI extends Component {
         ) => current || directNode(parent, name)?.getComponent(component) || null;
 
         this.homePage ||= directNode(this.pageHost, 'HomePage');
+        this.homeStaticContent ||= directNode(this.homePage, 'StaticContent') || this.homePage;
         this.nicknameLabel = directComponent(this.nicknameLabel, this.topBar, 'Nickname', Label);
         this.levelLabel = directComponent(this.levelLabel, this.topBar, 'Level', Label);
         this.vipLabel = directComponent(this.vipLabel, this.topBar, 'Vip', Label);
@@ -802,22 +809,22 @@ export class MainUI extends Component {
         this.goldButton = directComponent(this.goldButton, this.topBar, 'Gold', Button);
         this.diamondButton = directComponent(this.diamondButton, this.topBar, 'Diamond', Button);
         this.backButton = directComponent(this.backButton, this.topBar, 'BackPage', Button);
-        this.reconnectButton = directComponent(this.reconnectButton, this.topBar, 'Reconnect', Button);
+        this.reconnectButton ||= this.reconnectNode?.getComponent(Button) || null;
 
-        this.homePetSprite = directComponent(this.homePetSprite, this.homePage, 'HomePetArt', Sprite);
-        this.homePetNameLabel = directComponent(this.homePetNameLabel, this.homePage, 'PetName', Label);
-        this.homePetMetaLabel = directComponent(this.homePetMetaLabel, this.homePage, 'PetMeta', Label);
-        this.switchPetButton = directComponent(this.switchPetButton, this.homePage, 'SwitchPet', Button);
-        this.petTouchButton = directComponent(this.petTouchButton, this.homePage, 'PetTouchArea', Button);
+        this.homePetSprite = directComponent(this.homePetSprite, this.homeStaticContent, 'HomePetArt', Sprite);
+        this.homePetNameLabel = directComponent(this.homePetNameLabel, this.homeStaticContent, 'PetName', Label);
+        this.homePetMetaLabel = directComponent(this.homePetMetaLabel, this.homeStaticContent, 'PetMeta', Label);
+        this.switchPetButton = directComponent(this.switchPetButton, this.homeStaticContent, 'SwitchPet', Button);
+        this.petTouchButton = directComponent(this.petTouchButton, this.homeStaticContent, 'PetTouchArea', Button);
 
         if (!this.homeActivityButtons.length) {
             this.homeActivityButtons = ['sign', 'newcomer', 'daily', 'events']
-                .map((key) => directComponent(null, this.homePage, `Activity_${key}`, Button))
+                .map((key) => directComponent(null, this.homeStaticContent, `Activity_${key}`, Button))
                 .filter((item): item is Button => Boolean(item));
         }
         if (!this.homeShortcutButtons.length) {
             this.homeShortcutButtons = ['adventure', 'hatchery', 'formation']
-                .map((key) => directComponent(null, this.homePage, `Shortcut_${key}`, Button))
+                .map((key) => directComponent(null, this.homeStaticContent, `Shortcut_${key}`, Button))
                 .filter((item): item is Button => Boolean(item));
         }
         if (!this.navigationButtons.length) {

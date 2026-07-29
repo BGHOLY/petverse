@@ -4,9 +4,13 @@ import { PageName } from './AppRoutes';
 export type AppShellLayers = {
     root: Node;
     globalBackground: Node;
-    topBar: Node;
     pageRoot: Node;
+    topBar: Node;
     bottomNavigation: Node;
+    overlayRoot: Node;
+    fullScreenRoot: Node;
+    systemRoot: Node;
+    reconnect: Node;
     drawerLayer: Node;
     modalLayer: Node;
     utilityLayer: Node;
@@ -67,21 +71,28 @@ function requireDirectChild(parent: Node, name: string) {
  */
 export function resolveAppShell(canvas: Node): AppShellLayers {
     const root = requireDirectChild(canvas, 'PetVerseUIRoot');
+    const overlayRoot = requireDirectChild(root, 'OverlayRoot');
+    const fullScreenRoot = requireDirectChild(root, 'FullScreenRoot');
+    const systemRoot = requireDirectChild(root, 'SystemRoot');
 
     const result: AppShellLayers = {
         root,
         globalBackground: requireDirectChild(root, 'GlobalBackground'),
-        topBar: requireDirectChild(root, 'TopBar'),
         pageRoot: requireDirectChild(root, 'PageRoot'),
+        topBar: requireDirectChild(root, 'TopBar'),
         bottomNavigation: requireDirectChild(root, 'BottomNavigation'),
-        drawerLayer: requireDirectChild(root, 'DrawerLayer'),
-        modalLayer: requireDirectChild(root, 'ModalLayer'),
-        utilityLayer: requireDirectChild(root, 'UtilityLayer'),
-        battleLayer: requireDirectChild(root, 'BattleLayer'),
-        revealLayer: requireDirectChild(root, 'RevealLayer'),
-        guideLayer: requireDirectChild(root, 'GuideLayer'),
-        toastLayer: requireDirectChild(root, 'ToastLayer'),
-        loadingLayer: requireDirectChild(root, 'LoadingLayer'),
+        overlayRoot,
+        fullScreenRoot,
+        systemRoot,
+        reconnect: requireDirectChild(overlayRoot, 'Reconnect'),
+        drawerLayer: requireDirectChild(overlayRoot, 'DrawerLayer'),
+        modalLayer: requireDirectChild(overlayRoot, 'ModalLayer'),
+        utilityLayer: requireDirectChild(overlayRoot, 'UtilityLayer'),
+        battleLayer: requireDirectChild(fullScreenRoot, 'BattleLayer'),
+        revealLayer: requireDirectChild(overlayRoot, 'RevealLayer'),
+        guideLayer: requireDirectChild(overlayRoot, 'GuideLayer'),
+        toastLayer: requireDirectChild(overlayRoot, 'ToastLayer'),
+        loadingLayer: requireDirectChild(overlayRoot, 'LoadingLayer'),
     };
 
     preparePageContainers(result.pageRoot);
