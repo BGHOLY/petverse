@@ -1,4 +1,4 @@
-export type HttpMethod = 'GET' | 'POST';
+export type HttpMethod = 'GET' | 'POST' | 'PUT';
 
 export type ApiResult<T = any> = T & {
     success?: boolean;
@@ -42,6 +42,10 @@ export default class ApiClient {
         return this.request<T>('POST', path, data);
     }
 
+    public static put<T = any>(path: string, data: any = {}): Promise<ApiResult<T>> {
+        return this.request<T>('PUT', path, data);
+    }
+
     public static isPending(method: HttpMethod, path: string, data?: any) {
         return this.pending.has(this.makeKey(method, path, data));
     }
@@ -78,7 +82,7 @@ export default class ApiClient {
             const response = await fetch(url, {
                 method,
                 headers: this.buildHeaders(),
-                body: method === 'POST' ? JSON.stringify(data || {}) : undefined,
+                body: method === 'GET' ? undefined : JSON.stringify(data || {}),
                 signal: controller?.signal,
                 cache: 'no-store',
             });
@@ -116,7 +120,7 @@ export default class ApiClient {
             globalAny.wx.request({
                 url,
                 method,
-                data: method === 'POST' ? data || {} : undefined,
+                data: method === 'GET' ? undefined : data || {},
                 timeout: this.TIMEOUT_MS,
                 header: this.buildHeaders(),
                 success: (res: any) => {
