@@ -1,7 +1,14 @@
 import { Node, Widget } from 'cc';
 import { clearNode, getOrCreate, setRect } from '../cute/CuteUiKit';
 import { renderCleanPageBackground } from './CleanPageBackground';
-import { V6_CANVAS_WIDTH, V6_CONTENT_HEIGHT, V6_PAGE_WIDTH, V6_SAFE_SIDE } from './UiMetrics';
+import {
+    V6_CANVAS_WIDTH,
+    V6_CONTENT_HEIGHT,
+    V6_PAGE_WIDTH,
+    V6_SAFE_CONTENT_HEIGHT,
+    V6_SAFE_SIDE,
+    V6_SAFE_VERTICAL,
+} from './UiMetrics';
 
 export type V6PageShell = {
     root: Node;
@@ -16,7 +23,7 @@ export function createV6PageShell(parent: Node, name: string): V6PageShell {
     renderCleanPageBackground(root);
 
     const content = getOrCreate(root, 'SafeContent');
-    setRect(content, 0, 0, V6_PAGE_WIDTH, V6_CONTENT_HEIGHT);
+    setRect(content, 0, 0, V6_PAGE_WIDTH, V6_SAFE_CONTENT_HEIGHT);
     const widget = content.getComponent(Widget) || content.addComponent(Widget);
     widget.isAlignLeft = true;
     widget.isAlignRight = true;
@@ -24,8 +31,8 @@ export function createV6PageShell(parent: Node, name: string): V6PageShell {
     widget.isAlignBottom = true;
     widget.left = V6_SAFE_SIDE;
     widget.right = V6_SAFE_SIDE;
-    widget.top = 0;
-    widget.bottom = 0;
+    widget.top = V6_SAFE_VERTICAL;
+    widget.bottom = V6_SAFE_VERTICAL;
     widget.updateAlignment();
     return { root, content };
 }
