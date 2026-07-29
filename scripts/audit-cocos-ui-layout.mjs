@@ -64,6 +64,7 @@ const rootPath = ['Canvas', 'PetVerseUIRoot'];
 const topBarId = nodeId(...rootPath, 'TopBar');
 const pageRootId = nodeId(...rootPath, 'PageRoot');
 const bottomNavigationId = nodeId(...rootPath, 'BottomNavigation');
+const pageTitleId = nodeId(...rootPath, 'TopBar', 'PageTitle');
 
 check(
     topBarId !== undefined && sameRect(rect(topBarId), { x: 0, y: 584, width: 720, height: 112 }),
@@ -77,6 +78,11 @@ check(
     bottomNavigationId !== undefined
         && sameRect(rect(bottomNavigationId), { x: 0, y: -565, width: 720, height: 150 }),
     'BottomNavigation uses the 150px bottom safe region.',
+);
+check(
+    pageTitleId !== undefined
+        && sameRect(rect(pageTitleId), { x: 0, y: 4, width: 190, height: 36 }),
+    'TopBar contains a centered editor-owned current-page title.',
 );
 
 for (const pageName of [
@@ -118,6 +124,40 @@ for (const expected of [
     'V6_SECONDARY_BUTTON_HEIGHT = 56',
 ]) {
     check(metrics.includes(expected), `UiMetrics includes ${expected}.`);
+}
+
+const mainUi = records.find((entry) => entry && Object.hasOwn(entry, 'nicknameLabel'));
+check(
+    typeof mainUi?.pageTitleLabel?.__id__ === 'number'
+        && records[mainUi.pageTitleLabel.__id__]?.__type__ === 'cc.Label',
+    'MainUI current-page title uses an Inspector-bound Label.',
+);
+
+const prefabSizes = {
+    InventoryItem: [154, 134],
+    ShopItem: [250, 154],
+    HatcheryEggItem: [154, 132],
+    SkillSlotItem: [438, 74],
+    FriendListItem: [286, 232],
+    RankingListItem: [604, 78],
+};
+for (const [name, [width, height]] of Object.entries(prefabSizes)) {
+    const prefabPath = path.join(
+        repositoryRoot,
+        `client/PetVerseClient/assets/resources/ui/list-items/${name}.prefab`,
+    );
+    const prefabRecords = JSON.parse(fs.readFileSync(prefabPath, 'utf8'));
+    const rootNode = prefabRecords.find(
+        (entry) => entry?.__type__ === 'cc.Node' && entry._name === name,
+    );
+    const transform = (rootNode?._components || [])
+        .map(({ __id__ }) => prefabRecords[__id__])
+        .find((entry) => entry?.__type__ === 'cc.UITransform');
+    check(
+        Number(transform?._contentSize?.width || 0) === width
+            && Number(transform?._contentSize?.height || 0) === height,
+        `${name} uses the approved ${width}x${height} list-card size.`,
+    );
 }
 
 console.log(`Cocos UI layout audit: ${checks.length} checks passed.`);

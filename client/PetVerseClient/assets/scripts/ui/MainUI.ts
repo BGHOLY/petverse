@@ -104,6 +104,37 @@ enum EditorPreviewPage {
     Adventure,
 }
 
+const PAGE_TITLE_LABELS: Record<PageName, string> = {
+    home: '温馨小屋',
+    pet: '宝宝培养',
+    inventory: '道具仓库',
+    adventure: '冒险大陆',
+    more: '更多功能',
+    shop: '精灵商店',
+    hatchery: '孵化室',
+    skills: '技能研习',
+    fusion: '炼妖研究室',
+    friends: '好友相册',
+    ranking: '排行榜',
+    marriage: '宠物结缘',
+    mail: '邮件中心',
+    trade: '交易行',
+    collection: '宠物图鉴',
+    profile: '玩家资料',
+    settings: '游戏设置',
+    benefits: '福利中心',
+    formation: '五宠阵法',
+    guild: '萌宠公会',
+    gold: '金币',
+    diamond: '钻石',
+    potion: '恢复道具',
+    hourglass: '孵化沙漏',
+    'breed-token': '繁育凭证',
+    core: '炼妖核心',
+    food: '宠物食物',
+    material: '培养材料',
+};
+
 Enum(EditorPreviewPage);
 
 @ccclass('MainUI')
@@ -139,6 +170,9 @@ export class MainUI extends Component {
 
     @property({ type: Label, displayName: '玩家昵称' })
     private nicknameLabel: Label | null = null;
+
+    @property({ type: Label, displayName: '当前页面标题' })
+    private pageTitleLabel: Label | null = null;
 
     @property({ type: Label, displayName: '玩家等级' })
     private levelLabel: Label | null = null;
@@ -807,6 +841,7 @@ export class MainUI extends Component {
         this.homePage ||= directNode(this.pageHost, 'HomePage');
         this.homeStaticContent ||= directNode(this.homePage, 'StaticContent') || this.homePage;
         this.nicknameLabel = directComponent(this.nicknameLabel, this.topBar, 'Nickname', Label);
+        this.pageTitleLabel = directComponent(this.pageTitleLabel, this.topBar, 'PageTitle', Label);
         this.levelLabel = directComponent(this.levelLabel, this.topBar, 'Level', Label);
         this.vipLabel = directComponent(this.vipLabel, this.topBar, 'Vip', Label);
         this.goldLabel = directComponent(this.goldLabel, this.topBar, 'GoldValue', Label);
@@ -907,6 +942,7 @@ export class MainUI extends Component {
     private renderTopBar() {
         if (!this.topBar) return;
         if (this.nicknameLabel) this.nicknameLabel.string = safeName(GameStore.user?.nickname, '小桃子');
+        if (this.pageTitleLabel) this.pageTitleLabel.string = PAGE_TITLE_LABELS[this.currentPage] || 'PetVerse';
         if (this.levelLabel) this.levelLabel.string = `Lv.${Number(GameStore.user?.level || 1)}`;
         if (this.vipLabel) this.vipLabel.string = `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`;
         if (this.goldLabel) this.goldLabel.string = formatNumber(GameStore.user?.gold);
