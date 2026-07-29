@@ -23,7 +23,7 @@ import {
 } from '../../cute/CuteUiKit';
 import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { createV6PageShell } from '../AppShell';
-import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
+import { V6_PANEL_GAP, V6_PAGE_WIDTH, V6_SAFE_CONTENT_HEIGHT } from '../UiMetrics';
 import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 
 export type InventoryCategoryV6 = 'all' | 'consumable' | 'material' | 'skill' | 'equipment';
@@ -218,8 +218,8 @@ export function renderInventoryPageV6(parent: Node, options: InventoryPageV6Opti
     const tabsHeight = 68;
     const targetHeight = 76;
     const footerHeight = 54;
-    const gridHeight = V6_CONTENT_HEIGHT - headerHeight - tabsHeight - targetHeight - footerHeight - V6_PANEL_GAP * 4;
-    let cursor = V6_CONTENT_HEIGHT / 2;
+    const gridHeight = V6_SAFE_CONTENT_HEIGHT - headerHeight - tabsHeight - targetHeight - footerHeight - V6_PANEL_GAP * 4;
+    let cursor = V6_SAFE_CONTENT_HEIGHT / 2;
 
     const header = panel(page, 'InventoryInfoBar', 0, cursor - headerHeight / 2, V6_PAGE_WIDTH, headerHeight, new Color(255, 249, 229, 252), 24, true, new Color(198, 145, 85, 235), 2);
     cursor -= headerHeight + V6_PANEL_GAP;
