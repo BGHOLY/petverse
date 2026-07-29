@@ -2167,10 +2167,10 @@ export class MainUI extends Component {
         });
         const cleared=regions.filter((item:any)=>item?.bossCleared).length;
         const average=Math.round(regions.reduce((sum:number,item:any)=>sum+Number(item?.exploration||0),0)/Math.max(1,regions.length));
-        const footer=panel(parent,'StoryProgress',-105,-465,420,58,new Color(255,248,222,238),16,true,CuteTheme.caramelSoft,2);
-        text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-188,12,250,22,11,CuteTheme.caramel,'left',true);
-        progress(footer,'Progress',-72,-13,220,11,average/100,CuteTheme.mintDark);
-        button(footer,'Continue','前往',153,0,82,38,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:11,radius:14,disabled:!region?.unlocked});
+        const footer=panel(parent,'StoryProgress',-105,-456,430,72,new Color(255,248,222,246),18,true,CuteTheme.caramelSoft,2);
+        text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-70,17,250,24,12,CuteTheme.caramel,'left',true);
+        progress(footer,'Progress',-70,-17,250,12,average/100,CuteTheme.mintDark);
+        button(footer,'Continue','继续主线',145,0,120,48,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:13,radius:18,disabled:!region?.unlocked});
 
         text(parent,'DailyTitle','每日区域危机',222,390,190,32,18,CuteTheme.peachDark,'center',true);
         text(parent,'TeamMeta',`五宠战力 ${formatNumber(this.teamPower())} · ${this.teamPetIds.length}/5`,222,357,190,22,10,CuteTheme.muted,'center',true);
@@ -2203,18 +2203,18 @@ export class MainUI extends Component {
         text(scene,'Description',safeName(region?.description,'调查区域生态并寻找首领巢穴。'),0,-91,500,26,12,CuteTheme.muted,'center',true);
 
         const detail=panel(page,'RegionDetail',0,-55,574,198,new Color(247,246,224,255),20,false,CuteTheme.caramelSoft,2);
-        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-244,72,120,26,13,CuteTheme.caramel,'left',true);
+        text(detail,'ExploreLabel',`探索度 ${Number(region?.exploration||0)}%`,-198,72,140,26,13,CuteTheme.caramel,'left',true);
         progress(detail,'ExploreProgress',20,72,360,15,Number(region?.exploration||0)/100,region?.nestUnlocked?CuteTheme.honey:CuteTheme.mintDark);
         const discoverable=Array.isArray(region?.discoverablePets)?region.discoverablePets.join(' / '):`${safeName(region?.speciesName,'目标物种')} / ${safeName(region?.companionSpecies,'伴生物种')}`;
-        text(detail,'Species',`可发现：${discoverable}`,-244,38,490,26,12,CuteTheme.caramel,'left',true);
-        text(detail,'Power',`推荐战力 ${formatNumber(region?.recommendedPower||0)} · ${safeName(region?.element,'生态')}系生态`,-244,10,490,24,12,CuteTheme.muted,'left',true);
+        text(detail,'Species',`可发现：${discoverable}`,0,38,520,26,12,CuteTheme.caramel,'left',true);
+        text(detail,'Power',`推荐战力 ${formatNumber(region?.recommendedPower||0)} · ${safeName(region?.element,'生态')}系生态`,0,10,520,24,12,CuteTheme.muted,'left',true);
         const lastEvent=region?.lastEvent;
-        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · 探索 +${Number(lastEvent?.explorationGain||0)}%`:'下一次推进将触发区域探索事件',-244,-18,490,24,11,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
+        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · 探索 +${Number(lastEvent?.explorationGain||0)}%`:'下一次推进将触发区域探索事件',0,-18,520,24,11,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
         const firstReward=(Array.isArray(region?.firstRewards)?region.firstRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
         const completionReward=(Array.isArray(region?.completionRewards)?region.completionRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
-        text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`} · 完成：${completionReward||'待同步'}`,-244,-46,490,24,10,CuteTheme.peachDark,'left',true);
+        text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`} · 完成：${completionReward||'待同步'}`,0,-46,520,24,10,CuteTheme.peachDark,'left',true);
         const attempts=world?.attempts||{};
-        text(detail,'Attempt',`首领巢穴次数 ${Number(attempts?.remaining||0)} · 累计 ${Number(attempts?.stored||0)}/6 · 战败不扣`,-244,-73,490,22,10,CuteTheme.muted,'left',true);
+        text(detail,'Attempt',`首领巢穴次数 ${Number(attempts?.remaining||0)} · 累计 ${Number(attempts?.stored||0)}/6 · 战败不扣`,0,-73,520,22,10,CuteTheme.muted,'left',true);
 
         const actions=panel(page,'RegionActions',0,-261,574,174,new Color(245,234,207,255),20,true,CuteTheme.caramelSoft,2);
         const exploration=Number(region?.exploration||0);
@@ -2282,12 +2282,12 @@ export class MainUI extends Component {
         headingTag(editor, 'Title', '五宠阵法编队', -210, 382, 190, CuteTheme.mint);
         const counterNames=(Array.isArray(formation?.counters)?formation.counters:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
         const counteredByNames=(Array.isArray(formation?.counteredBy)?formation.counteredBy:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
-        text(editor, 'Hint', `总战力 ${formatNumber(this.teamPower())}　克制 ${counterNames} · 受 ${counteredByNames} 克制　点两个阵位交换`, -290, 343, 580, 32, 12, CuteTheme.muted, 'left', true);
+        text(editor, 'Hint', `总战力 ${formatNumber(this.teamPower())}　克制 ${counterNames} · 受 ${counteredByNames} 克制　点两个阵位交换`, 0, 343, 580, 32, 12, CuteTheme.muted, 'left', true);
         const formationCodes = (Array.isArray(this.formationOverview?.formations)?this.formationOverview.formations.map((item:any)=>String(item?.code||item?.id)):['dragon','turtle','crane','tiger','phoenix']).slice(0,5);
         formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,300,110,42,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:18}));
 
         const ultimate=formation?.ultimate||{};
-        text(editor,'Ultimate',`${ultimate?.icon||'阵'} ${ultimate?.name||'阵法大招'} · 能量 ${Number(ultimate?.energyCost||0)}　${ultimate?.description||formation?.description||'按阵法配置发动全队技能'}`,-286,258,572,34,12,CuteTheme.peachDark,'left',true);
+        text(editor,'Ultimate',`${ultimate?.icon||'阵'} ${ultimate?.name||'阵法大招'} · 能量 ${Number(ultimate?.energyCost||0)}　${ultimate?.description||formation?.description||'按阵法配置发动全队技能'}`,0,258,572,34,12,CuteTheme.peachDark,'left',true);
         const field = panel(editor, 'FormationField', 0, 115, 612, 220, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
         this.formationSlotNodes.clear();
         const positions = this.formationEditorPositions(this.selectedFormationCode);
@@ -2321,7 +2321,7 @@ export class MainUI extends Component {
         this.formationCandidateNodes.clear();
         const rows = Math.max(1, Math.ceil(available.length / 2));
         const selectedPet=available.find((pet)=>Number(pet?.id||0)===Number(this.formationSelectedCandidateId||0));
-        text(editor,'CandidateTitle',selectedPet?`已选 ${this.compactPetName(selectedPet)}：请点上方阵位`:'可用宝宝',-285,-10,230,28,15,selectedPet?CuteTheme.mintDark:CuteTheme.caramel,'left',true);
+        text(editor,'CandidateTitle',selectedPet?`已选 ${this.compactPetName(selectedPet)}：请点上方阵位`:'可用宝宝',-170,-10,260,28,15,selectedPet?CuteTheme.mintDark:CuteTheme.caramel,'left',true);
         const filters:Array<['all'|'front'|'damage'|'support',string]>=[['all','全部'],['front','前排'],['damage','输出'],['support','辅助']];
         filters.forEach(([key,label],index)=>button(editor,`Filter_${key}`,label,-210+index*92,-48,82,34,()=>{this.teamPetFilter=key;this.formationSelectedCandidateId=0;this.renderCurrentPage(false);},{selected:this.teamPetFilter===key,fill:this.teamPetFilter===key?CuteTheme.mint:CuteTheme.paperWarm,fontSize:11,radius:15}));
         button(editor,'Sort',this.teamPetSort==='power'?'战力优先':'等级优先',218,-48,112,34,()=>{this.teamPetSort=this.teamPetSort==='power'?'level':'power';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:11,radius:15});
@@ -2344,7 +2344,7 @@ export class MainUI extends Component {
             card.on(Node.EventType.MOUSE_MOVE,(event:any)=>this.moveTeamDrag(event));
             card.on(Node.EventType.MOUSE_UP,(event:any)=>{event.propagationStopped=true;this.finishTeamDrag(event);});
         });
-        text(editor,'Count',`已上阵 ${this.teamPetIds.length}/5　${this.formationName(this.selectedFormationCode)}`,-285,-382,300,30,15,CuteTheme.caramel,'left',true);
+        text(editor,'Count',`已上阵 ${this.teamPetIds.length}/5　${this.formationName(this.selectedFormationCode)}`,-145,-382,300,30,15,CuteTheme.caramel,'left',true);
         button(editor,'Cancel','取消修改',105,-382,140,50,()=>this.cancelTeamEditing(),{fill:CuteTheme.paperWarm,fontSize:15,radius:22});
         button(editor,'Save','保存阵容',245,-382,140,50,()=>void this.saveTeam(),{icon:'✓',fill:CuteTheme.honey,fontSize:15,radius:22,disabled:this.teamPetIds.length!==5||this.teamSlotAssignments.filter(Boolean).length!==5||this.busy.has('team:save')});
     }

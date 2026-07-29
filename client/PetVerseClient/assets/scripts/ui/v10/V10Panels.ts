@@ -30,12 +30,12 @@ export function renderFormationPanel(
     selectedCode: string,
     actions: FormationPanelActions,
 ) {
-    const page = panel(root, 'FormationPageV10', 0, 0, 692, 920, new Color(245, 250, 229, 255), 38, true, CuteTheme.caramelSoft, 4);
+    const page = panel(root, 'FormationPageV10', 0, 0, 672, 920, new Color(245, 250, 229, 255), 38, true, CuteTheme.caramelSoft, 4);
     headingTag(page, 'Title', '五宠阵法', -235, 400, 150, CuteTheme.paperWarm);
     button(page, 'Back', '返回', 245, 400, 108, 44, actions.onBack, { icon: '↩', fill: CuteTheme.paperWarm, fontSize: 14, radius: 20 });
     const wallet = overview?.wallet || {};
     text(page, 'Wallet', `阵法心得 ${formatNumber(wallet.knowledge || 0)}　阵眼核心 ${formatNumber(wallet.cores || 0)}`, 0, 345, 600, 38, 17, CuteTheme.caramel, 'center', true);
-    text(page, 'Rule', '阵法最高10级；升级缓慢积累，不形成竞技场碾压。', -105, 306, 390, 32, 13, CuteTheme.muted, 'left', true);
+    text(page, 'Rule', '阵法最高10级；升级缓慢积累，不形成竞技场碾压。', -92, 306, 410, 32, 13, CuteTheme.muted, 'left', true);
     button(page, 'EditTeam', '编辑五宠站位', 215, 306, 174, 44, actions.onEditTeam, { icon: '✎', fill: CuteTheme.mint, fontSize: 14, radius: 20 });
 
     const formations = Array.isArray(overview?.formations) ? overview.formations : [];
@@ -47,11 +47,11 @@ export function renderFormationPanel(
         const y = 215 - index * 124;
         const card = panel(page, `Formation_${item?.code}`, 0, y, 624, 110, selected ? new Color(226, 246, 216, 255) : CuteTheme.paper, 25, false, selected ? CuteTheme.mintDark : CuteTheme.caramelSoft, selected ? 4 : 2);
         text(card, 'Icon', item?.icon || FORMATION_ICON[String(item?.code)] || '✦', -270, 10, 54, 54, 34, CuteTheme.caramel, 'center', true);
-        text(card, 'Name', `${item?.name || item?.code}　Lv.${item?.level || 1}/10`, -228, 29, 220, 31, 17, CuteTheme.caramel, 'left', true);
+        text(card, 'Name', `${item?.name || item?.code}　Lv.${item?.level || 1}/10`, -154, 29, 220, 31, 17, CuteTheme.caramel, 'left', true);
         const counters = Array.isArray(item?.counters) ? item.counters.map((code: string) => overview?.formations?.find((formation: any) => formation?.code === code)?.name?.split('·')[0] || code).join('、') : '';
         const ultimate = item?.ultimate || {};
         const effectSummary = `${item?.description || item?.summary || '不同站位承担不同职责'}${counters ? `\n克制 ${counters}` : ''}${ultimate?.name ? ` · 大招 ${ultimate.name}` : ''}`;
-        text(card, 'Summary', effectSummary, -228, -10, 340, 52, 13, CuteTheme.muted, 'left', false);
+        text(card, 'Summary', effectSummary, -94, -10, 340, 52, 13, CuteTheme.muted, 'left', false);
         const next = item?.nextCost;
         text(card, 'Cost', next ? `下级：${next.knowledge}心得${next.cores ? `＋${next.cores}核心` : ''}` : '已满级', 110, 28, 172, 28, 13, CuteTheme.caramel, 'center', true);
         button(card, 'Select', selected ? '使用中' : '选择', 117, -18, 104, 42, () => actions.onSelect(String(item?.code || 'dragon')), { fill: selected ? CuteTheme.mint : CuteTheme.sky, selected, fontSize: 13, radius: 18 });
