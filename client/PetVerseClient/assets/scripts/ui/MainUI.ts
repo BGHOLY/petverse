@@ -2156,7 +2156,7 @@ export class MainUI extends Component {
             this.renderWorldExploration(root);
             return;
         }
-        const frame=panel(root,'AdventurePage',0,0,692,905,new Color(151,105,62,255),32,true,new Color(104,70,42,255),4);
+        const frame=panel(root,'AdventurePage',0,0,672,905,new Color(151,105,62,255),32,true,new Color(104,70,42,255),4);
         const page=panel(frame,'AdventurePaper',0,-2,654,865,new Color(255,249,231,255),24,false,new Color(220,188,145,255),3);
         if(this.teamEditing){this.renderTeamEditor(page);return;}
         const header=panel(page,'AdventureHeader',0,376,620,92,new Color(248,239,207,255),18,true,CuteTheme.caramelSoft,3);
@@ -3000,7 +3000,7 @@ export class MainUI extends Component {
 
     private renderSettings() {
         if(!this.pageRoot)return;const root=this.pageRoot;const settings=CuteFeedback.getSettings();const audio=AudioDirector.getSettings();
-        const book=panel(root,'SettingsBook',0,0,692,905,new Color(255,250,232,255),40,true,CuteTheme.caramelSoft,4);
+        const book=panel(root,'SettingsBook',0,0,672,905,new Color(255,250,232,255),40,true,CuteTheme.caramelSoft,4);
         headingTag(book,'Title','游戏设置',-245,390,154,CuteTheme.paperWarm);
         const sound=panel(book,'Sound',0,205,630,280,new Color(238,248,230,255),28,false,CuteTheme.mintDark,2);
         headingTag(sound,'Title','音乐与音效',-210,112,170,CuteTheme.mint);
@@ -3010,7 +3010,7 @@ export class MainUI extends Component {
         text(sound,'SfxLabel','点击音效',-275,-58,110,30,15,CuteTheme.caramel,'left',true);button(sound,'SfxMinus','－',-140,-58,42,42,()=>{AudioDirector.setSettings({sfxVolume:audio.sfxVolume-.1});this.renderCurrentPage(false);},{fill:CuteTheme.paperWarm,fontSize:20,radius:18});progress(sound,'Sfx',5,-58,220,16,audio.sfxVolume,CuteTheme.sky);text(sound,'SfxValue',`${Math.round(audio.sfxVolume*100)}%`,155,-58,66,28,14,CuteTheme.caramel,'center',true);button(sound,'SfxPlus','＋',235,-58,42,42,()=>{AudioDirector.setSettings({sfxVolume:audio.sfxVolume+.1});this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:20,radius:18});
         button(sound,'Test','试听新点击声',0,-112,180,42,()=>AudioDirector.playCuteClick(),{icon:'♪',fill:CuteTheme.paperWarm,fontSize:13,radius:18});
         const visual=panel(book,'Visual',0,-30,630,190,new Color(242,238,255,255),28,false,CuteTheme.lilac,2);headingTag(visual,'Title','画面与反馈',-205,70,170,CuteTheme.lilac);this.settingToggle(visual,'Anim','界面动效',settings.animationEnabled,-90,15,()=>{CuteFeedback.setSettings({animationEnabled:!settings.animationEnabled});this.renderCurrentPage(false);});this.settingToggle(visual,'SoundCompat','旧版反馈声',settings.soundEnabled,165,15,()=>{CuteFeedback.setSettings({soundEnabled:!settings.soundEnabled});this.renderCurrentPage(false);});text(visual,'Hint','战斗、孵化和变异蛋会使用独立动画；低性能设备可关闭界面动效。',0,-58,560,40,14,CuteTheme.muted,'center',false);
-        const info=panel(book,'Info',0,-285,630,210,CuteTheme.paperWarm,28,false,CuteTheme.caramelSoft,2);headingTag(info,'Title','本版本音频',-205,78,170,CuteTheme.paperWarm);text(info,'Text','家园：萌系开朗循环音乐\n普通战斗：轻快节奏音乐\nBOSS战：更有压迫感的独立音乐\n新音效：三种随机点击、确认、错误、物理、法术、治疗、护盾',-275,-10,550,140,16,CuteTheme.caramel,'left',false);
+        const info=panel(book,'Info',0,-285,630,210,CuteTheme.paperWarm,28,false,CuteTheme.caramelSoft,2);headingTag(info,'Title','本版本音频',-205,78,170,CuteTheme.paperWarm);text(info,'Text','家园：萌系开朗循环音乐\n普通战斗：轻快节奏音乐\nBOSS战：更有压迫感的独立音乐\n新音效：三种随机点击、确认、错误、物理、法术、治疗、护盾',0,-10,550,140,16,CuteTheme.caramel,'left',false);
     }
 
     private settingToggle(

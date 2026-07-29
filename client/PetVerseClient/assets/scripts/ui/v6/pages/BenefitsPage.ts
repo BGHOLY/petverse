@@ -317,7 +317,7 @@ function renderAchievements(parent: Node, options: BenefitsPageV6Options) {
 }
 
 export function renderBenefitsPageV6(parent: Node, options: BenefitsPageV6Options) {
-    const page = panel(parent, 'BenefitPageV6', 0, -2, 692, 910, new Color(255, 248, 228, 255), 40, true, CuteTheme.caramelSoft, 4);
+    const page = panel(parent, 'BenefitPageV6', 0, -2, 672, 910, new Color(255, 248, 228, 255), 40, true, CuteTheme.caramelSoft, 4);
     TAB_DATA.forEach(([mode, title, icon], index) => {
         button(page, `BenefitTab_${mode}`, title, -252 + index * 126, 374, 116, 54, () => options.onMode(mode), {
             icon,

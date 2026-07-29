@@ -75,7 +75,7 @@ export type GuildPanelActions = {
 };
 
 export function renderGuildPanel(root: Node, data: any, actions: GuildPanelActions) {
-    const page = panel(root, 'GuildPageV10', 0, 0, 692, 920, new Color(248, 241, 226, 255), 38, true, CuteTheme.caramelSoft, 4);
+    const page = panel(root, 'GuildPageV10', 0, 0, 672, 920, new Color(248, 241, 226, 255), 38, true, CuteTheme.caramelSoft, 4);
     headingTag(page, 'Title', '萌宠公会', -235, 400, 150, CuteTheme.paperWarm);
     button(page, 'Back', '返回', 245, 400, 108, 44, actions.onBack, { icon: '↩', fill: CuteTheme.paperWarm, fontSize: 14, radius: 20 });
     if (!data?.joined) {
@@ -102,7 +102,7 @@ export function renderGuildPanel(root: Node, data: any, actions: GuildPanelActio
     const boss = data?.boss || {};
     const bossCard = panel(page, 'Boss', 0, 42, 620, 190, new Color(255, 232, 219, 255), 28, false, CuteTheme.peachDark, 2);
     headingTag(bossCard, 'BossTitle', `公会首领 · ${boss.name || '古树巢穴守卫'}`, -168, 68, 270, CuteTheme.peach);
-    text(bossCard, 'Phase', `阶段 ${boss.phase || 1}　${boss.mechanic || '护盾阶段'}`, -275, 20, 300, 30, 15, CuteTheme.caramel, 'left', true);
+    text(bossCard, 'Phase', `阶段 ${boss.phase || 1}　${boss.mechanic || '护盾阶段'}`, -120, 20, 420, 30, 15, CuteTheme.caramel, 'left', true);
     progress(bossCard, 'Hp', -5, -15, 520, 18, Number(boss.hpRate || 0), CuteTheme.peachDark);
     text(bossCard, 'HpText', `${formatNumber(boss.hp || 0)}/${formatNumber(boss.maxHp || 0)}`, 0, -47, 400, 28, 13, CuteTheme.muted, 'center', true);
     text(bossCard, 'Attempts', `今日可挑战 ${boss.attemptsAvailable || 0} 次`, -215, -76, 190, 28, 14, CuteTheme.caramel, 'left', true);
@@ -119,6 +119,6 @@ export function renderGuildPanel(root: Node, data: any, actions: GuildPanelActio
 
     const expedition = data?.expedition;
     const expCard = panel(page, 'Expedition', 0, -365, 620, 82, new Color(231, 241, 255, 255), 24, false, CuteTheme.sky, 2);
-    text(expCard, 'Info', expedition ? `协作远征进行中　剩余 ${Math.ceil(Number(expedition.remainingSeconds || 0) / 60)} 分钟` : '协作远征：派出3～5只宝宝，离线也可完成', -275, 0, 390, 44, 14, CuteTheme.caramel, 'left', false);
+    text(expCard, 'Info', expedition ? `协作远征进行中　剩余 ${Math.ceil(Number(expedition.remainingSeconds || 0) / 60)} 分钟` : '协作远征：派出3～5只宝宝，离线也可完成', -70, 0, 430, 44, 14, CuteTheme.caramel, 'left', false);
     button(expCard, 'Action', expedition ? (expedition.canClaim ? '领取' : '进行中') : '开始远征', 230, 0, 130, 44, expedition ? () => actions.onClaimExpedition(Number(expedition.id || 0)) : actions.onExpedition, { fill: CuteTheme.sky, disabled: Boolean(expedition && !expedition.canClaim), fontSize: 14, radius: 20 });
 }
