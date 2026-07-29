@@ -65,6 +65,8 @@ const topBarId = nodeId(...rootPath, 'TopBar');
 const pageRootId = nodeId(...rootPath, 'PageRoot');
 const bottomNavigationId = nodeId(...rootPath, 'BottomNavigation');
 const pageTitleId = nodeId(...rootPath, 'TopBar', 'PageTitle');
+const homePetId = nodeId(...rootPath, 'PageRoot', 'HomePage', 'StaticContent', 'HomePetArt');
+const homeNameplateId = nodeId(...rootPath, 'PageRoot', 'HomePage', 'StaticContent', 'PetNameplateArt');
 
 check(
     topBarId !== undefined && sameRect(rect(topBarId), { x: 0, y: 584, width: 720, height: 112 }),
@@ -87,6 +89,14 @@ check(
 check(
     pageTitleId !== undefined && nodeAt(pageTitleId)?._active === false,
     'The baked top-board title is not covered by a duplicate runtime page title.',
+);
+check(
+    homePetId !== undefined && rect(homePetId).x === 0 && rect(homePetId).y === -88,
+    'The home showcase pet is centered and lifted clear of the bottom navigation.',
+);
+check(
+    homeNameplateId !== undefined && rect(homeNameplateId).x === 0 && rect(homeNameplateId).y === -304,
+    'The home pet nameplate stays centered beneath the lifted showcase pet.',
 );
 
 for (const pageName of [
@@ -144,6 +154,20 @@ const mainUiSource = fs.readFileSync(path.join(
 check(
     mainUiSource.includes("'FeaturePageBackdrop'"),
     'Every non-home feature page receives a full-width warm backdrop.',
+);
+check(
+    mainUiSource.includes("'TeamQuickActions'"),
+    'Adventure team actions use a dedicated card instead of overlapping the story progress footer.',
+);
+
+const petPageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v6/pages/PetPage.ts',
+), 'utf8');
+check(
+    petPageSource.includes('const LEFT_WIDTH = 184;')
+        && petPageSource.includes('const ROSTER_CARD_GAP = 12;'),
+    'The pet roster has a distinct wider column and comfortable card spacing.',
 );
 
 const prefabSizes = {

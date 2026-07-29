@@ -1,4 +1,4 @@
-import { Color, Node } from 'cc';
+import { Color, Node, Sprite } from 'cc';
 import { CuteTheme, formatNumber, hitArea, image, panel, tag, text } from '../../cute/CuteUiKit';
 import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 import { PetListItemV6 } from './PetTypes';
@@ -10,7 +10,34 @@ export function renderPetListItemV6(parent: Node, item: PetListItemV6, onSelect:
         meta: `战力 ${formatNumber(item.power)}`,
         iconPath: item.artPath,
     }, onSelect);
-    if (prefabItem) return prefabItem;
+    if (prefabItem) {
+        const face = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+        if (face) {
+            face.color = item.selected
+                ? new Color(255, 226, 144, 255)
+                : new Color(255, 251, 236, 255);
+        }
+        if (item.selected) {
+            panel(
+                prefabItem,
+                'SelectedAccent',
+                -73,
+                0,
+                6,
+                82,
+                CuteTheme.honeyDark,
+                3,
+                false,
+                CuteTheme.transparent,
+                0,
+            );
+        }
+        if (item.teamIndex >= 0) tag(prefabItem, 'TeamBadge', `编${item.teamIndex + 1}`, 50, 38, 42, CuteTheme.mint);
+        else if (item.isMarried) tag(prefabItem, 'MarriedBadge', '已婚', 48, 38, 44, CuteTheme.peach);
+        if (item.isLocked) tag(prefabItem, 'LockBadge', '锁', -54, 41, 30, new Color(229, 218, 199, 255));
+        if (item.isMutant) tag(prefabItem, 'MutantBadge', '异', -54, -40, 30, CuteTheme.lilac);
+        return prefabItem;
+    }
 
     const card = panel(
         parent,

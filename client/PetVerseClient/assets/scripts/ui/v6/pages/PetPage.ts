@@ -19,7 +19,7 @@ import { renderPetProfilePanelV6 } from '../components/PetProfilePanel';
 import { renderPetSkillPanelV6 } from '../components/PetSkillPanel';
 import { PetPageV6Options, PetTabV6 } from '../components/PetTypes';
 
-const LEFT_WIDTH = 168;
+const LEFT_WIDTH = 184;
 const RIGHT_WIDTH = V6_PAGE_WIDTH - LEFT_WIDTH - V6_PANEL_GAP;
 const FOOTER_HEIGHT = 64;
 const MAIN_HEIGHT = V6_SAFE_CONTENT_HEIGHT - FOOTER_HEIGHT - V6_PANEL_GAP;
@@ -27,25 +27,37 @@ const LEFT_X = -V6_PAGE_WIDTH / 2 + LEFT_WIDTH / 2;
 const RIGHT_X = -V6_PAGE_WIDTH / 2 + LEFT_WIDTH + V6_PANEL_GAP + RIGHT_WIDTH / 2;
 const MAIN_Y = (FOOTER_HEIGHT + V6_PANEL_GAP) / 2;
 const ROSTER_CARD_HEIGHT = 100;
-const ROSTER_CARD_GAP = 8;
+const ROSTER_CARD_GAP = 12;
 const ROSTER_CARD_STEP = ROSTER_CARD_HEIGHT + ROSTER_CARD_GAP;
 const ROSTER_PADDING_TOP = 4;
 
 function renderPetRoster(parent: Node, options: PetPageV6Options) {
-    const roster = panel(parent, 'PetRoster', LEFT_X, MAIN_Y, LEFT_WIDTH, MAIN_HEIGHT, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
+    const roster = panel(
+        parent,
+        'PetRoster',
+        LEFT_X,
+        MAIN_Y,
+        LEFT_WIDTH,
+        MAIN_HEIGHT,
+        new Color(250, 242, 219, 252),
+        22,
+        true,
+        new Color(185, 126, 70, 245),
+        3,
+    );
     text(roster, 'Title', `宝宝 ${options.pets.length}/${options.totalPets}`, 0, MAIN_HEIGHT / 2 - 26, LEFT_WIDTH - 16, 34, 14, CuteTheme.caramel, 'center', true);
 
     const viewportHeight = MAIN_HEIGHT - 58;
     const viewport = new Node('PetRosterScrollV6');
     roster.addChild(viewport);
-    setRect(viewport, 0, -24, LEFT_WIDTH - 10, viewportHeight);
+    setRect(viewport, 0, -24, LEFT_WIDTH - 16, viewportHeight);
     const mask = viewport.addComponent(Mask);
     mask.type = Mask.Type.GRAPHICS_RECT;
 
     const content = new Node('Content');
     viewport.addChild(content);
     const contentHeight = Math.max(viewportHeight, options.pets.length * ROSTER_CARD_STEP + 12);
-    const transform = setRect(content, 0, viewportHeight / 2, LEFT_WIDTH - 10, contentHeight);
+    const transform = setRect(content, 0, viewportHeight / 2, LEFT_WIDTH - 16, contentHeight);
     transform.setAnchorPoint(0.5, 1);
     const layout = content.addComponent(Layout);
     layout.type = Layout.Type.VERTICAL;
@@ -53,7 +65,7 @@ function renderPetRoster(parent: Node, options: PetPageV6Options) {
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
     layout.paddingTop = ROSTER_PADDING_TOP;
     layout.paddingBottom = 8;
-    layout.spacingY = 8;
+    layout.spacingY = ROSTER_CARD_GAP;
     options.pets.forEach((pet) => renderPetListItemV6(content, pet, () => options.onSelectPet(pet.id)));
     layout.updateLayout();
 

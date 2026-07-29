@@ -187,12 +187,12 @@ for (const name of ['ActivityArt_newcomer', 'Activity_newcomer']) {
 }
 
 for (const [name, x, y] of [
-    ['HomePetArt', 0, -108],
-    ['PetTouchArea', 0, -108],
-    ['PetNameplateArt', 0, -324],
-    ['PetName', 0, -312],
-    ['PetMeta', 0, -337],
-    ['SwitchPet', 0, -324],
+    ['HomePetArt', 0, -88],
+    ['PetTouchArea', 0, -88],
+    ['PetNameplateArt', 0, -304],
+    ['PetName', 0, -292],
+    ['PetMeta', 0, -317],
+    ['SwitchPet', 0, -304],
 ]) {
     const id = nodeId(...homePath, name);
     const transform = transformAt(id);

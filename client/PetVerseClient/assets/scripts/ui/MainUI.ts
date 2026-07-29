@@ -2236,9 +2236,22 @@ export class MainUI extends Component {
         text(parent,'TowerPower',`队伍战力 ${formatNumber(this.teamPower())}`,222,-138,174,24,10,CuteTheme.muted,'center',true);
         button(parent,'TowerChallenge','继续挑战',222,-185,158,43,()=>{this.adventureMode='tower';this.renderCurrentPage(false);},{fill:CuteTheme.honey,fontSize:12,radius:16});
 
-        text(parent,'TeamLabel','队伍与协作',222,-380,190,24,12,CuteTheme.caramel,'center',true);
-        button(parent,'EditTeam','编队',178,-424,86,40,()=>this.beginTeamEditing(),{fill:CuteTheme.mint,fontSize:11,radius:15});
-        button(parent,'FriendShortcut','协作',272,-424,86,40,()=>{this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:11,radius:15});
+        const quickActions = panel(
+            parent,
+            'TeamQuickActions',
+            222,
+            -354,
+            190,
+            126,
+            new Color(250, 244, 222, 245),
+            18,
+            false,
+            new Color(192, 151, 96, 210),
+            2,
+        );
+        text(quickActions,'TeamLabel','队伍与协作',0,38,166,24,12,CuteTheme.caramel,'center',true);
+        button(quickActions,'EditTeam','编队',-48,-18,82,42,()=>this.beginTeamEditing(),{fill:CuteTheme.mint,fontSize:11,radius:15});
+        button(quickActions,'FriendShortcut','协作',48,-18,82,42,()=>{this.adventureMode='friend';this.renderCurrentPage(false);},{fill:CuteTheme.sky,fontSize:11,radius:15});
     }
 
     private renderAdventureRegionPage(parent:Node,region:any,world:any) {
