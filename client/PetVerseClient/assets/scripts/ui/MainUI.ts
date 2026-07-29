@@ -69,7 +69,7 @@ import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
 import { renderPetPageV6 } from './v6/pages/PetPage';
 import { instantiateDynamicListItem, preloadDynamicListPrefabs } from './prefab/DynamicListPrefabRegistry';
 import { PetAttributeViewV6, PetEquipmentSlotV6, PetTabV6 } from './v6/components/PetTypes';
-import { ShopCategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
+import { ShopCategoryV6, ShopSubcategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
 import {
     BenefitModeV6,
     TaskCategoryV6,
@@ -292,6 +292,7 @@ export class MainUI extends Component {
     private capacitySummary: any = null;
 
     private shopCategory: ShopCategoryV6 = 'featured';
+    private shopSubcategory: ShopSubcategoryV6 = 'all';
     private selectedShopItemId = 0;
     private shopBuyCount = 1;
     private shopPurchaseOpen = false;
@@ -1681,6 +1682,7 @@ export class MainUI extends Component {
         const shopItems = this.filteredShopItems();
         renderShopPageV6(this.pageRoot, {
             category: this.shopCategory,
+            subcategory: this.shopSubcategory,
             items: shopItems,
             countLabel: this.shopCategory === 'featured'
                 ? `商店共 ${shopItems.length} 件`
@@ -1691,7 +1693,14 @@ export class MainUI extends Component {
             onCategory: (category) => {
                 this.scrollOffsets.delete(`shop|${category}::ShopItemsScrollV6`);
                 this.shopCategory = category;
+                this.shopSubcategory = 'all';
                 this.shopBuyCount = 1;
+                this.ensureSelectedShopItem();
+                this.renderCurrentPage(false);
+            },
+            onSubcategory: (subcategory) => {
+                this.shopSubcategory = subcategory;
+                this.scrollOffsets.delete(scrollKey);
                 this.ensureSelectedShopItem();
                 this.renderCurrentPage(false);
             },
@@ -4541,7 +4550,23 @@ export class MainUI extends Component {
     private filteredShopItems() {
         const items = Array.isArray((GameStore as any).shopItems) ? (GameStore as any).shopItems : [];
         if (this.shopCategory === 'featured') return items;
-        if (this.shopCategory === 'skills') return items.filter((item) => this.isSkillBook(item));
+        if (this.shopCategory === 'skills') {
+            const skills = items.filter((item) => this.isSkillBook(item));
+            if (this.shopSubcategory === 'all') return skills;
+            return skills.filter((item) => {
+                const value = `${item?.name || ''} ${item?.itemCode || ''} ${item?.effect || ''} ${item?.description || ''}`.toLowerCase();
+                if (this.shopSubcategory === 'damage') {
+                    return /attack|damage|crit|combo|chase|fire|ice|lightning|physical|magic|攻击|伤害|暴击|连击|追击/.test(value);
+                }
+                if (this.shopSubcategory === 'survival') {
+                    return /defen|shield|heal|life|hp|resist|revive|防御|护盾|治疗|生命|复活/.test(value);
+                }
+                if (this.shopSubcategory === 'control') {
+                    return /control|stun|freeze|silence|poison|slow|控制|眩晕|冰冻|沉默|中毒|减速/.test(value);
+                }
+                return /support|energy|speed|clean|buff|辅助|能量|速度|净化|增益/.test(value);
+            });
+        }
         if (this.shopCategory === 'hatch') return items.filter((item) => {
             const value = `${item?.type || ''} ${item?.itemCode || ''} ${item?.effect || ''}`.toLowerCase();
             return /egg|hatch|incubat|accelerat/.test(value);

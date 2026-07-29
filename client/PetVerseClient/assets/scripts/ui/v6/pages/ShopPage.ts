@@ -25,9 +25,10 @@ import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { UiIconName } from '../../v2/AppRoutes';
 import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 import { createV6PageShell } from '../AppShell';
-import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
+import { V6_PANEL_GAP, V6_PAGE_WIDTH, V6_SAFE_CONTENT_HEIGHT, V6_SMALL_GAP } from '../UiMetrics';
 
 export type ShopCategoryV6 = 'featured' | 'nurture' | 'skills' | 'materials' | 'hatch' | 'special';
+export type ShopSubcategoryV6 = 'all' | 'damage' | 'survival' | 'control' | 'support';
 
 export type ProductVisualV6 = {
     kind: 'art' | 'icon';
@@ -36,11 +37,13 @@ export type ProductVisualV6 = {
 
 export type ShopPageV6Options = {
     category: ShopCategoryV6;
+    subcategory: ShopSubcategoryV6;
     items: any[];
     selectedItemId: number;
     scrollKey: string;
     initialOffset?: Vec2;
     onCategory: (category: ShopCategoryV6) => void;
+    onSubcategory: (subcategory: ShopSubcategoryV6) => void;
     onRefresh: () => void;
     onProduct: (item: any) => void;
     ownedCount: (item: any) => number;
@@ -56,6 +59,14 @@ const CATEGORY_ROWS: Array<[ShopCategoryV6, string, UiIconName]> = [
     ['materials', '培养材料', 'inventory'],
     ['hatch', '孵化用品', 'hatchery'],
     ['special', '限定珍藏', 'collection'],
+];
+
+const SKILL_FILTERS: Array<[ShopSubcategoryV6, string]> = [
+    ['all', '全部'],
+    ['damage', '输出'],
+    ['survival', '生存'],
+    ['control', '控制'],
+    ['support', '辅助'],
 ];
 
 function currencyType(item: any) {
@@ -81,7 +92,11 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
     const prefabItem = instantiateDynamicListItem('ShopItem', parent, {
         name: safeName(item?.name, item?.itemCode || '商品'),
         value: `${currencyType(item) === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}`,
-        meta: soldOut ? '已售罄' : `拥有 ${options.ownedCount(item)}`,
+        meta: soldOut
+            ? '已售罄'
+            : insufficient
+                ? `${currencyType(item) === 'diamond' ? '钻石' : '金币'}不足`
+                : `拥有 ${options.ownedCount(item)}`,
         iconPath: visual.kind === 'art' ? visual.value : undefined,
     }, () => options.onProduct(item));
     if (prefabItem) return prefabItem;
@@ -91,7 +106,7 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
         `ShopProduct_${id}`,
         0,
         0,
-        254,
+        250,
         154,
         selected ? new Color(255, 232, 170, 255) : new Color(255, 251, 236, 255),
         20,
@@ -113,7 +128,7 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
     const currency = currencyType(item);
     drawUiIcon(priceBar, 'Currency', currency, -54, 0, 25, currency === 'diamond' ? new Color(76, 174, 213, 255) : new Color(216, 157, 45, 255));
     text(priceBar, 'Price', formatNumber(item?.price || 0), 18, 0, 104, 34, 17, CuteTheme.caramel, 'center', true);
-    hitArea(card, 'OpenProduct', 0, 0, 254, 154, () => options.onProduct(item));
+    hitArea(card, 'OpenProduct', 0, 0, 250, 154, () => options.onProduct(item));
     return card;
 }
 
@@ -144,13 +159,13 @@ function createProductScroll(parent: Node, options: ShopPageV6Options, viewportW
     layout.startAxis = Layout.AxisDirection.HORIZONTAL;
     layout.horizontalDirection = Layout.HorizontalDirection.LEFT_TO_RIGHT;
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.cellSize = new Size(254, 154);
-    layout.paddingLeft = 6;
-    layout.paddingRight = 6;
-    layout.paddingTop = 6;
-    layout.paddingBottom = 6;
-    layout.spacingX = 10;
-    layout.spacingY = 10;
+    layout.cellSize = new Size(250, 154);
+    layout.paddingLeft = 8;
+    layout.paddingRight = 8;
+    layout.paddingTop = 8;
+    layout.paddingBottom = 16;
+    layout.spacingX = 12;
+    layout.spacingY = 12;
 
     options.items.forEach((item, index) => createProductCard(grid, item, index, options));
     layout.updateLayout();
@@ -196,18 +211,18 @@ function createProductScroll(parent: Node, options: ShopPageV6Options, viewportW
 export function renderShopPageV6(parent: Node, options: ShopPageV6Options) {
     const shell = createV6PageShell(parent, 'ShopLayoutV6');
     const page = shell.content;
-    const headerHeight = 90;
-    const bodyHeight = V6_CONTENT_HEIGHT - headerHeight - V6_PANEL_GAP;
+    const headerHeight = 86;
+    const bodyHeight = V6_SAFE_CONTENT_HEIGHT - headerHeight - V6_PANEL_GAP;
     const bodyY = -headerHeight / 2 - V6_PANEL_GAP / 2;
 
-    const header = panel(page, 'ShopInfoBar', 0, V6_CONTENT_HEIGHT / 2 - headerHeight / 2, V6_PAGE_WIDTH, headerHeight, new Color(255, 249, 229, 252), 24, true, new Color(198, 145, 85, 235), 2);
+    const header = panel(page, 'ShopInfoBar', 0, V6_SAFE_CONTENT_HEIGHT / 2 - headerHeight / 2, V6_PAGE_WIDTH, headerHeight, new Color(255, 249, 229, 252), 24, true, new Color(198, 145, 85, 235), 2);
     drawUiIcon(header, 'ShopIcon', 'shop', -302, 0, 48, CuteTheme.honeyDark);
     text(header, 'Title', '每日精选', -262, 17, 190, 34, 24, CuteTheme.caramel, 'left', true);
     text(header, 'Subtitle', '挑选真正能帮助宝宝成长的物资', -262, -19, 280, 28, 14, CuteTheme.muted, 'left', false);
     text(header, 'RefreshTime', '每日 05:00 更新', 112, 16, 150, 28, 14, CuteTheme.muted, 'center', true);
     button(header, 'Refresh', '刷新货架', 242, -16, 130, 44, options.onRefresh, { fill: CuteTheme.honey, fontSize: 14, radius: 18 });
 
-    const railWidth = 120;
+    const railWidth = 112;
     const productsWidth = V6_PAGE_WIDTH - railWidth - V6_PANEL_GAP;
     const railX = -V6_PAGE_WIDTH / 2 + railWidth / 2;
     const productsX = V6_PAGE_WIDTH / 2 - productsWidth / 2;
@@ -238,8 +253,35 @@ export function renderShopPageV6(parent: Node, options: ShopPageV6Options) {
     text(products, 'Title', options.category === 'featured' ? '全部精选' : CATEGORY_ROWS.find(([key]) => key === options.category)?.[1] || '商品列表', -productsWidth / 2 + 22, bodyHeight / 2 - 34, 210, 32, 19, CuteTheme.caramel, 'left', true);
     text(products, 'Count', options.countLabel || `${options.items.length} 件 · 上下滑动查看更多`, productsWidth / 2 - 22, bodyHeight / 2 - 34, 260, 30, 13, CuteTheme.muted, 'right', false);
 
+    let scrollTopInset = 76;
+    if (options.category === 'skills') {
+        const filterBar = panel(products, 'SkillFilterBar', 0, bodyHeight / 2 - 82, productsWidth - 32, 48, new Color(250, 242, 219, 245), 16, false, CuteTheme.transparent, 0);
+        const chipWidth = 88;
+        const totalWidth = SKILL_FILTERS.length * chipWidth + (SKILL_FILTERS.length - 1) * V6_SMALL_GAP;
+        SKILL_FILTERS.forEach(([key, label], index) => {
+            button(
+                filterBar,
+                `SkillFilter_${key}`,
+                label,
+                -totalWidth / 2 + chipWidth / 2 + index * (chipWidth + V6_SMALL_GAP),
+                0,
+                chipWidth,
+                36,
+                () => options.onSubcategory(key),
+                {
+                    selected: options.subcategory === key,
+                    fill: options.subcategory === key ? CuteTheme.honey : new Color(255, 252, 239, 245),
+                    fontSize: 13,
+                    radius: 14,
+                },
+            );
+        });
+        scrollTopInset = 126;
+    }
+
     if (options.items.length) {
-        createProductScroll(products, options, productsWidth - 16, bodyHeight - 76);
+        const scroll = createProductScroll(products, options, productsWidth - 16, bodyHeight - scrollTopInset);
+        scroll.node.setPosition(0, -28 - (scrollTopInset - 76) / 2);
     } else {
         text(products, 'Empty', '当前分类暂时没有商品\n刷新货架后再来看看吧', 0, 0, productsWidth - 70, 100, 19, CuteTheme.muted, 'center', true);
     }
