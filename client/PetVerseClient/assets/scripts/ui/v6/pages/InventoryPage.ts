@@ -107,14 +107,19 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
         meta: categoryLabel(category),
         iconPath: visual.kind === 'art' ? visual.value : undefined,
     }, () => options.onItem(item));
-    if (prefabItem) return prefabItem;
+    if (prefabItem) {
+        // Enforce the compact runtime footprint even when Creator still has an older
+        // imported copy of the Prefab in its asset cache.
+        setRect(prefabItem, 0, 0, 150, 134);
+        return prefabItem;
+    }
 
     const card = panel(
         parent,
         `InventoryItem_${code}`,
         0,
         0,
-        154,
+        150,
         134,
         selected ? new Color(255, 232, 170, 255) : new Color(255, 251, 236, 255),
         18,
@@ -130,7 +135,7 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
     text(card, 'Quantity', category === 'equipment'
         ? (Number(item?.equippedPetId || 0) > 0 ? '已装备' : '可装备')
         : `×${Number(item?.quantity || 0)}`, 43, -50, 68, 24, 12, CuteTheme.caramel, 'center', true);
-    hitArea(card, 'OpenItem', 0, 0, 154, 134, () => options.onItem(item));
+    hitArea(card, 'OpenItem', 0, 0, 150, 134, () => options.onItem(item));
 }
 
 function createItemScroll(parent: Node, options: InventoryPageV6Options, width: number, height: number) {
@@ -160,9 +165,10 @@ function createItemScroll(parent: Node, options: InventoryPageV6Options, width: 
     layout.startAxis = Layout.AxisDirection.HORIZONTAL;
     layout.horizontalDirection = Layout.HorizontalDirection.LEFT_TO_RIGHT;
     layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.cellSize = new Size(154, 134);
-    layout.paddingLeft = 12;
-    layout.paddingRight = 12;
+    layout.cellSize = new Size(150, 134);
+    // Leave spare pixels so Cocos Layout cannot wrap the fourth card from rounding.
+    layout.paddingLeft = 8;
+    layout.paddingRight = 8;
     layout.paddingTop = 6;
     layout.paddingBottom = 6;
     layout.spacingX = 8;

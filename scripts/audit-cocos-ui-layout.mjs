@@ -134,7 +134,7 @@ check(
 );
 
 const prefabSizes = {
-    InventoryItem: [154, 134],
+    InventoryItem: [150, 134],
     ShopItem: [250, 154],
     HatcheryEggItem: [154, 132],
     SkillSlotItem: [438, 74],
