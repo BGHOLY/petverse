@@ -1,8 +1,17 @@
 import { Color, Node } from 'cc';
 import { CuteTheme, formatNumber, hitArea, image, panel, tag, text } from '../../cute/CuteUiKit';
+import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 import { PetListItemV6 } from './PetTypes';
 
 export function renderPetListItemV6(parent: Node, item: PetListItemV6, onSelect: () => void) {
+    const prefabItem = instantiateDynamicListItem('PetListItem', parent, {
+        name: item.name,
+        value: `Lv.${item.level}`,
+        meta: `战力 ${formatNumber(item.power)}`,
+        iconPath: item.artPath,
+    }, onSelect);
+    if (prefabItem) return prefabItem;
+
     const card = panel(
         parent,
         `PetListItem_${item.id}`,

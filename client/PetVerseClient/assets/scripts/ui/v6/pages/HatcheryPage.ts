@@ -24,6 +24,7 @@ import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { getEggArtPath, getEggDisplayName } from '../../v10/EggArtRegistry';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PAGE_WIDTH, V6_PANEL_GAP } from '../UiMetrics';
+import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 
 export type HatcheryEggFilterV6 = 'all' | 'normal' | 'rare' | 'mutant';
 export type HatcheryEggSortV6 = 'rarity' | 'created' | 'hatchTime';
@@ -114,6 +115,14 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
 function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryPageV6Options) {
     const rarity = Math.max(1, Math.min(6, Number(egg?.rarityPotential || 1)));
     const selected = Number(egg?.id || 0) === Number(options.selectedEggId || 0);
+    const prefabItem = instantiateDynamicListItem('HatcheryEggItem', parent, {
+        name: getEggDisplayName(egg),
+        value: `${rarity}★${egg?.isMutant ? ' · 变异' : ''}`,
+        meta: `父母 ${parentNames(egg)}`,
+        iconPath: getEggArtPath(egg),
+    }, () => options.onChooseEgg(egg));
+    if (prefabItem) return prefabItem;
+
     const card = panel(
         parent,
         `WarehouseEgg_${egg?.id || index}`,

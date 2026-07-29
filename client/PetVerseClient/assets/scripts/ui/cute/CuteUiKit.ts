@@ -516,7 +516,7 @@ export function image(
 
     const apply = (asset: SpriteFrame | null) => {
         if (!asset || !spriteNode.isValid) return;
-        if (fallbackNode?.isValid) fallbackNode.active = false;
+        if (fallbackNode?.node?.isValid) fallbackNode.node.active = false;
         sprite.spriteFrame = asset;
         sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         setRect(spriteNode, 0, 0, width - 8, height - 8);

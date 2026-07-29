@@ -1,15 +1,18 @@
 import {
     _decorator,
     BlockInputEvents,
+    Button,
     Color,
     Component,
     Enum,
     find,
     game,
     Game,
+    Label,
     Mask,
     Node,
     ScrollView,
+    Sprite,
     UIOpacity,
     UITransform,
     Vec2,
@@ -20,6 +23,7 @@ import {
 import { EDITOR } from 'cc/env';
 import GameStore from '../data/GameStore';
 import ApiClient from '../network/ApiClient';
+import PanelManager from '../manager/PanelManager';
 import { ToastManager } from './ToastManager';
 import {
     DESIGN_HEIGHT,
@@ -39,6 +43,7 @@ import {
     setRect,
     tag,
     text,
+    loadSpriteFrameResource,
 } from './cute/CuteUiKit';
 import CuteFeedback, { ResolutionPreset } from './cute/CuteFeedback';
 import CuteGuideState, { CuteGuideStep } from './cute/CuteGuide';
@@ -55,13 +60,14 @@ import { renderFormationPanel, renderGuildPanel } from './v10/V10Panels';
 import { AppRouter } from './v2/AppRouter';
 import { isMainPage, mainTabForPage, PageName } from './v2/AppRoutes';
 import { resolveAppShell, resolvePageContainer } from './v2/AppShell';
-import { drawUiIcon, renderBottomNavigation } from './v2/HandPaintedUi';
+import { drawUiIcon } from './v2/HandPaintedUi';
 import { renderMorePage } from './v2/MorePage';
-import { HomeActivity, HomeShortcut, renderHomePage } from './v2/pages/HomePage';
+import { HomeActivity, HomeShortcut } from './v2/pages/HomePage';
 import { renderInventoryDetailModalV6 } from './v6/pages/InventoryDetailModal';
 import { InventoryCategoryV6, InventoryItemCategoryV6, renderInventoryPageV6 } from './v6/pages/InventoryPage';
 import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
 import { renderPetPageV6 } from './v6/pages/PetPage';
+import { instantiateDynamicListItem, preloadDynamicListPrefabs } from './prefab/DynamicListPrefabRegistry';
 import { PetAttributeViewV6, PetEquipmentSlotV6, PetTabV6 } from './v6/components/PetTypes';
 import { ShopCategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
 import {
@@ -70,7 +76,7 @@ import {
     renderBenefitsPageV6,
 } from './v6/pages/BenefitsPage';
 
-const { ccclass, executeInEditMode, property } = _decorator;
+const { ccclass, property } = _decorator;
 
 type AptitudeView = {
     hp: number;
@@ -101,7 +107,6 @@ enum EditorPreviewPage {
 Enum(EditorPreviewPage);
 
 @ccclass('MainUI')
-@executeInEditMode(true)
 export class MainUI extends Component {
     static instance: MainUI | null = null;
 
@@ -111,45 +116,78 @@ export class MainUI extends Component {
     @property({ type: EditorPreviewPage, displayName: '编辑器预览页面', tooltip: '在 Cocos 编辑器中切换需要微调的页面。' })
     editorPreviewPage = EditorPreviewPage.Home;
 
-    @property({ displayName: '页面整体 X', tooltip: '所有页面内容的水平微调。' })
-    pageContentOffsetX = 0;
-
-    @property({ displayName: '页面整体 Y', tooltip: '所有页面内容的垂直微调。' })
-    pageContentOffsetY = 0;
-
-    @property({ displayName: '页面整体缩放', tooltip: '建议保持在 0.95 至 1.02。' })
-    pageContentScale = 1;
-
-    @property({ displayName: '宠物页偏移' })
-    petPageOffset = new Vec2(0, 0);
-
-    @property({ displayName: '宠物页缩放' })
-    petPageScale = 1;
-
-    @property({ displayName: '商店页偏移' })
-    shopPageOffset = new Vec2(0, 0);
-
-    @property({ displayName: '商店页缩放' })
-    shopPageScale = 1;
-
-    @property({ displayName: '背包页偏移' })
-    inventoryPageOffset = new Vec2(0, 0);
-
-    @property({ displayName: '背包页缩放' })
-    inventoryPageScale = 1;
-
-    @property({ displayName: '孵化室偏移' })
-    hatcheryPageOffset = new Vec2(0, 0);
-
-    @property({ displayName: '孵化室缩放' })
-    hatcheryPageScale = 1;
 
     private canvas: Node | null = null;
+    private panelManager: PanelManager | null = null;
+
+    @property({ type: Node, displayName: 'UI根节点' })
     private root: Node | null = null;
+
+    @property({ type: Node, displayName: '顶部栏' })
     private topBar: Node | null = null;
+
+    @property({ type: Node, displayName: '页面容器' })
     private pageHost: Node | null = null;
+
     private pageRoot: Node | null = null;
+
+    @property({ type: Node, displayName: '底部导航' })
     private bottomNav: Node | null = null;
+
+    @property({ type: Node, displayName: '编辑器首页节点' })
+    private homePage: Node | null = null;
+
+    @property({ type: Label, displayName: '玩家昵称' })
+    private nicknameLabel: Label | null = null;
+
+    @property({ type: Label, displayName: '玩家等级' })
+    private levelLabel: Label | null = null;
+
+    @property({ type: Label, displayName: 'VIP' })
+    private vipLabel: Label | null = null;
+
+    @property({ type: Label, displayName: '金币' })
+    private goldLabel: Label | null = null;
+
+    @property({ type: Label, displayName: '钻石' })
+    private diamondLabel: Label | null = null;
+
+    @property({ type: Button, displayName: '金币按钮' })
+    private goldButton: Button | null = null;
+
+    @property({ type: Button, displayName: '钻石按钮' })
+    private diamondButton: Button | null = null;
+
+    @property({ type: Button, displayName: '返回按钮' })
+    private backButton: Button | null = null;
+
+    @property({ type: Button, displayName: '断线重连按钮' })
+    private reconnectButton: Button | null = null;
+
+    @property({ type: Sprite, displayName: '首页宠物图片' })
+    private homePetSprite: Sprite | null = null;
+
+    @property({ type: Label, displayName: '首页宠物名称' })
+    private homePetNameLabel: Label | null = null;
+
+    @property({ type: Label, displayName: '首页宠物信息' })
+    private homePetMetaLabel: Label | null = null;
+
+    @property({ type: Button, displayName: '切换展示宠物' })
+    private switchPetButton: Button | null = null;
+
+    @property({ type: Button, displayName: '首页宠物触摸区' })
+    private petTouchButton: Button | null = null;
+
+    @property({ type: [Button], displayName: '首页活动按钮（签到/新人/每日/活动）' })
+    private homeActivityButtons: Button[] = [];
+
+    @property({ type: [Button], displayName: '首页快捷按钮（冒险/孵化/阵法）' })
+    private homeShortcutButtons: Button[] = [];
+
+    @property({ type: [Button], displayName: '底部导航按钮（首页/宠物/冒险/商店/更多）' })
+    private navigationButtons: Button[] = [];
+
     private toastLayer: Node | null = null;
     private loadingLayer: Node | null = null;
     private drawerLayer: Node | null = null;
@@ -276,8 +314,6 @@ export class MainUI extends Component {
     private countdownAccumulator = 0;
     private toastToken = 0;
     private unsubscribeStore: (() => void) | null = null;
-    private editorLayoutSignature = '';
-
     onLoad() {
         MainUI.instance = this;
         try { profiler.hideStats(); } catch {}
@@ -295,6 +331,9 @@ export class MainUI extends Component {
         if (EDITOR) this.currentPage = this.editorPreviewPageName();
 
         this.buildShell();
+        void preloadDynamicListPrefabs().then(() => {
+            if (this.node.isValid) this.renderCurrentPage(false);
+        });
         if (this.root) {
             CuteFeedback.initialize(this.root);
             AudioDirector.initialize(this.root);
@@ -327,22 +366,6 @@ export class MainUI extends Component {
     }
 
     update(dt: number) {
-        if (EDITOR) {
-            const signature = [
-                this.editorPreviewPage, this.pageContentOffsetX, this.pageContentOffsetY, this.pageContentScale,
-                this.petPageOffset.x, this.petPageOffset.y, this.petPageScale,
-                this.shopPageOffset.x, this.shopPageOffset.y, this.shopPageScale,
-                this.inventoryPageOffset.x, this.inventoryPageOffset.y, this.inventoryPageScale,
-                this.hatcheryPageOffset.x, this.hatcheryPageOffset.y, this.hatcheryPageScale,
-            ].join(':');
-            if (signature !== this.editorLayoutSignature) {
-                this.editorLayoutSignature = signature;
-                this.currentPage = this.editorPreviewPageName();
-                this.renderTopBar();
-                this.renderBottomNav();
-                this.renderCurrentPage(false);
-            }
-        }
         this.countdownAccumulator += dt;
         if (this.countdownAccumulator < 1) return;
         this.countdownAccumulator = 0;
@@ -356,12 +379,6 @@ export class MainUI extends Component {
             }
         }
         if (changed && this.currentPage === 'hatchery') this.renderCurrentPage(false);
-    }
-
-    lateUpdate() {
-        if (this.root && this.canvas) {
-            this.root.setSiblingIndex(Math.max(0, this.canvas.children.length - 1));
-        }
     }
 
     public showHome() { this.showPage('home'); }
@@ -745,11 +762,12 @@ export class MainUI extends Component {
         const canvas = find('Canvas') || this.node.parent || this.node;
         this.canvas = canvas;
         const shell = resolveAppShell(canvas);
-        this.root = shell.root;
-        this.topBar = shell.topBar;
-        this.pageHost = shell.pageRoot;
+        this.panelManager = this.node.getComponent(PanelManager);
+        this.root ||= shell.root;
+        this.topBar ||= shell.topBar;
+        this.pageHost ||= shell.pageRoot;
         this.pageRoot = resolvePageContainer(shell.pageRoot, this.currentPage);
-        this.bottomNav = shell.bottomNavigation;
+        this.bottomNav ||= shell.bottomNavigation;
         this.drawerLayer = shell.drawerLayer;
         this.modalLayer = shell.modalLayer;
         this.utilityLayer = shell.utilityLayer;
@@ -758,24 +776,109 @@ export class MainUI extends Component {
         this.guideLayer = shell.guideLayer;
         this.toastLayer = shell.toastLayer;
         this.loadingLayer = shell.loadingLayer;
-
-        clearNode(shell.globalBackground);
-        this.buildBackground(shell.globalBackground);
+        this.bindEditorNodes();
     }
 
-    private buildBackground(root: Node) {
-        const background = panel(root, 'Background', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(86, 56, 35, 255), 0, false, CuteTheme.woodDark, 0);
-        panel(background, 'OuterWoodFrame', 0, 0, 710, 1270, new Color(192, 132, 76, 255), 18, false, new Color(111, 70, 40, 255), 5);
-        panel(background, 'InnerPaper', 0, -4, 690, 1240, new Color(255, 247, 223, 255), 15, false, new Color(245, 212, 157, 255), 3);
+    /**
+     * Inspector references are authoritative. The direct-child lookup is only a
+     * compatibility fallback for scenes saved before these properties existed;
+     * it never changes a transform or creates a fixed UI node.
+     */
+    private bindEditorNodes() {
+        const directNode = (parent: Node | null, name: string) => parent?.getChildByName(name) || null;
+        const directComponent = <T extends Component>(
+            current: T | null,
+            parent: Node | null,
+            name: string,
+            component: new (...args: any[]) => T,
+        ) => current || directNode(parent, name)?.getComponent(component) || null;
 
-        const topWood = panel(background, 'TopWood', 0, 575, DESIGN_WIDTH, 130, new Color(222, 171, 111, 255), 0, false, CuteTheme.woodDark, 0);
-        for (let i = 0; i < 8; i += 1) {
-            panel(topWood, `WoodLine${i}`, -315 + i * 90, 0, 4, 130, new Color(170, 112, 64, 38), 0, false, CuteTheme.transparent, 0);
+        this.homePage ||= directNode(this.pageHost, 'HomePage');
+        this.nicknameLabel = directComponent(this.nicknameLabel, this.topBar, 'Nickname', Label);
+        this.levelLabel = directComponent(this.levelLabel, this.topBar, 'Level', Label);
+        this.vipLabel = directComponent(this.vipLabel, this.topBar, 'Vip', Label);
+        this.goldLabel = directComponent(this.goldLabel, this.topBar, 'GoldValue', Label);
+        this.diamondLabel = directComponent(this.diamondLabel, this.topBar, 'DiamondValue', Label);
+        this.goldButton = directComponent(this.goldButton, this.topBar, 'Gold', Button);
+        this.diamondButton = directComponent(this.diamondButton, this.topBar, 'Diamond', Button);
+        this.backButton = directComponent(this.backButton, this.topBar, 'BackPage', Button);
+        this.reconnectButton = directComponent(this.reconnectButton, this.topBar, 'Reconnect', Button);
+
+        this.homePetSprite = directComponent(this.homePetSprite, this.homePage, 'HomePetArt', Sprite);
+        this.homePetNameLabel = directComponent(this.homePetNameLabel, this.homePage, 'PetName', Label);
+        this.homePetMetaLabel = directComponent(this.homePetMetaLabel, this.homePage, 'PetMeta', Label);
+        this.switchPetButton = directComponent(this.switchPetButton, this.homePage, 'SwitchPet', Button);
+        this.petTouchButton = directComponent(this.petTouchButton, this.homePage, 'PetTouchArea', Button);
+
+        if (!this.homeActivityButtons.length) {
+            this.homeActivityButtons = ['sign', 'newcomer', 'daily', 'events']
+                .map((key) => directComponent(null, this.homePage, `Activity_${key}`, Button))
+                .filter((item): item is Button => Boolean(item));
+        }
+        if (!this.homeShortcutButtons.length) {
+            this.homeShortcutButtons = ['adventure', 'hatchery', 'formation']
+                .map((key) => directComponent(null, this.homePage, `Shortcut_${key}`, Button))
+                .filter((item): item is Button => Boolean(item));
+        }
+        if (!this.navigationButtons.length) {
+            this.navigationButtons = ['home', 'pet', 'adventure', 'shop', 'more']
+                .map((key) => directComponent(null, this.bottomNav, `Tab_${key}`, Button))
+                .filter((item): item is Button => Boolean(item));
         }
 
-        for (let i = 0; i < 7; i += 1) {
-            panel(background, `PaperRule${i}`, 0, 435 - i * 145, 670, 2, new Color(193, 137, 80, 24), 0, false, CuteTheme.transparent, 0);
-        }
+        this.bindFixedButton(this.goldButton, this.openShopFromFixedUi);
+        this.bindFixedButton(this.diamondButton, this.openShopFromFixedUi);
+        this.bindFixedButton(this.backButton, this.goBackFromFixedUi);
+        this.bindFixedButton(this.reconnectButton, this.reconnectFromFixedUi);
+        this.bindFixedButton(this.switchPetButton, this.openPetPickerFromFixedUi);
+        this.bindFixedButton(this.petTouchButton, this.openPetPickerFromFixedUi);
+
+        const activities: HomeActivity[] = ['sign', 'newcomer', 'daily', 'events'];
+        this.homeActivityButtons.forEach((buttonComponent, index) => {
+            const activity = activities[index];
+            if (activity) this.bindFixedButton(buttonComponent, () => this.openHomeActivity(activity));
+        });
+        const shortcuts: HomeShortcut[] = ['adventure', 'hatchery', 'formation'];
+        this.homeShortcutButtons.forEach((buttonComponent, index) => {
+            const shortcut = shortcuts[index];
+            if (shortcut) this.bindFixedButton(buttonComponent, () => this.openHomeShortcut(shortcut));
+        });
+        const pages: PageName[] = ['home', 'pet', 'adventure', 'shop', 'more'];
+        this.navigationButtons.forEach((buttonComponent, index) => {
+            const page = pages[index];
+            if (page) this.bindFixedButton(buttonComponent, () => this.showPage(page));
+        });
+    }
+
+    private bindFixedButton(buttonComponent: Button | null, handler: () => void) {
+        if (!buttonComponent?.node?.isValid) return;
+        const node = buttonComponent.node;
+        const previous = (node as any).__petVerseFixedUiHandler as (() => void) | undefined;
+        if (previous) node.off(Button.EventType.CLICK, previous);
+        (node as any).__petVerseFixedUiHandler = handler;
+        node.on(Button.EventType.CLICK, handler);
+    }
+
+    private openShopFromFixedUi = () => this.showPage('shop');
+    private goBackFromFixedUi = () => this.goBackPage();
+    private reconnectFromFixedUi = () => { void this.bootstrap(); };
+    private openPetPickerFromFixedUi = () => this.openHomePetPicker();
+
+    private openHomeActivity(activity: HomeActivity) {
+        const modes: Record<HomeActivity, typeof this.benefitMode> = {
+            sign: 'sign',
+            newcomer: 'newcomer',
+            daily: 'tasks',
+            events: 'activities',
+        };
+        this.benefitMode = modes[activity];
+        this.showPage('benefits');
+    }
+
+    private openHomeShortcut(shortcut: HomeShortcut) {
+        if (shortcut === 'adventure') this.showPage('adventure');
+        else if (shortcut === 'hatchery') this.showPage('hatchery');
+        else this.showPage('formation');
     }
 
     private refreshAllVisuals() {
@@ -791,114 +894,44 @@ export class MainUI extends Component {
 
     private renderTopBar() {
         if (!this.topBar) return;
-        clearNode(this.topBar);
-
-        if (this.currentPage === 'home' || this.currentPage === 'adventure') {
-            image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -294, 2, 82, 82, CuteTheme.paperWarm);
-            artImage(this.topBar, 'HomeTopArt', 'ui/home-v3/top-overlay-v3', 0, -5, 720, 140);
-            if (this.currentPage === 'adventure') {
-                panel(this.topBar, 'AdventureTitleBack', 6, -5, 214, 76, new Color(255, 246, 219, 252), 22, true, CuteTheme.caramelSoft, 2);
-                text(this.topBar, 'AdventureTitle', '绘本冒险', 6, -3, 174, 36, 23, CuteTheme.caramel, 'center', true);
-            }
-            text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -238, 18, 150, 28, 17, CuteTheme.caramel, 'left', true);
-            text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -238, -13, 62, 20, 12, CuteTheme.honeyDark, 'left', true);
-            text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -176, -13, 52, 20, 10, CuteTheme.mintDark, 'left', true);
-            const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
-            const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
-            progress(this.topBar, 'PlayerExp', -191, -39, 108, 8, currentExp / nextExp, CuteTheme.honey);
-            const resourceValueX = 252;
-            const resourceHitX = 250;
-            const resourceGoldY = 2;
-            const resourceDiamondY = -50;
-            text(this.topBar, 'GoldValue', formatNumber(GameStore.user?.gold), resourceValueX, resourceGoldY, 108, 28, 15, CuteTheme.caramel, 'center', true);
-            text(this.topBar, 'DiamondValue', formatNumber(GameStore.user?.diamond), resourceValueX, resourceDiamondY, 108, 28, 15, CuteTheme.caramel, 'center', true);
-            hitArea(this.topBar, 'Gold', resourceHitX, resourceGoldY, 190, 46, () => this.showPage('shop'));
-            hitArea(this.topBar, 'Diamond', resourceHitX, resourceDiamondY, 190, 46, () => this.showPage('shop'));
-            if (!GameStore.online) {
-                button(this.topBar, 'Reconnect', '重连', 310, -55, 70, 25, () => void this.bootstrap(), { fill: CuteTheme.peach, fontSize: 10, radius: 11 });
-            }
-            return;
-        }
-
-        panel(this.topBar, 'TopBarWood', 0, 0, 710, 108, new Color(187, 126, 69, 255), 24, true, new Color(105, 65, 37, 255), 4);
-        panel(this.topBar, 'CloudBack', 0, 0, 696, 98, new Color(255, 246, 216, 255), 22, false, new Color(247, 211, 151, 255), 3);
-
-        image(this.topBar, 'Avatar', 'cute-ui/player_avatar', -300, 1, 88, 88, CuteTheme.paperWarm);
-        text(this.topBar, 'Nickname', safeName(GameStore.user?.nickname, '小桃子'), -244, 20, 176, 32, 22, CuteTheme.caramel, 'left', true);
-        text(this.topBar, 'Level', `Lv.${Number(GameStore.user?.level || 1)}`, -244, -13, 76, 24, 14, CuteTheme.honeyDark, 'left', true);
-        text(this.topBar, 'Vip', `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`, -170, -13, 60, 24, 12, CuteTheme.mintDark, 'left', true);
-        const currentExp = Number(GameStore.user?.experience || GameStore.user?.exp || 0);
-        const nextExp = Math.max(1, Number(GameStore.user?.nextLevelExp || GameStore.user?.expToNextLevel || 100));
-        progress(this.topBar, 'PlayerExp', -188, -39, 120, 9, currentExp / nextExp, CuteTheme.honey);
-
-        const showBack = this.currentPage !== 'home';
-        if (showBack) {
-            button(this.topBar, 'BackPage', '‹', -98, 3, 44, 44, () => this.goBackPage(), {
-                fill: CuteTheme.paperWarm, fontSize: 24, radius: 20,
-            });
-        }
-        const titlePlate = panel(this.topBar, 'SceneTitlePlate', 8, 3, 158, 58, new Color(255, 252, 239, 255), 22, true, new Color(218, 177, 118, 255), 2);
-        text(titlePlate, 'Title', this.titleForPage(this.currentPage), 0, 0, 142, 34, 20, CuteTheme.caramel, 'center', true);
-
-        capsule(
-            this.topBar,
-            'Gold',
-            '●',
-            formatNumber(GameStore.user?.gold),
-            242,
-            22,
-            178,
-            CuteTheme.paperWarm,
-            () => this.showPage('shop'),
-        );
-        capsule(
-            this.topBar,
-            'Diamond',
-            '◆',
-            formatNumber(GameStore.user?.diamond),
-            242,
-            -28,
-            178,
-            new Color(217, 239, 247, 255),
-            () => this.showPage('shop'),
-        );
-
-        if (GameStore.online) {
-            text(this.topBar, 'Connection', '● 在线', 326, -53, 76, 22, 11, CuteTheme.mintDark, 'right', true);
-        } else {
-            button(this.topBar, 'Reconnect', '重连', 309, -52, 72, 28, () => void this.bootstrap(), {
-                icon: '↻',
-                fill: CuteTheme.peach,
-                fontSize: 11,
-                radius: 14,
-            });
-        }
+        if (this.nicknameLabel) this.nicknameLabel.string = safeName(GameStore.user?.nickname, '小桃子');
+        if (this.levelLabel) this.levelLabel.string = `Lv.${Number(GameStore.user?.level || 1)}`;
+        if (this.vipLabel) this.vipLabel.string = `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`;
+        if (this.goldLabel) this.goldLabel.string = formatNumber(GameStore.user?.gold);
+        if (this.diamondLabel) this.diamondLabel.string = formatNumber(GameStore.user?.diamond);
+        if (this.backButton) this.backButton.node.active = this.currentPage !== 'home';
+        if (this.reconnectButton) this.reconnectButton.node.active = !GameStore.online;
     }
 
     private renderBottomNav() {
         if (!this.bottomNav) return;
-        renderBottomNavigation(
-            this.bottomNav,
-            mainTabForPage(this.currentPage),
-            (page) => this.showPage(page),
-            this.totalNotificationCount(),
-        );
+        const activeTab = mainTabForPage(this.currentPage);
+        for (const key of ['home', 'pet', 'adventure', 'shop', 'more']) {
+            const selected = this.bottomNav.getChildByName(`Selected_${key}`);
+            if (selected) selected.active = key === activeTab;
+        }
     }
 
     private renderCurrentPage(animatePage = false) {
         if (!this.pageHost) return;
         this.captureScrollOffsets(this.pageRoot);
-        this.pageRoot = resolvePageContainer(this.pageHost, this.currentPage);
+        const editorPage = this.panelManager?.showPageNode(this.currentPage)
+            || resolvePageContainer(this.pageHost, this.currentPage);
+        if (!editorPage) return;
+
+        if (this.currentPage === 'home') {
+            this.pageRoot = editorPage;
+            this.renderHome();
+            return;
+        }
+
+        // Dynamic feature content is isolated below RuntimeContent. It may be
+        // rebuilt from API data, but the editor-owned page root and any visual
+        // nodes placed beside RuntimeContent are never cleared or repositioned.
+        this.pageRoot = this.resolveRuntimeContent(editorPage);
         clearNode(this.pageRoot);
-        const pageTuning = this.currentPageTuning();
-        this.pageRoot.setPosition(this.pageContentOffsetX + pageTuning.offset.x, this.pageContentOffsetY + pageTuning.offset.y, 0);
-        const contentScale = Math.max(0.9, Math.min(1.05, this.pageContentScale * pageTuning.scale));
-        this.pageRoot.setScale(contentScale, contentScale, 1);
 
         switch (this.currentPage) {
-            case 'home':
-                this.renderHome();
-                break;
             case 'pet':
                 this.renderPetDetail();
                 break;
@@ -961,7 +994,20 @@ export class MainUI extends Component {
         if (animatePage) this.playPageEnter();
     }
 
-    private editorPreviewPageName(): PageName {
+    private resolveRuntimeContent(editorPage: Node) {
+        let content = editorPage.getChildByName('RuntimeContent');
+        if (!content) {
+            content = new Node('RuntimeContent');
+            content.layer = editorPage.layer;
+            editorPage.addChild(content);
+            const pageTransform = editorPage.getComponent(UITransform);
+            const transform = content.addComponent(UITransform);
+            if (pageTransform) transform.setContentSize(pageTransform.contentSize);
+        }
+        return content;
+    }
+
+        private editorPreviewPageName(): PageName {
         switch (this.editorPreviewPage) {
             case EditorPreviewPage.Pet: return 'pet';
             case EditorPreviewPage.Shop: return 'shop';
@@ -972,45 +1018,25 @@ export class MainUI extends Component {
         }
     }
 
-    private currentPageTuning() {
-        if (this.currentPage === 'pet') return { offset: this.petPageOffset, scale: this.petPageScale };
-        if (this.currentPage === 'shop') return { offset: this.shopPageOffset, scale: this.shopPageScale };
-        if (this.currentPage === 'inventory') return { offset: this.inventoryPageOffset, scale: this.inventoryPageScale };
-        if (this.currentPage === 'hatchery') return { offset: this.hatcheryPageOffset, scale: this.hatcheryPageScale };
-        return { offset: Vec2.ZERO, scale: 1 };
-    }
-
     private renderHome() {
-        if (!this.pageRoot) return;
-        renderHomePage(this.pageRoot, {
-            pet: this.homePet(),
-            notificationCount: this.pageNotificationCount('benefits'),
-            notificationCounts: {
-                sign: Number(this.redDotInfo?.sources?.sign || 0),
-                newcomer: Number(this.redDotInfo?.sources?.newcomer || 0),
-                daily: Number(this.redDotInfo?.sources?.tasks || 0),
-                events: Number(this.redDotInfo?.sources?.activities || 0),
-            },
-            onSelectPet: () => this.openHomePetPicker(),
-            onActivity: (activity: HomeActivity) => {
-                const modes: Record<HomeActivity, typeof this.benefitMode> = {
-                    sign: 'sign',
-                    newcomer: 'newcomer',
-                    daily: 'tasks',
-                    events: 'activities',
-                };
-                this.benefitMode = modes[activity];
-                this.showPage('benefits');
-            },
-            onShortcut: (shortcut: HomeShortcut) => {
-                if (shortcut === 'adventure') this.showPage('adventure');
-                else if (shortcut === 'hatchery') this.showPage('hatchery');
-                else this.showPage('formation');
-            },
-        });
+        const pet = this.homePet();
+        const species = getPetSpeciesMeta(pet);
+        if (this.homePetNameLabel) {
+            this.homePetNameLabel.string = safeName(pet?.nickname, species.name);
+        }
+        if (this.homePetMetaLabel) {
+            this.homePetMetaLabel.string = `${species.element}系 · ${this.rarityName(pet)} · Lv.${Number(pet?.level || 1)}`;
+        }
+        if (this.homePetSprite) {
+            const sprite = this.homePetSprite;
+            loadSpriteFrameResource(getPetArtPath(pet, 'home'), (frame) => {
+                if (!frame || !sprite?.node?.isValid) return;
+                sprite.spriteFrame = frame;
+            });
+        }
     }
 
-    private createScrollArea(
+        private createScrollArea(
         parent: Node,
         name: string,
         x: number,
@@ -1972,7 +1998,7 @@ export class MainUI extends Component {
             this.renderCurrentPage(false);
         },this.hatchEggFilter===key,11));
         this.flatArtControl(warehouse,'EggSort',this.hatchEggSort==='rarity'?'稀有度优先':'时间优先',215,112,128,34,()=>{
-            this.hatchEggSort=this.hatchEggSort==='rarity'?'time':'rarity';
+            this.hatchEggSort=this.hatchEggSort==='rarity'?'hatchTime':'rarity';
             this.renderCurrentPage(false);
         },false,10);
         const eggRows = Math.max(1, Math.ceil(storedEggs.length / 2));
@@ -2393,8 +2419,22 @@ export class MainUI extends Component {
         const area = this.createScrollArea(parent, 'FriendAlbumScroll', 0, -18, 626, 590, 626, rows * 250 + 12, 'vertical');
         GameStore.friends.forEach((friend, index) => {
             const col = index % 2; const rowIndex = Math.floor(index / 2);
-            const photo = panel(area.content, `FriendPhoto_${friend?.id ?? index}`, -156 + col * 312, -116 - rowIndex * 250, 286, 232, new Color(255, 250, 231, 255), 28, true, CuteTheme.white, 3);
             const coverPet = Array.isArray(friend?.pets) ? friend.pets[0] : null;
+            const prefabItem = instantiateDynamicListItem('FriendListItem', area.content, {
+                name: safeName(friend?.nickname, `玩家${friend?.id || ''}`),
+                value: `Lv.${Number(friend?.level || 1)}`,
+                meta: `宝宝 ${Array.isArray(friend?.pets) ? friend.pets.length : 0}只`,
+                iconPath: coverPet ? getPetArtPath(coverPet, 'thumb') : undefined,
+            }, () => {
+                this.selectedFriendUserId = Number(friend?.userId || friend?.id || 0);
+                this.adventureMode = 'friend';
+                this.showPage('adventure');
+            });
+            if (prefabItem) {
+                prefabItem.setPosition(-156 + col * 312, -116 - rowIndex * 250);
+                return;
+            }
+            const photo = panel(area.content, `FriendPhoto_${friend?.id ?? index}`, -156 + col * 312, -116 - rowIndex * 250, 286, 232, new Color(255, 250, 231, 255), 28, true, CuteTheme.white, 3);
             if (coverPet) image(photo, 'PetPhoto', getPetArtPath(coverPet, 'thumb'), -96, 55, 78, 78, CuteTheme.paperWarm);
             else text(photo, 'Avatar', '🐾', -96, 55, 72, 72, 42, CuteTheme.peachDark, 'center', true);
             text(photo, 'Name', safeName(friend?.nickname, `玩家${friend?.id || ''}`), -48, 78, 172, 34, 20, CuteTheme.caramel, 'left', true);
@@ -2591,6 +2631,18 @@ export class MainUI extends Component {
         const area = this.createScrollArea(card, 'RankingScroll', 0, -18, 620, 610, 620, this.rankingEntries.length * 93 + 10, 'vertical');
         this.rankingEntries.forEach((item, index) => {
             const rank = Number(item?.rank || index + 1);
+            const prefabItem = instantiateDynamicListItem('RankingListItem', area.content, {
+                name: item?.petName || item?.speciesCode
+                    ? this.petDisplayName(item, `宝宝${item?.petId || ''}`)
+                    : safeName(item?.playerName || item?.nickname, `玩家${item?.userId || ''}`),
+                value: this.rankingScoreText(item),
+                meta: `#${rank}`,
+                iconPath: item?.petName || item?.speciesCode ? getPetArtPath(item, 'thumb') : undefined,
+            });
+            if (prefabItem) {
+                prefabItem.setPosition(0, -45 - index * 93);
+                return;
+            }
             const row = panel(area.content, `Rank_${rank}`, 0, -45 - index * 93, 604, 78, rank <= 3 ? new Color(255, 247, 220, 255) : (index % 2 ? CuteTheme.paperWarm : new Color(255, 252, 240, 255)), 21, false, CuteTheme.white, 2);
             text(row, 'Medal', rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank), -270, 0, 50, 48, rank <= 3 ? 26 : 18, CuteTheme.honeyDark, 'center', true);
             if (item?.petName || item?.speciesCode) image(row, 'PetThumb', getPetArtPath(item, 'thumb'), -222, 0, 54, 54, CuteTheme.paperWarm);
@@ -4025,18 +4077,18 @@ export class MainUI extends Component {
     private playPageEnter() {
         if (!this.pageRoot) return;
         const opacity = this.pageRoot.getComponent(UIOpacity) || this.pageRoot.addComponent(UIOpacity);
+        const editorPosition = this.pageRoot.position.clone();
+        const editorScale = this.pageRoot.scale.clone();
         if (!CuteFeedback.animationEnabled()) {
             opacity.opacity = 255;
-            this.pageRoot.setPosition(Vec3.ZERO);
-            this.pageRoot.setScale(Vec3.ONE);
             return;
         }
         opacity.opacity = 0;
-        this.pageRoot.setPosition(new Vec3(28, -6, 0));
-        this.pageRoot.setScale(new Vec3(0.985, 0.985, 1));
+        this.pageRoot.setPosition(editorPosition.x + 28, editorPosition.y - 6, editorPosition.z);
+        this.pageRoot.setScale(editorScale.x * 0.985, editorScale.y * 0.985, editorScale.z);
         tween(opacity).to(0.15, { opacity: 255 }, { easing: 'quadOut' }).start();
         tween(this.pageRoot)
-            .to(0.22, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'backOut' })
+            .to(0.22, { position: editorPosition, scale: editorScale }, { easing: 'backOut' })
             .start();
     }
 
@@ -5291,7 +5343,7 @@ export class MainUI extends Component {
     }
 
     private titleForPage(page: PageName) {
-        const titles: Record<PageName, string> = {
+        const titles: Partial<Record<PageName, string>> = {
             home: '温馨小屋',
             pet: '宝宝详情',
             inventory: '布艺背包',
@@ -5313,7 +5365,7 @@ export class MainUI extends Component {
             formation: '五宠阵法',
             guild: '萌宠公会',
         };
-        return titles[page];
+        return titles[page] || 'PetVerse';
     }
 
     private iconForPage(page: PageName) {

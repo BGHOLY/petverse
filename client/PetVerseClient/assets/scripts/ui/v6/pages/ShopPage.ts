@@ -22,6 +22,8 @@ import {
     text,
 } from '../../cute/CuteUiKit';
 import { drawUiIcon } from '../../v2/HandPaintedUi';
+import { UiIconName } from '../../v2/AppRoutes';
+import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
 
@@ -47,13 +49,13 @@ export type ShopPageV6Options = {
     countLabel?: string;
 };
 
-const CATEGORY_ROWS: Array<[ShopCategoryV6, string, string]> = [
+const CATEGORY_ROWS: Array<[ShopCategoryV6, string, UiIconName]> = [
     ['featured', '每日精选', 'shop'],
     ['nurture', '宝宝养成', 'pet'],
-    ['skills', '技能书', 'skill'],
-    ['materials', '培养材料', 'bag'],
-    ['hatch', '孵化用品', 'egg'],
-    ['special', '限定珍藏', 'star'],
+    ['skills', '技能书', 'skills'],
+    ['materials', '培养材料', 'inventory'],
+    ['hatch', '孵化用品', 'hatchery'],
+    ['special', '限定珍藏', 'collection'],
 ];
 
 function currencyType(item: any) {
@@ -75,6 +77,15 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
     const selected = id === options.selectedItemId;
     const soldOut = Boolean(item?.soldOut) || (item?.stock !== undefined && Number(item?.stock || 0) <= 0);
     const insufficient = Number(item?.price || 0) > options.balance(item);
+    const visual = options.productVisual(item);
+    const prefabItem = instantiateDynamicListItem('ShopItem', parent, {
+        name: safeName(item?.name, item?.itemCode || '商品'),
+        value: `${currencyType(item) === 'diamond' ? '钻石' : '金币'} ${formatNumber(item?.price || 0)}`,
+        meta: soldOut ? '已售罄' : `拥有 ${options.ownedCount(item)}`,
+        iconPath: visual.kind === 'art' ? visual.value : undefined,
+    }, () => options.onProduct(item));
+    if (prefabItem) return prefabItem;
+
     const card = panel(
         parent,
         `ShopProduct_${id}`,
@@ -88,7 +99,6 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
         selected ? CuteTheme.honeyDark : new Color(211, 171, 116, 225),
         selected ? 4 : 2,
     );
-    const visual = options.productVisual(item);
     if (visual.kind === 'art') artImage(card, 'ProductArt', visual.value, -86, 22, 72, 72);
     else drawUiIcon(card, 'ProductIcon', visual.value as any, -86, 22, 50, productIconColor(visual.value));
 

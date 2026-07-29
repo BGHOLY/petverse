@@ -1,4 +1,4 @@
-import { Color, Graphics, Node } from 'cc';
+import { Button, Color, Graphics, Node } from 'cc';
 import {
     CuteTheme,
     artImage,
@@ -322,17 +322,19 @@ export function renderBottomNavigation(
     onNavigate: (page: MainTab) => void,
     notificationCount = 0,
 ) {
-    clearNode(parent);
-    artImage(parent, 'NavigationArt', 'ui/home-v4/bottom-navigation-v4', 0, 34, 700, 199);
+    MAIN_TABS.forEach((item) => {
+        const selected = parent.getChildByName(`Selected_${item.key}`);
+        if (selected) selected.active = item.key === active;
 
-    MAIN_TABS.forEach((item, index) => {
-        const selected = item.key === active;
-        const x = -276 + index * 138;
-        const isAdventure = item.key === 'adventure';
-        if (selected) {
-            panel(parent, `Selected_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, new Color(255, 245, 184, 12), isAdventure ? 48 : 22, true, isAdventure ? new Color(255, 225, 118, 230) : new Color(104, 166, 103, 220), 3);
-        }
-        const tab = hitArea(parent, `Tab_${item.key}`, x, isAdventure ? 35 : 4, isAdventure ? 148 : 112, isAdventure ? 158 : 102, () => onNavigate(item.key));
-        if (item.key === 'more') createNotificationDot(tab, notificationCount, 38, 36);
+        const buttonComponent = parent.getChildByName(`Tab_${item.key}`)?.getComponent(Button);
+        if (!buttonComponent) return;
+        const callback = () => onNavigate(item.key);
+        const previous = (buttonComponent.node as any).__petVerseNavigationCallback as (() => void) | undefined;
+        if (previous) buttonComponent.node.off(Button.EventType.CLICK, previous);
+        (buttonComponent.node as any).__petVerseNavigationCallback = callback;
+        buttonComponent.node.on(Button.EventType.CLICK, callback);
     });
+
+    const moreDot = parent.getChildByName('Tab_more')?.getChildByName('NotificationDot');
+    if (moreDot) moreDot.active = notificationCount > 0;
 }

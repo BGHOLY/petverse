@@ -1,6 +1,7 @@
 import { Color, Layout, Mask, Node, ScrollView, Size } from 'cc';
 import { CuteTheme, button, hitArea, image, panel, setRect, tag, text } from '../../cute/CuteUiKit';
 import { PetSkillV6 } from './PetTypes';
+import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 
 export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], skillSlotCount: number, onSkill: (skill: any) => void, onSkillBook: () => void) {
     text(parent, 'Heading', '技能槽与已学习技能', -232, 224, 464, 34, 19, CuteTheme.caramel, 'left', true);
@@ -29,6 +30,13 @@ export function renderPetSkillPanelV6(parent: Node, skills: PetSkillV6[], skillS
     for (let index = 0; index < rows; index += 1) {
         const skill = skills[index];
         if (skill) {
+            const prefabItem = instantiateDynamicListItem('SkillSlotItem', content, {
+                name: skill.name,
+                value: skill.tierLabel,
+                meta: skill.brief,
+                iconPath: skill.iconPath,
+            }, () => onSkill(skill));
+            if (prefabItem) continue;
             const row = panel(content, `Skill_${skill.key}`, 0, 0, 470, 74, new Color(255, 251, 236, 255), 20, false, skill.fill, 3);
             image(row, 'Icon', skill.iconPath, -202, 0, 54, 54, skill.fill, '技');
             text(row, 'Name', skill.name, -164, 17, 216, 26, 15, CuteTheme.caramel, 'left', true);

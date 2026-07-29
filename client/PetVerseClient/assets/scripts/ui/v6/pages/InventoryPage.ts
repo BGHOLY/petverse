@@ -24,6 +24,7 @@ import {
 import { drawUiIcon } from '../../v2/HandPaintedUi';
 import { createV6PageShell } from '../AppShell';
 import { V6_CONTENT_HEIGHT, V6_PANEL_GAP, V6_PAGE_WIDTH } from '../UiMetrics';
+import { instantiateDynamicListItem } from '../../prefab/DynamicListPrefabRegistry';
 
 export type InventoryCategoryV6 = 'all' | 'consumable' | 'material' | 'skill' | 'equipment';
 export type InventoryItemCategoryV6 = Exclude<InventoryCategoryV6, 'all'>;
@@ -97,6 +98,17 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
     const code = String(item?.itemCode || item?.id || index);
     const category = options.itemCategory(item);
     const selected = code === String(options.selectedItemCode || '');
+    const visual = options.itemVisual(item);
+    const prefabItem = instantiateDynamicListItem('InventoryItem', parent, {
+        name: safeName(item?.name || item?.itemCode, '道具'),
+        value: category === 'equipment'
+            ? (Number(item?.equippedPetId || 0) > 0 ? '已装备' : '可装备')
+            : `×${Number(item?.quantity || 0)}`,
+        meta: categoryLabel(category),
+        iconPath: visual.kind === 'art' ? visual.value : undefined,
+    }, () => options.onItem(item));
+    if (prefabItem) return prefabItem;
+
     const card = panel(
         parent,
         `InventoryItem_${code}`,
@@ -110,7 +122,6 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
         selected ? CuteTheme.honeyDark : new Color(211, 171, 116, 220),
         selected ? 4 : 2,
     );
-    const visual = options.itemVisual(item);
     if (visual.kind === 'art') artImage(card, 'ItemArt', visual.value, 0, 25, 56, 56);
     else drawUiIcon(card, 'ItemIcon', visual.value as any, 0, 25, 46, iconColor(visual.value, category));
 

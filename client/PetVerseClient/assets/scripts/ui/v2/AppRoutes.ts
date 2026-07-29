@@ -50,7 +50,15 @@ export type UiIconName =
     | 'settings'
     | 'profile'
     | 'formation'
-    | 'guild';
+    | 'guild'
+    | 'gold'
+    | 'diamond'
+    | 'potion'
+    | 'hourglass'
+    | 'breed-token'
+    | 'core'
+    | 'food'
+    | 'material';
 
 export type MainTabDefinition = {
     key: MainTab;
