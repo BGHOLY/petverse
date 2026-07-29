@@ -6,6 +6,7 @@ import {
     Node,
     ScrollView,
     Size,
+    Sprite,
     Vec2,
     director,
 } from 'cc';
@@ -111,6 +112,46 @@ function createItemCard(parent: Node, item: any, index: number, options: Invento
         // Enforce the compact runtime footprint even when Creator still has an older
         // imported copy of the Prefab in its asset cache.
         setRect(prefabItem, 0, 0, 150, 134);
+        const faceSprite = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+        if (faceSprite) {
+            faceSprite.enabled = false;
+            faceSprite.color = selected
+                ? new Color(255, 232, 170, 255)
+                : new Color(255, 251, 236, 255);
+        }
+        const outline = panel(
+            prefabItem,
+            'CardOutline',
+            0,
+            0,
+            150,
+            134,
+            selected ? new Color(255, 238, 188, 255) : new Color(255, 253, 242, 255),
+            18,
+            true,
+            selected ? CuteTheme.honeyDark : new Color(211, 171, 116, 220),
+            selected ? 4 : 2,
+        );
+        outline.setSiblingIndex(1);
+
+        const prefabIcon = prefabItem.getChildByName('Icon');
+        if (visual.kind === 'icon' && prefabIcon) {
+            prefabIcon.active = false;
+            const iconWell = panel(
+                prefabItem,
+                'ItemIconWell',
+                0,
+                25,
+                62,
+                62,
+                new Color(250, 235, 206, 255),
+                18,
+                true,
+                new Color(222, 188, 139, 180),
+                2,
+            );
+            drawUiIcon(iconWell, 'ItemIcon', visual.value as any, 0, 0, 44, iconColor(visual.value, category));
+        }
         return prefabItem;
     }
 

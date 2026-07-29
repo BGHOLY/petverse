@@ -102,7 +102,7 @@ function renderGroup(parent: Node, group: MoreGroup, centerY: number, height: nu
 }
 
 export function renderMorePage(parent: Node, options: MorePageOptions) {
-    panel(parent, 'MorePageBackground', 0, 0, 672, 986, new Color(248, 238, 211, 255), 24, false, HandPaintedTheme.paper, 0);
+    panel(parent, 'MorePageBackground', 0, 0, 720, 1018, new Color(248, 238, 211, 255), 0, false, HandPaintedTheme.paper, 0);
     createPageTitleBoard(parent, '更多功能', '养成、社交与账户入口');
     text(parent, 'SectionTitle', '按目标选择功能', -304, 394, 220, 34, 18, HandPaintedTheme.ink, 'left', true);
 

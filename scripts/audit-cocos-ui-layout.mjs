@@ -170,6 +170,56 @@ check(
     'The pet roster has a distinct wider column and comfortable card spacing.',
 );
 
+const shopPageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v6/pages/ShopPage.ts',
+), 'utf8');
+check(
+    shopPageSource.includes("'CardOutline'")
+        && shopPageSource.includes("'ProductIconWell'")
+        && shopPageSource.includes("'ProductArt'"),
+    'Shop cards have clear outlines and visible icon fallbacks instead of blank grey blocks.',
+);
+check(
+    shopPageSource.includes('Math.ceil(options.items.length / 2)')
+        && shopPageSource.includes('layout.cellSize = new Size(250, 154)'),
+    'Shop products use a readable two-column card grid.',
+);
+
+const inventoryPageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v6/pages/InventoryPage.ts',
+), 'utf8');
+check(
+    inventoryPageSource.includes('Math.ceil(options.items.length / 4)')
+        && inventoryPageSource.includes("'ItemIconWell'"),
+    'Inventory keeps a four-column grid with clear icon wells.',
+);
+
+const hatcheryPageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v6/pages/HatcheryPage.ts',
+), 'utf8');
+check(
+    hatcheryPageSource.includes("'WarehouseHeader'")
+        && hatcheryPageSource.includes("'EggListPanel'")
+        && hatcheryPageSource.includes('Math.ceil(options.eggs.length / 4)'),
+    'The hatchery separates its incubators and four-column egg warehouse with clear boundaries.',
+);
+
+const morePageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v2/MorePage.ts',
+), 'utf8');
+check(
+    morePageSource.includes("'MorePageBackground', 0, 0, 720, 1018")
+        && morePageSource.includes("key: 'nurture'")
+        && morePageSource.includes("key: 'social'")
+        && morePageSource.includes("key: 'reward'")
+        && morePageSource.includes("key: 'personal'"),
+    'More uses a full safe-area background and four player-goal groups.',
+);
+
 const prefabSizes = {
     InventoryItem: [150, 134],
     ShopItem: [250, 154],

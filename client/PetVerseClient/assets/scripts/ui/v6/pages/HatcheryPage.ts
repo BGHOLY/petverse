@@ -6,6 +6,7 @@ import {
     Node,
     ScrollView,
     Size,
+    Sprite,
     Vec2,
     director,
 } from 'cc';
@@ -123,6 +124,33 @@ function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryP
     }, () => options.onChooseEgg(egg));
     if (prefabItem) {
         setRect(prefabItem, 0, 0, 150, 132);
+        const faceSprite = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+        if (faceSprite) {
+            faceSprite.enabled = false;
+            faceSprite.color = selected
+                ? new Color(255, 243, 193, 255)
+                : egg?.isMutant
+                    ? new Color(255, 236, 226, 255)
+                    : new Color(255, 252, 239, 255);
+        }
+        const outline = panel(
+            prefabItem,
+            'CardOutline',
+            0,
+            0,
+            150,
+            132,
+            selected
+                ? new Color(255, 243, 193, 255)
+                : egg?.isMutant
+                    ? new Color(255, 239, 229, 255)
+                    : new Color(255, 253, 242, 255),
+            20,
+            true,
+            selected ? CuteTheme.honeyDark : egg?.isMutant ? CuteTheme.peachDark : new Color(211, 171, 116, 230),
+            selected ? 4 : egg?.isMutant ? 3 : 2,
+        );
+        outline.setSiblingIndex(1);
         return prefabItem;
     }
 
@@ -235,11 +263,25 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     text(header, 'Title', '三槽孵化装置', -265, 15, 230, 34, 23, CuteTheme.caramel, 'left', true);
     text(header, 'Subtitle', '选择宠物蛋 → 选择装置 → 确认 → 倒计时 → 领取', -265, -18, 470, 26, 13, CuteTheme.muted, 'left', true);
 
-    const incubators = panel(page, 'IncubatorSection', 0, cursor - incubatorHeight / 2, V6_PAGE_WIDTH, incubatorHeight, new Color(255, 249, 230, 246), 24, true, new Color(205, 158, 103, 225), 2);
+    const incubators = panel(page, 'IncubatorSection', 0, cursor - incubatorHeight / 2, V6_PAGE_WIDTH, incubatorHeight, new Color(255, 249, 230, 246), 24, true, new Color(190, 137, 78, 235), 3);
     cursor -= incubatorHeight + V6_PANEL_GAP;
     options.slots.forEach((slot, index) => renderIncubator(incubators, slot, options, -220 + index * 220));
 
-    const warehouse = panel(page, 'EggWarehouse', 0, cursor - warehouseHeight / 2, V6_PAGE_WIDTH, warehouseHeight, new Color(255, 249, 230, 248), 24, true, new Color(205, 158, 103, 225), 2);
+    const warehouse = panel(page, 'EggWarehouse', 0, cursor - warehouseHeight / 2, V6_PAGE_WIDTH, warehouseHeight, new Color(255, 249, 230, 248), 24, true, new Color(190, 137, 78, 235), 3);
+    const warehouseHeader = panel(
+        warehouse,
+        'WarehouseHeader',
+        0,
+        warehouseHeight / 2 - 58,
+        V6_PAGE_WIDTH - 18,
+        104,
+        new Color(250, 240, 211, 248),
+        20,
+        true,
+        new Color(218, 179, 121, 205),
+        2,
+    );
+    warehouseHeader.setSiblingIndex(0);
     text(warehouse, 'Title', `宝宝蛋仓库 ${options.totalStored}/${options.capacity}`, -306, warehouseHeight / 2 - 32, 300, 34, 19, CuteTheme.caramel, 'left', true);
     text(warehouse, 'Hint', '选择蛋后再指定空闲装置', 58, warehouseHeight / 2 - 32, 250, 28, 12, CuteTheme.muted, 'right', true);
     FILTERS.forEach(([key, label], index) => button(warehouse, `Filter_${key}`, label, -258 + index * 86, warehouseHeight / 2 - 78, 78, 40, () => options.onFilter(key), {
@@ -251,8 +293,20 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     const sortLabel = options.sort === 'rarity' ? '稀有度优先' : options.sort === 'created' ? '获取时间' : '孵化时间';
     button(warehouse, 'Sort', sortLabel, 258, warehouseHeight / 2 - 78, 132, 40, options.onSort, { fill: CuteTheme.sky, fontSize: 12, radius: 16 });
     const scrollHeight = warehouseHeight - 116;
-    const scrollHost = panel(warehouse, 'EggListPanel', 0, -50, V6_PAGE_WIDTH - 16, scrollHeight, CuteTheme.transparent, 0, false, CuteTheme.transparent, 0);
+    const scrollHost = panel(
+        warehouse,
+        'EggListPanel',
+        0,
+        -50,
+        V6_PAGE_WIDTH - 24,
+        scrollHeight,
+        new Color(255, 253, 242, 230),
+        18,
+        true,
+        new Color(218, 179, 121, 190),
+        2,
+    );
     // Four compact cards fit with spare room, preventing a rounding wrap.
-    renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 16, scrollHeight - 4);
+    renderWarehouseScroll(scrollHost, options, V6_PAGE_WIDTH - 32, scrollHeight - 12);
 }
 

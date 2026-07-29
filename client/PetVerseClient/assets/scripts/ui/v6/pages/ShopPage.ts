@@ -6,6 +6,7 @@ import {
     Node,
     ScrollView,
     Size,
+    Sprite,
     Vec2,
     director,
 } from 'cc';
@@ -15,6 +16,7 @@ import {
     button,
     formatNumber,
     hitArea,
+    image,
     panel,
     safeName,
     setRect,
@@ -99,7 +101,75 @@ function createProductCard(parent: Node, item: any, index: number, options: Shop
                 : `拥有 ${options.ownedCount(item)}`,
         iconPath: visual.kind === 'art' ? visual.value : undefined,
     }, () => options.onProduct(item));
-    if (prefabItem) return prefabItem;
+    if (prefabItem) {
+        setRect(prefabItem, 0, 0, 250, 154);
+        const faceSprite = prefabItem.getChildByName('Button')?.getComponent(Sprite);
+        if (faceSprite) {
+            // Keep the Button component for input, but replace the generic grey
+            // Prefab face with the page-owned cream card below.
+            faceSprite.enabled = false;
+            faceSprite.color = soldOut
+                ? new Color(226, 221, 207, 255)
+                : insufficient
+                    ? new Color(255, 239, 221, 255)
+                    : selected
+                        ? new Color(255, 232, 170, 255)
+                        : new Color(255, 251, 236, 255);
+        }
+
+        const outline = panel(
+            prefabItem,
+            'CardOutline',
+            0,
+            0,
+            250,
+            154,
+            soldOut
+                ? new Color(238, 233, 220, 255)
+                : insufficient
+                    ? new Color(255, 242, 227, 255)
+                    : selected
+                        ? new Color(255, 238, 188, 255)
+                        : new Color(255, 253, 242, 255),
+            20,
+            true,
+            selected ? CuteTheme.honeyDark : new Color(211, 171, 116, 225),
+            selected ? 4 : 2,
+        );
+        outline.setSiblingIndex(1);
+
+        const prefabIcon = prefabItem.getChildByName('Icon');
+        if (prefabIcon) prefabIcon.active = false;
+        if (visual.kind === 'art') {
+            image(
+                prefabItem,
+                'ProductArt',
+                visual.value,
+                -86,
+                21,
+                72,
+                72,
+                new Color(250, 235, 206, 255),
+                '物',
+            );
+        } else {
+            const iconWell = panel(
+                prefabItem,
+                'ProductIconWell',
+                -86,
+                21,
+                72,
+                72,
+                new Color(250, 235, 206, 255),
+                20,
+                true,
+                new Color(222, 188, 139, 190),
+                2,
+            );
+            drawUiIcon(iconWell, 'ProductIcon', visual.value as any, 0, 0, 48, productIconColor(visual.value));
+        }
+        return prefabItem;
+    }
 
     const card = panel(
         parent,
