@@ -46,6 +46,7 @@ export type HatcheryPageV6Options = {
     filter: HatcheryEggFilterV6;
     sort: HatcheryEggSortV6;
     selectedEggId: number;
+    warehouseOpen: boolean;
     scrollKey: string;
     initialOffset?: Vec2;
     formatDuration: (seconds: number) => string;
@@ -56,6 +57,7 @@ export type HatcheryPageV6Options = {
     onChooseEmptySlot: (slot: number) => void;
     onAccelerate: (egg: any) => void;
     onCollect: (egg: any) => void;
+    onToggleWarehouse: () => void;
     onGoMarriage: () => void;
     onBackHome: () => void;
 };
@@ -80,37 +82,57 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
     const active = Boolean(slot.egg);
     const card = panel(
         parent,
-        `Incubator_${slot.slot}`,
+        `NurseryNest_${slot.slot}`,
         x,
         0,
         216,
-        320,
-        new Color(255, 251, 235, 250),
+        300,
+        slot.slot === 1
+            ? new Color(246, 250, 227, 250)
+            : slot.slot === 2
+                ? new Color(255, 244, 228, 250)
+                : new Color(244, 238, 255, 250),
         28,
         true,
-        active ? CuteTheme.honeyDark : new Color(145, 184, 137, 235),
+        active ? CuteTheme.honeyDark : new Color(145, 184, 137, 225),
         active ? 3 : 2,
     );
-    tag(card, 'SlotNumber', `0${slot.slot}`, 0, 132, 62, active ? CuteTheme.honey : CuteTheme.mint);
-    const chamber = panel(card, 'Chamber', 0, 33, 170, 170, active ? new Color(255, 241, 194, 255) : new Color(231, 247, 225, 255), 62, true, new Color(218, 179, 121, 210), 2);
+    tag(card, 'SlotNumber', `育宠窝 0${slot.slot}`, 0, 120, 108, active ? CuteTheme.honey : CuteTheme.mint);
+    const chamber = panel(
+        card,
+        'NestCushion',
+        0,
+        31,
+        174,
+        150,
+        active ? new Color(255, 241, 194, 255) : new Color(237, 247, 222, 255),
+        70,
+        true,
+        new Color(218, 179, 121, 210),
+        3,
+    );
+    panel(card, 'NestBase', 0, -40, 184, 48, new Color(221, 185, 126, 210), 22, false, new Color(181, 130, 77, 210), 2);
 
     if (!slot.egg) {
         const selectedEgg = options.eggs.find((egg) => Number(egg?.id || 0) === options.selectedEggId) || null;
         if (selectedEgg) artImage(chamber, 'SelectedEggArt', getEggArtPath(selectedEgg), 0, 22, 76, 94);
         else drawUiIcon(chamber, 'EmptyEgg', 'hatchery', 0, 18, 62, CuteTheme.honeyDark);
-        text(chamber, 'EmptyState', selectedEgg ? `${getEggDisplayName(selectedEgg)}\n等待放入` : '空闲\n等待宠物蛋', 0, -47, 142, 52, 14, selectedEgg ? CuteTheme.caramel : CuteTheme.muted, 'center', true);
-        text(card, 'Status', selectedEgg ? '已选择宠物蛋' : '可使用', 0, -72, 150, 26, 13, selectedEgg ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
-        button(card, 'ChooseEgg', selectedEgg ? '放入此处' : '先选择宠物蛋', 0, -119, 148, 42, () => options.onChooseEmptySlot(slot.slot), { fill: selectedEgg ? CuteTheme.honey : CuteTheme.mint, fontSize: 13, radius: 17 });
+        text(chamber, 'EmptyState', selectedEgg ? `${getEggDisplayName(selectedEgg)}\n等待放入` : '柔软空窝\n等待宠物蛋', 0, -40, 142, 48, 14, selectedEgg ? CuteTheme.caramel : CuteTheme.muted, 'center', true);
+        text(card, 'Status', selectedEgg ? '已选择宠物蛋' : '温度适宜 · 可以使用', 0, -65, 176, 26, 12, selectedEgg ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
+        button(card, 'ChooseEgg', selectedEgg ? '放入这个窝' : '打开蛋仓库', 0, -111, 148, 42, () => {
+            if (selectedEgg) options.onChooseEmptySlot(slot.slot);
+            else options.onToggleWarehouse();
+        }, { fill: selectedEgg ? CuteTheme.honey : CuteTheme.mint, fontSize: 13, radius: 17 });
         return;
     }
 
     artImage(chamber, 'EggArt', getEggArtPath(slot.egg), 0, 20, 86, 106);
     if (slot.egg?.isMutant) tag(chamber, 'Mutant', '变异', 50, 66, 56, CuteTheme.peach);
-    text(chamber, 'EggName', getEggDisplayName(slot.egg), 0, -59, 150, 30, 13, CuteTheme.caramel, 'center', true);
-    progress(card, 'Progress', 0, -68, 166, 12, slot.ready ? 1 : 1 - slot.remaining / Math.max(1, slot.total), slot.ready ? CuteTheme.green : CuteTheme.honey);
-    text(card, 'Time', slot.ready ? '孵化完成' : options.formatDuration(slot.remaining), 0, -91, 150, 24, 13, slot.ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
-    button(card, 'Accelerate', '加速', -48, -127, 86, 38, () => options.onAccelerate(slot.egg), { fill: CuteTheme.sky, fontSize: 12, radius: 15, disabled: slot.ready });
-    button(card, 'Collect', slot.ready ? '领取' : '孵化中', 48, -127, 86, 38, () => options.onCollect(slot.egg), { fill: slot.ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 15, disabled: !slot.ready });
+    text(chamber, 'EggName', getEggDisplayName(slot.egg), 0, -48, 150, 28, 13, CuteTheme.caramel, 'center', true);
+    progress(card, 'Progress', 0, -60, 166, 12, slot.ready ? 1 : 1 - slot.remaining / Math.max(1, slot.total), slot.ready ? CuteTheme.green : CuteTheme.honey);
+    text(card, 'Time', slot.ready ? '孵化完成' : options.formatDuration(slot.remaining), 0, -82, 150, 24, 13, slot.ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+    button(card, 'Accelerate', '加速', -48, -119, 86, 38, () => options.onAccelerate(slot.egg), { fill: CuteTheme.sky, fontSize: 12, radius: 15, disabled: slot.ready });
+    button(card, 'Collect', slot.ready ? '领取' : '孵化中', 48, -119, 86, 38, () => options.onCollect(slot.egg), { fill: slot.ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 15, disabled: !slot.ready });
 }
 
 function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryPageV6Options) {
@@ -253,19 +275,121 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     const shell = createV6PageShell(parent, 'HatcheryLayoutV6');
     const page = shell.content;
     const headerHeight = 82;
-    const incubatorHeight = 320;
+    const drawerHeight = 96;
+    const incubatorHeight = options.warehouseOpen
+        ? 320
+        : V6_SAFE_CONTENT_HEIGHT - headerHeight - drawerHeight - V6_PANEL_GAP * 2;
     const warehouseHeight = V6_SAFE_CONTENT_HEIGHT - headerHeight - incubatorHeight - V6_PANEL_GAP * 2;
     let cursor = V6_SAFE_CONTENT_HEIGHT / 2;
 
-    const header = panel(page, 'HatcheryInfoBar', 0, cursor - headerHeight / 2, V6_PAGE_WIDTH, headerHeight, new Color(255, 249, 229, 252), 24, true, new Color(198, 145, 85, 235), 2);
+    const header = panel(
+        page,
+        'HatcheryInfoBar',
+        0,
+        cursor - headerHeight / 2,
+        V6_PAGE_WIDTH,
+        headerHeight,
+        new Color(246, 250, 227, 252),
+        24,
+        true,
+        new Color(145, 184, 137, 225),
+        2,
+    );
     cursor -= headerHeight + V6_PANEL_GAP;
-    drawUiIcon(header, 'EggIcon', 'hatchery', -304, 0, 44, CuteTheme.honeyDark);
-    text(header, 'Title', '三槽孵化装置', -265, 15, 230, 34, 23, CuteTheme.caramel, 'left', true);
-    text(header, 'Subtitle', '选择宠物蛋 → 选择装置 → 确认 → 倒计时 → 领取', -265, -18, 470, 26, 13, CuteTheme.muted, 'left', true);
+    drawUiIcon(header, 'EggIcon', 'hatchery', -304, 0, 44, CuteTheme.mintDark);
+    text(header, 'Title', '魔法育宠温室', -265, 15, 250, 34, 23, CuteTheme.caramel, 'left', true);
+    text(header, 'Subtitle', '从蛋仓库选蛋 → 放入育宠窝 → 等待破壳 → 领取宝宝', -265, -18, 520, 26, 13, CuteTheme.muted, 'left', true);
 
-    const incubators = panel(page, 'IncubatorSection', 0, cursor - incubatorHeight / 2, V6_PAGE_WIDTH, incubatorHeight, new Color(255, 249, 230, 246), 24, true, new Color(190, 137, 78, 235), 3);
+    const incubators = panel(
+        page,
+        'NurseryScene',
+        0,
+        cursor - incubatorHeight / 2,
+        V6_PAGE_WIDTH,
+        incubatorHeight,
+        new Color(242, 248, 224, 248),
+        24,
+        true,
+        new Color(145, 184, 137, 225),
+        3,
+    );
     cursor -= incubatorHeight + V6_PANEL_GAP;
-    options.slots.forEach((slot, index) => renderIncubator(incubators, slot, options, -220 + index * 220));
+    const nestRow = new Node('NurseryNestRow');
+    incubators.addChild(nestRow);
+    setRect(nestRow, 0, options.warehouseOpen ? 0 : 72, V6_PAGE_WIDTH, 320);
+    options.slots.forEach((slot, index) => renderIncubator(nestRow, slot, options, -220 + index * 220));
+
+    if (!options.warehouseOpen) {
+        const activeCount = options.slots.filter((slot) => Boolean(slot.egg)).length;
+        const readyCount = options.slots.filter((slot) => slot.ready).length;
+        const nurseryStatus = panel(
+            incubators,
+            'NurseryStatus',
+            0,
+            -245,
+            V6_PAGE_WIDTH - 56,
+            150,
+            new Color(255, 252, 239, 248),
+            24,
+            true,
+            new Color(218, 179, 121, 205),
+            2,
+        );
+        drawUiIcon(nurseryStatus, 'StatusIcon', readyCount ? 'benefits' : 'hatchery', -270, 8, 42, readyCount ? CuteTheme.honeyDark : CuteTheme.mintDark);
+        text(
+            nurseryStatus,
+            'StatusTitle',
+            readyCount ? `${readyCount}只宝宝等待破壳` : activeCount ? `${activeCount}个育宠窝正在孵化` : '温室今天很安静',
+            -232,
+            24,
+            360,
+            34,
+            20,
+            readyCount ? CuteTheme.honeyDark : CuteTheme.caramel,
+            'left',
+            true,
+        );
+        text(
+            nurseryStatus,
+            'StatusHint',
+            readyCount
+                ? '点击上方已完成的育宠窝领取新宝宝'
+                : activeCount
+                    ? '回来看看孵化进度，完成后会亮起领取提示'
+                    : '从下方蛋仓库挑选一枚宠物蛋开始培育',
+            -232,
+            -18,
+            470,
+            40,
+            13,
+            CuteTheme.muted,
+            'left',
+            true,
+        );
+
+        const drawer = panel(
+            page,
+            'EggWarehouseDrawer',
+            0,
+            cursor - drawerHeight / 2,
+            V6_PAGE_WIDTH,
+            drawerHeight,
+            new Color(255, 249, 230, 252),
+            24,
+            true,
+            new Color(190, 137, 78, 235),
+            3,
+        );
+        drawUiIcon(drawer, 'WarehouseIcon', 'inventory', -300, 0, 42, CuteTheme.honeyDark);
+        text(drawer, 'Title', `宝宝蛋仓库 ${options.totalStored}/${options.capacity}`, -260, 15, 300, 32, 19, CuteTheme.caramel, 'left', true);
+        text(drawer, 'Hint', options.totalStored ? '展开后挑选要培育的宠物蛋' : '还没有宠物蛋，先去结婚或参加活动', -260, -18, 380, 28, 12, CuteTheme.muted, 'left', true);
+        button(drawer, 'OpenWarehouse', options.totalStored ? '展开仓库' : '查看仓库', 264, 0, 142, 50, options.onToggleWarehouse, {
+            fill: CuteTheme.honey,
+            fontSize: 14,
+            radius: 20,
+        });
+        return;
+    }
 
     const warehouse = panel(page, 'EggWarehouse', 0, cursor - warehouseHeight / 2, V6_PAGE_WIDTH, warehouseHeight, new Color(255, 249, 230, 248), 24, true, new Color(190, 137, 78, 235), 3);
     const warehouseHeader = panel(
@@ -283,7 +407,11 @@ export function renderHatcheryPageV6(parent: Node, options: HatcheryPageV6Option
     );
     warehouseHeader.setSiblingIndex(0);
     text(warehouse, 'Title', `宝宝蛋仓库 ${options.totalStored}/${options.capacity}`, -306, warehouseHeight / 2 - 32, 300, 34, 19, CuteTheme.caramel, 'left', true);
-    text(warehouse, 'Hint', '选择蛋后再指定空闲装置', 58, warehouseHeight / 2 - 32, 250, 28, 12, CuteTheme.muted, 'right', true);
+    button(warehouse, 'CloseWarehouse', '收起仓库', 258, warehouseHeight / 2 - 32, 132, 40, options.onToggleWarehouse, {
+        fill: CuteTheme.paperWarm,
+        fontSize: 12,
+        radius: 16,
+    });
     FILTERS.forEach(([key, label], index) => button(warehouse, `Filter_${key}`, label, -258 + index * 86, warehouseHeight / 2 - 78, 78, 40, () => options.onFilter(key), {
         selected: options.filter === key,
         fill: options.filter === key ? CuteTheme.honey : CuteTheme.paperWarm,

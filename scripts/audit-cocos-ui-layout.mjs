@@ -274,6 +274,15 @@ check(
         && hatcheryPageSource.includes('Math.ceil(options.eggs.length / 4)'),
     'The hatchery separates its incubators and four-column egg warehouse with clear boundaries.',
 );
+check(
+    hatcheryPageSource.includes("'魔法育宠温室'")
+        && hatcheryPageSource.includes("'NurseryScene'")
+        && hatcheryPageSource.includes("'NurseryNestRow'")
+        && hatcheryPageSource.includes("'EggWarehouseDrawer'")
+        && hatcheryPageSource.includes("'OpenWarehouse'")
+        && hatcheryPageSource.includes("'CloseWarehouse'"),
+    'The hatchery uses a nursery-first scene with three nests and an expandable egg warehouse drawer.',
+);
 
 const morePageSource = fs.readFileSync(path.join(
     repositoryRoot,

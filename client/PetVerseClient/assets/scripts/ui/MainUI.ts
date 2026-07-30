@@ -257,6 +257,7 @@ export class MainUI extends Component {
     private hatchEggFilter: 'all' | 'normal' | 'rare' | 'mutant' = 'all';
     private hatchEggSort: 'rarity' | 'created' | 'hatchTime' = 'rarity';
     private selectedHatchEggId = 0;
+    private hatchWarehouseOpen = false;
     private homePetPickerOpen = false;
     private pendingHomePetId = 0;
     private fusionPickerSide: 'A' | 'B' | null = null;
@@ -2031,6 +2032,7 @@ export class MainUI extends Component {
             filter: this.hatchEggFilter,
             sort: this.hatchEggSort,
             selectedEggId: this.selectedHatchEggId,
+            warehouseOpen: this.hatchWarehouseOpen,
             scrollKey,
             initialOffset: this.scrollOffsets.get(scrollKey),
             formatDuration: (seconds) => this.formatSeconds(seconds),
@@ -2050,18 +2052,25 @@ export class MainUI extends Component {
                     return;
                 }
                 this.selectedHatchEggId = this.selectedHatchEggId === Number(egg?.id || 0) ? 0 : Number(egg?.id || 0);
+                if (this.selectedHatchEggId) this.hatchWarehouseOpen = false;
                 this.renderCurrentPage(false);
             },
             onChooseEmptySlot: (slot) => {
                 const selectedEgg = allStoredEggs.find((egg) => Number(egg?.id || 0) === this.selectedHatchEggId);
                 if (!selectedEgg) {
-                    this.showToast('请先在下方仓库选择一枚宠物蛋');
+                    this.hatchWarehouseOpen = true;
+                    this.showToast('请先从蛋仓库选择一枚宠物蛋');
+                    this.renderCurrentPage(false);
                     return;
                 }
                 this.requestIncubation(selectedEgg, slot);
             },
             onAccelerate: (egg) => this.openHatchAccelerator(egg),
             onCollect: (egg) => void this.hatchEgg(egg),
+            onToggleWarehouse: () => {
+                this.hatchWarehouseOpen = !this.hatchWarehouseOpen;
+                this.renderCurrentPage(false);
+            },
             onGoMarriage: () => this.showPage('marriage'),
             onBackHome: () => this.showPage('home'),
         });
