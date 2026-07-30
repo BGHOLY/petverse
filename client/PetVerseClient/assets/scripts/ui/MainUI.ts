@@ -2193,7 +2193,17 @@ export class MainUI extends Component {
         text(desc,'Title',selectedBook?safeName(selectedBook?.name,'技能书'):'请选择技能书',-70,50,430,34,20,CuteTheme.caramel,'left',true);
         text(desc,'Description',selectedBook?safeName(selectedBook?.description,'暂无说明'):'技能效果、触发概率、目标类型与替换风险都会在这里显示。',-70,2,430,70,15,CuteTheme.muted,'left',false);
         text(desc,'Risk',`保护技能 ${this.lockedSkillCodes.size} 个　预计消耗锁印与技能书各1份`,-70,-52,430,30,14,CuteTheme.peachDark,'left',true);
-        button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{icon:'📕',fill:CuteTheme.honey,fontSize:17,radius:28,disabled:!selectedBook||!pet?.id||Boolean(pet?.isLocked)||this.busy.has('skill:learn')});
+        const learnDisabled = !selectedBook || !pet?.id || Boolean(pet?.isLocked) || this.busy.has('skill:learn');
+        const learnDisabledReason = !pet?.id
+            ? '请先选择宝宝'
+            : Boolean(pet?.isLocked)
+                ? '锁定宝宝不可打书'
+                : !selectedBook
+                    ? '请先选择技能书'
+                    : this.busy.has('skill:learn')
+                        ? '正在处理'
+                        : undefined;
+        button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{icon:'📕',fill:CuteTheme.honey,fontSize:17,radius:28,disabled:learnDisabled,disabledReason:learnDisabledReason});
     }
 
     private renderFusion() {
@@ -2246,7 +2256,17 @@ export class MainUI extends Component {
         tag(materials,'Core',`合宠核心 1 / ${coreCount}`,-24,-16,166,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
         button(materials,'Essence',this.fusionUseMutationEssence?`✓ 变异精华 1 / ${essenceCount}`:`＋ 变异精华 0 / ${essenceCount}`,205,-4,220,56,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选：变异率 +3%'});
 
-        button(page, 'ExecuteButton', '确认并炼妖', 0, -386, 280, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        const fusionDisabled = !parentA || !parentB || this.busy.has('fusion:execute');
+        const fusionDisabledReason = this.busy.has('fusion:execute')
+            ? '正在融合血脉'
+            : !parentA && !parentB
+                ? '请先选择父系与母系'
+                : !parentA
+                    ? '请先选择父系宝宝'
+                    : !parentB
+                        ? '请先选择母系宝宝'
+                        : undefined;
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -386, 280, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: fusionDisabled, disabledReason: fusionDisabledReason });
         text(page, 'Cost', '父母会被永久消耗；核心自动放入，变异精华由你决定是否使用', 0, -446, 620, 26, 13, CuteTheme.peachDark, 'center', true);
     }
 

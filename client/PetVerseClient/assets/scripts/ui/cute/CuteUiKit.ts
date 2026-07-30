@@ -294,6 +294,7 @@ export function button(
         iconPath?: string;
         iconSize?: number;
         subtitle?: string;
+        disabledReason?: string;
         border?: Color;
     } = {},
 ) {
@@ -302,12 +303,22 @@ export function button(
     clearNode(node);
 
     const disabled = Boolean(options.disabled);
+    const subtitle = options.subtitle || (disabled ? options.disabledReason : undefined);
+    const titleColor = disabled
+        ? new Color(133, 118, 99, 255)
+        : options.textColor || CuteTheme.caramel;
+    const subtitleColor = disabled
+        ? new Color(151, 137, 118, 255)
+        : options.textColor || CuteTheme.muted;
     let lastAcceptedClickAt = 0;
     const fill = disabled
-        ? new Color(222, 216, 202, 255)
+        ? new Color(239, 233, 219, 255)
         : options.selected
             ? CuteTheme.honey
             : options.fill || CuteTheme.paperWarm;
+    const border = disabled
+        ? new Color(190, 177, 155, 220)
+        : options.border || (options.selected ? CuteTheme.honeyDark : CuteTheme.caramelSoft);
 
     const shadow = new Node('Shadow');
     node.addChild(shadow);
@@ -323,7 +334,7 @@ export function button(
         height,
         fill,
         options.radius ?? 22,
-        options.border || (options.selected ? CuteTheme.honeyDark : CuteTheme.caramelSoft),
+        border,
         options.selected ? 4 : 2,
     );
 
@@ -332,20 +343,20 @@ export function button(
         image(face, 'IconImage', options.iconPath, -width / 2 + iconSize / 2 + 8, 0, iconSize, iconSize, fill);
         const textLeft = -width / 2 + iconSize + 18;
         const textWidth = Math.max(40, width - iconSize - 30);
-        text(face, 'Title', title, textLeft, options.subtitle ? 9 : 0, textWidth, options.subtitle ? 26 : height - 10, options.fontSize || 16, options.textColor || CuteTheme.caramel, 'left', true);
-        if (options.subtitle) {
-            text(face, 'Subtitle', options.subtitle, textLeft, -15, textWidth, 22, 11, options.textColor || CuteTheme.muted, 'left', false);
+        text(face, 'Title', title, textLeft, subtitle ? 9 : 0, textWidth, subtitle ? 26 : height - 10, options.fontSize || 16, titleColor, 'left', true);
+        if (subtitle) {
+            text(face, 'Subtitle', subtitle, textLeft, -15, textWidth, 22, 11, subtitleColor, 'left', false);
         }
     } else if (options.icon) {
-        text(face, 'Icon', options.icon, 0, options.subtitle ? 16 : 8, width - 12, height * 0.55, Math.min(34, height * 0.36), CuteTheme.caramel, 'center', true);
-        text(face, 'Title', title, 0, options.subtitle ? -18 : -height * 0.28, width - 12, 28, options.fontSize || 17, options.textColor || CuteTheme.caramel, 'center', true);
-        if (options.subtitle) {
-            text(face, 'Subtitle', options.subtitle, 0, -height * 0.28, width - 16, 24, 12, CuteTheme.muted, 'center', false);
+        text(face, 'Icon', options.icon, 0, subtitle ? 16 : 8, width - 12, height * 0.55, Math.min(34, height * 0.36), titleColor, 'center', true);
+        text(face, 'Title', title, 0, subtitle ? -18 : -height * 0.28, width - 12, 28, options.fontSize || 17, titleColor, 'center', true);
+        if (subtitle) {
+            text(face, 'Subtitle', subtitle, 0, -height * 0.28, width - 16, 24, 12, subtitleColor, 'center', false);
         }
     } else {
-        text(face, 'Title', title, 0, options.subtitle ? 10 : 0, width - 16, options.subtitle ? height * 0.55 : height - 8, options.fontSize || 18, options.textColor || CuteTheme.caramel, 'center', true);
-        if (options.subtitle) {
-            text(face, 'Subtitle', options.subtitle, 0, -height * 0.28, width - 16, 24, 12, CuteTheme.muted, 'center', false);
+        text(face, 'Title', title, 0, subtitle ? 10 : 0, width - 16, subtitle ? height * 0.55 : height - 8, options.fontSize || 18, titleColor, 'center', true);
+        if (subtitle) {
+            text(face, 'Subtitle', subtitle, 0, -height * 0.28, width - 16, 24, 12, subtitleColor, 'center', false);
         }
     }
 

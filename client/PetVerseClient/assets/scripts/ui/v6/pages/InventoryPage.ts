@@ -223,7 +223,30 @@ function createItemScroll(parent: Node, options: InventoryPageV6Options, width: 
         panel(footer, 'LineRight', 142, 0, 136, 2, new Color(188, 145, 92, 90), 1, false, CuteTheme.transparent, 0);
         text(footer, 'Text', '已经到底了', 0, 0, 132, 28, 13, CuteTheme.muted, 'center', true);
     } else {
-        text(content, 'Empty', '当前分类暂无物品', 0, -height / 2 + 36, width - 80, 70, 20, CuteTheme.muted, 'center', true);
+        const emptyHint = options.category === 'equipment'
+            ? '装备会在冒险、首领和活动中获得'
+            : options.category === 'skill'
+                ? '技能书可从商店、冒险与活动中获得'
+                : options.category === 'material'
+                    ? '继续冒险即可收集培养与炼妖材料'
+                    : '可从冒险、商店与日常奖励中获得';
+        const empty = panel(
+            content,
+            'EmptyState',
+            0,
+            -height / 2,
+            width - 96,
+            236,
+            new Color(255, 253, 243, 248),
+            24,
+            false,
+            new Color(221, 185, 134, 180),
+            2,
+        );
+        const iconWell = panel(empty, 'IconWell', 0, 62, 76, 76, new Color(232, 241, 210, 255), 26, false, CuteTheme.white, 2);
+        drawUiIcon(iconWell, 'Icon', 'inventory', 0, 0, 48, CuteTheme.mintDark);
+        text(empty, 'Title', '当前分类还是空的', 0, 5, width - 150, 38, 21, CuteTheme.caramel, 'center', true);
+        text(empty, 'Hint', emptyHint, 0, -43, width - 150, 54, 14, CuteTheme.muted, 'center', false);
     }
 
     const scroll = viewport.addComponent(ScrollView);

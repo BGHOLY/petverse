@@ -353,6 +353,27 @@ export function renderShopPageV6(parent: Node, options: ShopPageV6Options) {
         const scroll = createProductScroll(products, options, productsWidth - 16, bodyHeight - scrollTopInset);
         scroll.node.setPosition(0, -28 - (scrollTopInset - 76) / 2);
     } else {
-        text(products, 'Empty', '当前分类暂时没有商品\n刷新货架后再来看看吧', 0, 0, productsWidth - 70, 100, 19, CuteTheme.muted, 'center', true);
+        const empty = panel(
+            products,
+            'EmptyState',
+            0,
+            -16,
+            productsWidth - 64,
+            260,
+            new Color(255, 253, 243, 248),
+            24,
+            false,
+            new Color(221, 185, 134, 190),
+            2,
+        );
+        const iconWell = panel(empty, 'IconWell', 0, 76, 82, 82, new Color(255, 239, 195, 255), 28, false, CuteTheme.white, 2);
+        drawUiIcon(iconWell, 'Icon', 'shop', 0, 0, 52, CuteTheme.honeyDark);
+        text(empty, 'Title', '这一栏正在补货', 0, 20, productsWidth - 120, 38, 21, CuteTheme.caramel, 'center', true);
+        text(empty, 'Hint', '刷新货架，或先看看其他分类', 0, -20, productsWidth - 120, 30, 14, CuteTheme.muted, 'center', false);
+        button(empty, 'RefreshAction', '刷新货架', 0, -82, 164, 50, options.onRefresh, {
+            fill: CuteTheme.honey,
+            fontSize: 14,
+            radius: 20,
+        });
     }
 }
