@@ -966,14 +966,14 @@ export class MainUI extends Component {
                 this.topBar,
                 'DynamicPageTitlePlate',
                 titleNode.position.x,
-                titleNode.position.y - 16,
-                268,
-                132,
+                titleNode.position.y,
+                216,
+                64,
                 new Color(255, 246, 220, 252),
-                30,
+                22,
                 true,
                 new Color(205, 151, 86, 245),
-                3,
+                2,
             );
             titlePlate.setSiblingIndex(titleIndex);
         }
@@ -983,8 +983,8 @@ export class MainUI extends Component {
             this.topBar.children.length - 1,
             titlePlate.getSiblingIndex() + 1,
         ));
-        this.pageTitleLabel.fontSize = 24;
-        this.pageTitleLabel.lineHeight = 30;
+        this.pageTitleLabel.fontSize = 21;
+        this.pageTitleLabel.lineHeight = 26;
         this.pageTitleLabel.color = CuteTheme.caramel;
         this.pageTitleLabel.isBold = true;
     }

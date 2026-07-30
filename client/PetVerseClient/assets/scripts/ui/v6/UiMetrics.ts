@@ -2,7 +2,9 @@ export const V6_CANVAS_WIDTH = 720;
 export const V6_CANVAS_HEIGHT = 1280;
 
 export const V6_TOP_BAR_HEIGHT = 112;
-export const V6_BOTTOM_NAV_HEIGHT = 150;
+// The hand-painted navigation art is naturally tall. Keeping a 190px tray
+// avoids vertically crushing the five illustrated tabs.
+export const V6_BOTTOM_NAV_HEIGHT = 190;
 export const V6_CONTENT_HEIGHT = V6_CANVAS_HEIGHT - V6_TOP_BAR_HEIGHT - V6_BOTTOM_NAV_HEIGHT;
 export const V6_CONTENT_CENTER_Y = (V6_BOTTOM_NAV_HEIGHT - V6_TOP_BAR_HEIGHT) / 2;
 export const V6_TOP_BAR_CENTER_Y = V6_CANVAS_HEIGHT / 2 - V6_TOP_BAR_HEIGHT / 2;

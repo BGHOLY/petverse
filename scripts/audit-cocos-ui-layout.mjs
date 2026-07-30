@@ -73,13 +73,13 @@ check(
     'TopBar uses the 720x1280 112px top safe region.',
 );
 check(
-    pageRootId !== undefined && sameRect(rect(pageRootId), { x: 0, y: 19, width: 720, height: 1018 }),
+    pageRootId !== undefined && sameRect(rect(pageRootId), { x: 0, y: 39, width: 720, height: 978 }),
     'PageRoot stays between the fixed top and bottom bars.',
 );
 check(
     bottomNavigationId !== undefined
-        && sameRect(rect(bottomNavigationId), { x: 0, y: -565, width: 720, height: 150 }),
-    'BottomNavigation uses the 150px bottom safe region.',
+        && sameRect(rect(bottomNavigationId), { x: 0, y: -545, width: 720, height: 190 }),
+    'BottomNavigation uses the 190px hand-painted tray region.',
 );
 check(
     pageTitleId !== undefined
@@ -122,14 +122,14 @@ for (const pageName of [
     const pageId = nodeId(...rootPath, 'PageRoot', pageName);
     check(
         pageId !== undefined
-            && sameRect(rect(pageId), { x: 0, y: 0, width: 720, height: 1018 }),
+            && sameRect(rect(pageId), { x: 0, y: 0, width: 720, height: 978 }),
         `${pageName} matches PageRoot's safe viewport.`,
     );
     for (const layerName of ['PageBackground', 'StaticContent', 'RuntimeContent']) {
         const layerId = nodeId(...rootPath, 'PageRoot', pageName, layerName);
         check(
             layerId !== undefined
-                && sameRect(rect(layerId), { x: 0, y: 0, width: 720, height: 1018 }),
+                && sameRect(rect(layerId), { x: 0, y: 0, width: 720, height: 978 }),
             `${pageName}/${layerName} matches the safe viewport.`,
         );
     }
@@ -138,7 +138,7 @@ for (const pageName of [
 const metrics = fs.readFileSync(metricsPath, 'utf8');
 for (const expected of [
     'V6_TOP_BAR_HEIGHT = 112',
-    'V6_BOTTOM_NAV_HEIGHT = 150',
+    'V6_BOTTOM_NAV_HEIGHT = 190',
     'V6_SAFE_SIDE = 24',
     'V6_SAFE_VERTICAL = 16',
     'V6_PANEL_GAP = 16',
@@ -168,8 +168,8 @@ check(
 );
 check(
     mainUiSource.includes("'DynamicPageTitlePlate'")
-        && mainUiSource.includes('268,')
-        && mainUiSource.includes('132,')
+        && mainUiSource.includes('216,')
+        && mainUiSource.includes('64,')
         && mainUiSource.includes('titleNode.active = true')
         && mainUiSource.includes('PAGE_TITLE_LABELS[this.currentPage]'),
     'The baked home title is covered by one centered dynamic title plate for every page.',

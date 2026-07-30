@@ -115,14 +115,14 @@ function cloneSubtree(rootId, newParentId, newName) {
 const rootPath = ['Canvas', 'PetVerseUIRoot'];
 const bottomNavigationId = nodeId(...rootPath, 'BottomNavigation');
 const navigationArtId = nodeId(...rootPath, 'BottomNavigation', 'NavigationArt');
-setRect(navigationArtId, 0, 0, 720, 150);
+setRect(navigationArtId, 0, 0, 720, 190);
 
 const tabLayout = {
-    home: { x: -268, y: 0, width: 112, height: 102 },
-    pet: { x: -134, y: 0, width: 112, height: 102 },
-    adventure: { x: 0, y: 12, width: 138, height: 132 },
-    shop: { x: 134, y: 0, width: 112, height: 102 },
-    more: { x: 268, y: 0, width: 112, height: 102 },
+    home: { x: -268, y: -2, width: 116, height: 124 },
+    pet: { x: -134, y: -2, width: 116, height: 124 },
+    adventure: { x: 0, y: 14, width: 148, height: 158 },
+    shop: { x: 134, y: -2, width: 116, height: 124 },
+    more: { x: 268, y: -2, width: 116, height: 124 },
 };
 
 for (const [key, geometry] of Object.entries(tabLayout)) {
@@ -149,7 +149,13 @@ for (const key of ['pet', 'adventure', 'shop', 'more']) {
 for (const [index, key] of ['home', 'pet', 'adventure', 'shop', 'more'].entries()) {
     const selectedId = selectedIds[index];
     const geometry = tabLayout[key];
-    setRect(selectedId, geometry.x, geometry.y, 112, 102);
+    setRect(selectedId, geometry.x, geometry.y, geometry.width, geometry.height);
+    for (const childName of ['Shadow', 'Face']) {
+        const childId = directChildId(selectedId, childName);
+        if (childId !== undefined) {
+            setRect(childId, 0, childName === 'Shadow' ? -7 : 0, geometry.width, geometry.height);
+        }
+    }
     nodeAt(selectedId)._active = key === 'home';
 }
 

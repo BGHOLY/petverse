@@ -58,16 +58,16 @@ function setRect(id, x, y, width, height) {
 const rootPath = ['Canvas', 'PetVerseUIRoot'];
 const pageRootId = nodeId(...rootPath, 'PageRoot');
 const bottomNavigationId = nodeId(...rootPath, 'BottomNavigation');
-const pageCenterY = 19;
-const pageHeight = 1018;
+const pageCenterY = 39;
+const pageHeight = 978;
 
 setRect(pageRootId, 0, pageCenterY, 720, pageHeight);
-setRect(bottomNavigationId, 0, -565, 720, 150);
+setRect(bottomNavigationId, 0, -545, 720, 190);
 
 const homePageId = nodeId(...rootPath, 'PageRoot', 'HomePage');
-// PageRoot moved up by 12px. Counter-shift the hand-authored home so the
-// user's current home composition remains pixel-identical.
-setRect(homePageId, 0, -12, 720, 1120);
+// Counter-shift the hand-authored home so its composition remains
+// pixel-identical while the fixed navigation tray grows upward.
+setRect(homePageId, 0, -32, 720, 1120);
 for (const layerName of ['BackgroundLayer', 'StaticContent', 'RuntimeContent']) {
     setRect(nodeId(...rootPath, 'PageRoot', 'HomePage', layerName), 0, 0, 720, 1120);
 }
