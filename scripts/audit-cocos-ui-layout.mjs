@@ -88,7 +88,7 @@ check(
 );
 check(
     pageTitleId !== undefined && nodeAt(pageTitleId)?._active === false,
-    'The baked top-board title is not covered by a duplicate runtime page title.',
+    'The editor title starts hidden until the runtime blank title plate covers the baked home label.',
 );
 check(
     homePetId !== undefined && rect(homePetId).x === 0 && rect(homePetId).y === -88,
@@ -165,6 +165,14 @@ const mainUiSource = fs.readFileSync(path.join(
 check(
     mainUiSource.includes("'FeaturePageBackdrop'"),
     'Every non-home feature page receives a full-width warm backdrop.',
+);
+check(
+    mainUiSource.includes("'DynamicPageTitlePlate'")
+        && mainUiSource.includes('224,')
+        && mainUiSource.includes('62,')
+        && mainUiSource.includes('titleNode.active = true')
+        && mainUiSource.includes('PAGE_TITLE_LABELS[this.currentPage]'),
+    'The baked home title is covered by one centered dynamic title plate for every page.',
 );
 check(
     mainUiSource.includes("'TeamQuickActions'"),

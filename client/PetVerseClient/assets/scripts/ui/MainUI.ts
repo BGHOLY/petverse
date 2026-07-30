@@ -942,6 +942,7 @@ export class MainUI extends Component {
 
     private renderTopBar() {
         if (!this.topBar) return;
+        this.ensureDynamicPageTitle();
         if (this.nicknameLabel) this.nicknameLabel.string = safeName(GameStore.user?.nickname, '小桃子');
         if (this.pageTitleLabel) this.pageTitleLabel.string = PAGE_TITLE_LABELS[this.currentPage] || 'PetVerse';
         if (this.levelLabel) this.levelLabel.string = `Lv.${Number(GameStore.user?.level || 1)}`;
@@ -950,6 +951,40 @@ export class MainUI extends Component {
         if (this.diamondLabel) this.diamondLabel.string = formatNumber(GameStore.user?.diamond);
         if (this.backButton) this.backButton.node.active = this.currentPage !== 'home';
         if (this.reconnectButton) this.reconnectButton.node.active = this.reconnectVisible;
+    }
+
+    private ensureDynamicPageTitle() {
+        if (!this.topBar || !this.pageTitleLabel) return;
+
+        const titleNode = this.pageTitleLabel.node;
+        let titlePlate = this.topBar.getChildByName('DynamicPageTitlePlate');
+        if (!titlePlate) {
+            const titleIndex = Math.max(0, titleNode.getSiblingIndex());
+            titlePlate = panel(
+                this.topBar,
+                'DynamicPageTitlePlate',
+                titleNode.position.x,
+                titleNode.position.y,
+                224,
+                62,
+                new Color(255, 246, 220, 252),
+                22,
+                true,
+                new Color(205, 151, 86, 245),
+                3,
+            );
+            titlePlate.setSiblingIndex(titleIndex);
+        }
+
+        titleNode.active = true;
+        titleNode.setSiblingIndex(Math.min(
+            this.topBar.children.length - 1,
+            titlePlate.getSiblingIndex() + 1,
+        ));
+        this.pageTitleLabel.fontSize = 24;
+        this.pageTitleLabel.lineHeight = 30;
+        this.pageTitleLabel.color = CuteTheme.caramel;
+        this.pageTitleLabel.isBold = true;
     }
 
     private renderBottomNav() {
