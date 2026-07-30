@@ -198,7 +198,7 @@ check(
         && mainUiSource.includes("'ParentB',")
         && mainUiSource.includes("160, 142, 'B'")
         && mainUiSource.includes("'ExecuteButton'")
-        && mainUiSource.includes('0, -393, 280, 72'),
+        && mainUiSource.includes('0, -386, 280, 72'),
     'Fusion uses the safe-area shell, equal parent cards, three-step guidance, and one safe primary action.',
 );
 check(
@@ -292,7 +292,7 @@ const morePageSource = fs.readFileSync(path.join(
     'client/PetVerseClient/assets/scripts/ui/v2/MorePage.ts',
 ), 'utf8');
 check(
-    morePageSource.includes("'MorePageBackground', 0, 0, 720, 1018")
+    morePageSource.includes("createV6PageShell(parent, 'MoreLayoutV6')")
         && morePageSource.includes("key: 'nurture'")
         && morePageSource.includes("key: 'social'")
         && morePageSource.includes("key: 'reward'")

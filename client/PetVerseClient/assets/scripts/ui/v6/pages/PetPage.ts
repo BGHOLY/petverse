@@ -123,7 +123,7 @@ function renderPetRoster(parent: Node, options: PetPageV6Options) {
 }
 
 function renderTabs(parent: Node, options: PetPageV6Options) {
-    const tabs = panel(parent, 'PetTabs', RIGHT_X, 229, RIGHT_WIDTH, 56, new Color(255, 249, 230, 248), 18, true, new Color(205, 158, 103, 220), 2);
+    const tabs = panel(parent, 'PetTabs', RIGHT_X, 209, RIGHT_WIDTH, 56, new Color(255, 249, 230, 248), 18, true, new Color(205, 158, 103, 220), 2);
     const values: Array<[PetTabV6, string]> = [
         ['attributes', '属性'],
         ['skills', '技能'],
@@ -141,7 +141,7 @@ function renderTabs(parent: Node, options: PetPageV6Options) {
 }
 
 function renderDetails(parent: Node, options: PetPageV6Options) {
-    const detail = panel(parent, 'PetDetailContent', RIGHT_X, -50, RIGHT_WIDTH, 470, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
+    const detail = panel(parent, 'PetDetailContent', RIGHT_X, -50, RIGHT_WIDTH, 430, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
     if (options.tab === 'attributes') {
         if (options.attributeView === 'stats') renderPetStatAllocationV6(detail, options.statDraft);
         else if (options.attributeView === 'lineage') renderPetLineageV6(detail, options.lineage);
@@ -156,7 +156,7 @@ function renderDetails(parent: Node, options: PetPageV6Options) {
 }
 
 function renderActions(parent: Node, options: PetPageV6Options) {
-    const actions = panel(parent, 'PetActions', RIGHT_X, -357, RIGHT_WIDTH, 112, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
+    const actions = panel(parent, 'PetActions', RIGHT_X, -337, RIGHT_WIDTH, 112, new Color(255, 249, 230, 248), 20, true, new Color(205, 158, 103, 220), 2);
     button(actions, 'Formation', options.profile.formationActionLabel, -116, 25, 208, 50, options.onFormation, {
         fill: CuteTheme.mint,
         selected: options.profile.deployment === '出战中',
@@ -190,7 +190,7 @@ export function renderPetPageV6(parent: Node, options: PetPageV6Options) {
     const page = shell.content;
     renderPetRoster(page, options);
 
-    const profile = panel(page, 'PetProfile', RIGHT_X, 383, RIGHT_WIDTH, 220, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
+    const profile = panel(page, 'PetProfile', RIGHT_X, 363, RIGHT_WIDTH, 220, new Color(255, 249, 230, 248), 22, true, new Color(205, 158, 103, 225), 2);
     renderPetProfilePanelV6(profile, options.profile);
     renderTabs(page, options);
     renderDetails(page, options);

@@ -2170,7 +2170,7 @@ export class MainUI extends Component {
     private renderSkillLearning() {
         if (!this.pageRoot) return;
         const root=this.pageRoot; const pet=GameStore.currentPet||{}; const pets=GameStore.pets.filter((item)=>!item?.isEgg);
-        const selector=this.createScrollArea(root,'SkillPetSelector',0,432,672,96,Math.max(672,pets.length*130+16),96,'horizontal');
+        const selector=this.createScrollArea(root,'SkillPetSelector',0,416,672,96,Math.max(672,pets.length*130+16),96,'horizontal');
         pets.forEach((item,index)=>button(selector.content,`SkillPet_${item?.id||index}`,safeName(item?.nickname,`宝宝${index+1}`),64+index*130,0,120,82,()=>{GameStore.selectPet(Number(item?.id||0));this.lockedSkillCodes.clear();this.renderCurrentPage(false);},{iconPath:getPetArtPath(item,'thumb'),iconSize:50,selected:Number(item?.id)===Number(GameStore.currentPetId),fill:CuteTheme.paperWarm,fontSize:12,radius:18,subtitle:`${this.rarityName(item)} · Lv.${Number(item?.level||1)}`}));
         const page=panel(root,'SkillResearchPage',0,-40,672,824,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
         const header=panel(page,'Header',0,313,620,118,new Color(244,252,236,255),24,false,CuteTheme.mintDark,2);
@@ -2246,8 +2246,8 @@ export class MainUI extends Component {
         tag(materials,'Core',`合宠核心 1 / ${coreCount}`,-24,-16,166,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
         button(materials,'Essence',this.fusionUseMutationEssence?`✓ 变异精华 1 / ${essenceCount}`:`＋ 变异精华 0 / ${essenceCount}`,205,-4,220,56,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选：变异率 +3%'});
 
-        button(page, 'ExecuteButton', '确认并炼妖', 0, -393, 280, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
-        text(page, 'Cost', '父母会被永久消耗；核心自动放入，变异精华由你决定是否使用', 0, -457, 620, 26, 13, CuteTheme.peachDark, 'center', true);
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -386, 280, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        text(page, 'Cost', '父母会被永久消耗；核心自动放入，变异精华由你决定是否使用', 0, -446, 620, 26, 13, CuteTheme.peachDark, 'center', true);
     }
 
     private renderAdventure() {
@@ -2289,7 +2289,7 @@ export class MainUI extends Component {
         const region=regions.find((item:any)=>String(item?.code)===this.selectedRegionCode)||regions.find((item:any)=>item?.unlocked)||regions[0];
         if(this.adventureRegionOpen){this.renderAdventureRegionPage(parent,region,world);return;}
 
-        artImage(parent,'AdventureMapArt','ui/adventure-v3/adventure-map-page-v3',0,0,720,1010);
+        artImage(parent,'AdventureMapArt','ui/adventure-v3/adventure-map-page-v3',0,0,720,V6_CONTENT_HEIGHT);
         const positions=[[-210,300],[-8,170],[-135,-198],[-205,30],[-140,-392]];
         regions.slice(0,positions.length).forEach((item:any,index:number)=>{
             const [x,y]=positions[index];
@@ -2304,7 +2304,7 @@ export class MainUI extends Component {
         });
         const cleared=regions.filter((item:any)=>item?.bossCleared).length;
         const average=Math.round(regions.reduce((sum:number,item:any)=>sum+Number(item?.exploration||0),0)/Math.max(1,regions.length));
-        const footer=panel(parent,'StoryProgress',-105,-456,430,72,new Color(255,248,222,246),18,true,CuteTheme.caramelSoft,2);
+        const footer=panel(parent,'StoryProgress',-105,-432,430,72,new Color(255,248,222,246),18,true,CuteTheme.caramelSoft,2);
         text(footer,'Label',`主线进度 ${average}% · 已通关 ${cleared}/${regions.length}`,-70,17,250,24,12,CuteTheme.caramel,'left',true);
         progress(footer,'Progress',-70,-17,250,12,average/100,CuteTheme.mintDark);
         button(footer,'Continue','继续主线',145,0,120,48,()=>{if(region?.unlocked){this.adventureRegionOpen=true;this.renderCurrentPage(false);}}, {fill:CuteTheme.honey,fontSize:13,radius:18,disabled:!region?.unlocked});

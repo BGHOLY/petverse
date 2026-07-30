@@ -1,7 +1,9 @@
 import { Color, Node } from 'cc';
 import { button, panel, text } from '../cute/CuteUiKit';
 import { MORE_ENTRIES, MoreEntryDefinition, PageName } from './AppRoutes';
-import { createNotificationDot, createPageTitleBoard, drawUiIcon, HandPaintedTheme } from './HandPaintedUi';
+import { createNotificationDot, drawUiIcon, HandPaintedTheme } from './HandPaintedUi';
+import { createV6PageShell } from '../v6/AppShell';
+import { V6_PAGE_WIDTH } from '../v6/UiMetrics';
 
 export type MorePageOptions = {
     onOpen: (page: PageName) => void;
@@ -29,7 +31,7 @@ const GROUPS: MoreGroup[] = [
         title: '社交互动',
         subtitle: '好友、姻缘与共同成长',
         pages: ['friends', 'marriage', 'guild', 'trade'],
-        columns: 4,
+        columns: 2,
     },
     {
         key: 'reward',
@@ -59,7 +61,7 @@ function renderGroup(parent: Node, group: MoreGroup, centerY: number, height: nu
         `MoreGroup_${group.key}`,
         0,
         centerY,
-        640,
+        V6_PAGE_WIDTH,
         height,
         new Color(255, 249, 230, 250),
         24,
@@ -102,12 +104,13 @@ function renderGroup(parent: Node, group: MoreGroup, centerY: number, height: nu
 }
 
 export function renderMorePage(parent: Node, options: MorePageOptions) {
-    panel(parent, 'MorePageBackground', 0, 0, 720, 1018, new Color(248, 238, 211, 255), 0, false, HandPaintedTheme.paper, 0);
-    createPageTitleBoard(parent, '更多功能', '养成、社交与账户入口');
-    text(parent, 'SectionTitle', '按目标选择功能', -304, 394, 220, 34, 18, HandPaintedTheme.ink, 'left', true);
+    const shell = createV6PageShell(parent, 'MoreLayoutV6');
+    const page = shell.content;
+    text(page, 'SectionTitle', '按目标选择功能', -304, 440, 220, 34, 18, HandPaintedTheme.ink, 'left', true);
+    text(page, 'SectionHint', '常用养成优先，低频设置收在底部', 304, 440, 300, 28, 13, HandPaintedTheme.mutedInk, 'right');
 
-    renderGroup(parent, GROUPS[0], 263, 228, options);
-    renderGroup(parent, GROUPS[1], 65, 148, options);
-    renderGroup(parent, GROUPS[2], -97, 144, options);
-    renderGroup(parent, GROUPS[3], -257, 144, options);
+    renderGroup(page, GROUPS[0], 288, 228, options);
+    renderGroup(page, GROUPS[1], 44, 228, options);
+    renderGroup(page, GROUPS[2], -158, 144, options);
+    renderGroup(page, GROUPS[3], -318, 144, options);
 }
