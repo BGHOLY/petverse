@@ -2169,10 +2169,11 @@ export class MainUI extends Component {
 
     private renderSkillLearning() {
         if (!this.pageRoot) return;
-        const root=this.pageRoot; const pet=GameStore.currentPet||{}; const pets=GameStore.pets.filter((item)=>!item?.isEgg);
+        const shell = createV6PageShell(this.pageRoot, 'SkillLayoutV6');
+        const root=shell.content; const pet=GameStore.currentPet||{}; const pets=GameStore.pets.filter((item)=>!item?.isEgg);
         const selector=this.createScrollArea(root,'SkillPetSelector',0,416,672,96,Math.max(672,pets.length*130+16),96,'horizontal');
         pets.forEach((item,index)=>button(selector.content,`SkillPet_${item?.id||index}`,safeName(item?.nickname,`宝宝${index+1}`),64+index*130,0,120,82,()=>{GameStore.selectPet(Number(item?.id||0));this.lockedSkillCodes.clear();this.renderCurrentPage(false);},{iconPath:getPetArtPath(item,'thumb'),iconSize:50,selected:Number(item?.id)===Number(GameStore.currentPetId),fill:CuteTheme.paperWarm,fontSize:12,radius:18,subtitle:`${this.rarityName(item)} · Lv.${Number(item?.level||1)}`}));
-        const page=panel(root,'SkillResearchPage',0,-40,672,824,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
+        const page=panel(root,'SkillResearchPage',0,-60,672,824,CuteTheme.paper,34,true,CuteTheme.caramelSoft,3);
         const header=panel(page,'Header',0,313,620,118,new Color(244,252,236,255),24,false,CuteTheme.mintDark,2);
         image(header,'Pet',getPetArtPath(pet,'thumb'),-250,0,90,90,CuteTheme.paperWarm);
         text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,55,28,430,32,20,CuteTheme.caramel,'left',true);
@@ -2183,11 +2184,21 @@ export class MainUI extends Component {
         const currentSkills=Array.isArray(pet?.skills)?pet.skills:[];
         const cArea=this.createScrollArea(current,'CurrentScroll',0,-10,302,312,302,Math.max(312,currentSkills.length*72+8),'vertical');
         currentSkills.forEach((skill:any,index:number)=>{const code=this.skillCode(skill);const special=this.isSpecialSkill(skill);button(cArea.content,`Skill_${index}`,this.skillName(skill),-35,-34-index*72,226,62,()=>this.showSkillDetail(skill),{iconPath:this.skillIconPath(skill),iconSize:48,fill:this.skillColor(skill),textColor:this.skillTier(skill)==='low'?CuteTheme.caramel:CuteTheme.white,fontSize:14,radius:20,subtitle:`${this.skillTierLabel(skill)} · ${safeName(skill?.description,'查看效果').slice(0,18)}`});button(cArea.content,`Lock_${index}`,this.lockedSkillCodes.has(code)?'已锁':'锁定',112,-34-index*72,58,52,()=>this.toggleSkillLock(skill),{icon:this.lockedSkillCodes.has(code)?'🔒':'🔓',fill:this.lockedSkillCodes.has(code)?CuteTheme.honey:CuteTheme.paperWarm,fontSize:10,radius:18,disabled:special});});
+        if (!currentSkills.length) {
+            drawUiIcon(cArea.content, 'EmptySkillIcon', 'skills', 0, 42, 54, CuteTheme.mintDark);
+            text(cArea.content, 'EmptySkillTitle', '还没有已学技能', 0, -14, 260, 34, 18, CuteTheme.caramel, 'center', true);
+            text(cArea.content, 'EmptySkillHint', '从右侧选择技能书，为宝宝建立第一套战斗能力', 0, -58, 250, 58, 13, CuteTheme.muted, 'center', false);
+        }
         const books=panel(page,'Books',159,42,302,404,new Color(255,245,240,255),24,false,CuteTheme.peachDark,2);
         headingTag(books,'Title','背包技能书',0,170,150,CuteTheme.peach);
         const items=this.skillBookItems(); if(!this.selectedSkillBookCode&&items.length)this.selectedSkillBookCode=String(items[0]?.itemCode||'');
         const bArea=this.createScrollArea(books,'BookScroll',0,-10,302,312,302,Math.max(312,items.length*72+8),'vertical');
         items.forEach((item,index)=>{const selected=String(item?.itemCode||'')===this.selectedSkillBookCode;button(bArea.content,`Book_${index}`,safeName(item?.name,'技能书'),0,-34-index*72,278,62,()=>{this.selectedSkillBookCode=String(item?.itemCode||'');this.renderCurrentPage(false);},{iconPath:this.skillBookIconPath(item),iconSize:48,fill:this.itemTier(item)==='high'?new Color(232,104,103,255):new Color(116,187,82,255),textColor:CuteTheme.white,fontSize:14,radius:20,selected,subtitle:`${this.itemTier(item)==='high'?'高级':'低级'} · 数量 ${Number(item?.quantity||0)}`});});
+        if (!items.length) {
+            drawUiIcon(bArea.content, 'EmptyBookIcon', 'inventory', 0, 42, 54, CuteTheme.peachDark);
+            text(bArea.content, 'EmptyBookTitle', '背包里没有技能书', 0, -14, 260, 34, 18, CuteTheme.caramel, 'center', true);
+            text(bArea.content, 'EmptyBookHint', '可从商店、冒险和活动中获得', 0, -54, 250, 42, 13, CuteTheme.muted, 'center', false);
+        }
         const selectedBook=items.find((item)=>String(item?.itemCode||'')===this.selectedSkillBookCode)||null;
         const desc=panel(page,'Description',0,-267,620,166,new Color(255,252,239,255),24,false,CuteTheme.caramelSoft,2);
         text(desc,'Title',selectedBook?safeName(selectedBook?.name,'技能书'):'请选择技能书',-70,50,430,34,20,CuteTheme.caramel,'left',true);
@@ -2224,8 +2235,8 @@ export class MainUI extends Component {
             4,
         );
         headingTag(page, 'Title', '炼妖研究室', 0, 440, 178, CuteTheme.lilac);
-        text(page, 'Explain', '把两只宝宝的技能与天赋交给新的可能性，确认前可完整查看结果范围。', 0, 400, 620, 34, 14, CuteTheme.muted, 'center', true);
-        const steps = panel(page, 'FusionSteps', 0, 350, 620, 44, new Color(255, 252, 239, 210), 18, false, CuteTheme.caramelSoft, 2);
+        text(page, 'Explain', '把两只宝宝的技能与天赋交给新的可能性，确认前可完整查看结果范围。', 0, 394, 620, 34, 14, CuteTheme.muted, 'center', true);
+        const steps = panel(page, 'FusionSteps', 0, 348, 620, 44, new Color(255, 252, 239, 210), 18, false, CuteTheme.caramelSoft, 2);
         tag(steps, 'StepParents', '① 选择父母', -204, 0, 164, CuteTheme.mint);
         tag(steps, 'StepPreview', '② 查看范围', 0, 0, 164, CuteTheme.paperWarm);
         tag(steps, 'StepConfirm', '③ 确认炼妖', 204, 0, 164, CuteTheme.peach);

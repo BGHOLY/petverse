@@ -202,12 +202,13 @@ check(
     'Fusion uses the safe-area shell, equal parent cards, three-step guidance, and one safe primary action.',
 );
 check(
-    mainUiSource.includes("'SkillResearchPage',0,-40,672,824")
+    mainUiSource.includes("createV6PageShell(this.pageRoot, 'SkillLayoutV6')")
+        && mainUiSource.includes("'SkillResearchPage',0,-60,672,824")
         && mainUiSource.includes("'Current',-159,42,302,404")
         && mainUiSource.includes("'Books',159,42,302,404")
         && mainUiSource.includes("'Learn','")
         && mainUiSource.includes('230,-5,160,70'),
-    'Skill learning uses balanced skill/book columns and one clear primary action.',
+    'Skill learning uses the safe-area shell, balanced skill/book columns and one clear primary action.',
 );
 check(
     mainUiSource.includes("'TeamEditor', 0, 0, 650, 850")

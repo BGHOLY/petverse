@@ -237,10 +237,28 @@ function renderWarehouseScroll(parent: Node, options: HatcheryPageV6Options, wid
     if (options.eggs.length) {
         text(content, 'ListEnd', '—— 已经到底了 ——', 0, -gridHeight - 22, width - 30, 30, 13, CuteTheme.muted, 'center', true);
     } else {
-        text(content, 'Empty', options.totalStored ? '当前筛选没有宠物蛋' : '当前没有宠物蛋\n可通过好友结婚、生蛋或活动获得', 0, -height / 2 + 68, width - 80, 88, 18, CuteTheme.muted, 'center', true);
-        if (!options.totalStored) {
-            button(content, 'GoMarriage', '前往好友/结婚', -100, -height / 2 - 4, 180, 46, options.onGoMarriage, { fill: CuteTheme.honey, fontSize: 13, radius: 19 });
-            button(content, 'BackHome', '返回首页', 100, -height / 2 - 4, 150, 46, options.onBackHome, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 19 });
+        const empty = panel(
+            content,
+            'EmptyState',
+            0,
+            -height / 2,
+            width - 86,
+            230,
+            new Color(255, 253, 243, 248),
+            24,
+            false,
+            new Color(221, 185, 134, 180),
+            2,
+        );
+        const iconWell = panel(empty, 'IconWell', 0, 64, 76, 76, new Color(237, 247, 222, 255), 26, false, CuteTheme.white, 2);
+        drawUiIcon(iconWell, 'Icon', 'hatchery', 0, 0, 48, CuteTheme.mintDark);
+        text(empty, 'Title', options.totalStored ? '这个筛选下没有宠物蛋' : '蛋仓库还是空的', 0, 10, width - 150, 36, 19, CuteTheme.caramel, 'center', true);
+        text(empty, 'Hint', options.totalStored ? '切回全部，即可查看仓库里的其他宠物蛋' : '可通过好友结婚、生蛋或活动获得', 0, -28, width - 150, 34, 13, CuteTheme.muted, 'center', false);
+        if (options.totalStored) {
+            button(empty, 'ShowAll', '查看全部', 0, -78, 148, 44, () => options.onFilter('all'), { fill: CuteTheme.honey, fontSize: 13, radius: 18 });
+        } else {
+            button(empty, 'GoMarriage', '前往好友/结婚', -96, -78, 176, 44, options.onGoMarriage, { fill: CuteTheme.honey, fontSize: 13, radius: 18 });
+            button(empty, 'BackHome', '返回首页', 96, -78, 142, 44, options.onBackHome, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18 });
         }
     }
 
