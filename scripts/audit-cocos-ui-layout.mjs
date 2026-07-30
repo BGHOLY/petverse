@@ -257,6 +257,12 @@ check(
         && shopPageSource.includes('layout.cellSize = new Size(250, 154)'),
     'Shop products use a readable two-column card grid.',
 );
+check(
+    shopPageSource.includes("'EmptyState'")
+        && shopPageSource.includes("'RefreshAction'")
+        && shopPageSource.includes("'这一栏正在补货'"),
+    'Shop empty categories explain the state and provide a refresh action.',
+);
 
 const inventoryPageSource = fs.readFileSync(path.join(
     repositoryRoot,
@@ -266,6 +272,12 @@ check(
     inventoryPageSource.includes('Math.ceil(options.items.length / 4)')
         && inventoryPageSource.includes("'ItemIconWell'"),
     'Inventory keeps a four-column grid with clear icon wells.',
+);
+check(
+    inventoryPageSource.includes("'EmptyState'")
+        && inventoryPageSource.includes("'当前分类还是空的'")
+        && inventoryPageSource.includes('emptyHint'),
+    'Inventory empty categories explain where matching items come from.',
 );
 
 const hatcheryPageSource = fs.readFileSync(path.join(
@@ -286,6 +298,23 @@ check(
         && hatcheryPageSource.includes("'OpenWarehouse'")
         && hatcheryPageSource.includes("'CloseWarehouse'"),
     'The hatchery uses a nursery-first scene with three nests and an expandable egg warehouse drawer.',
+);
+check(
+    hatcheryPageSource.includes("'EmptyState'")
+        && hatcheryPageSource.includes("'ShowAll'")
+        && hatcheryPageSource.includes("'GoMarriage'"),
+    'The hatchery empty warehouse offers a relevant next action.',
+);
+
+const cuteUiKitSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/cute/CuteUiKit.ts',
+), 'utf8');
+check(
+    cuteUiKitSource.includes('disabledReason?: string;')
+        && cuteUiKitSource.includes('new Color(239, 233, 219, 255)')
+        && cuteUiKitSource.includes('const subtitle = options.subtitle || (disabled ? options.disabledReason : undefined);'),
+    'Disabled buttons use a warm neutral state and can explain why an action is unavailable.',
 );
 
 const morePageSource = fs.readFileSync(path.join(
