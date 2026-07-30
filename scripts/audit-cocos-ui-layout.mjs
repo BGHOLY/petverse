@@ -189,14 +189,17 @@ check(
     'Adventure team actions use a dedicated card instead of overlapping the story progress footer.',
 );
 check(
-    mainUiSource.includes("'FusionPage', 0, 0, 672, 952")
+    mainUiSource.includes("createV6PageShell(this.pageRoot, 'FusionLayoutV6')")
+        && mainUiSource.includes("'FusionPage',")
+        && mainUiSource.includes('V6_SAFE_CONTENT_HEIGHT,')
+        && mainUiSource.includes("'FusionSteps'")
         && mainUiSource.includes("'ParentA',")
-        && mainUiSource.includes("-160, 165, 'A'")
+        && mainUiSource.includes("-160, 142, 'A'")
         && mainUiSource.includes("'ParentB',")
-        && mainUiSource.includes("160, 165, 'B'")
+        && mainUiSource.includes("160, 142, 'B'")
         && mainUiSource.includes("'ExecuteButton'")
-        && mainUiSource.includes('0, -385, 260, 72'),
-    'Fusion keeps equal parent cards and its primary action inside the bottom safe area.',
+        && mainUiSource.includes('0, -393, 280, 72'),
+    'Fusion uses the safe-area shell, equal parent cards, three-step guidance, and one safe primary action.',
 );
 check(
     mainUiSource.includes("'SkillResearchPage',0,-40,672,824")

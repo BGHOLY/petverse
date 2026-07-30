@@ -67,6 +67,7 @@ import { renderInventoryDetailModalV6 } from './v6/pages/InventoryDetailModal';
 import { InventoryCategoryV6, InventoryItemCategoryV6, renderInventoryPageV6 } from './v6/pages/InventoryPage';
 import { renderHatcheryPageV6 } from './v6/pages/HatcheryPage';
 import { renderPetPageV6 } from './v6/pages/PetPage';
+import { createV6PageShell } from './v6/AppShell';
 import { instantiateDynamicListItem, preloadDynamicListPrefabs } from './prefab/DynamicListPrefabRegistry';
 import { PetAttributeViewV6, PetEquipmentSlotV6, PetTabV6 } from './v6/components/PetTypes';
 import { ShopCategoryV6, ShopSubcategoryV6, renderShopPageV6 } from './v6/pages/ShopPage';
@@ -75,7 +76,7 @@ import {
     TaskCategoryV6,
     renderBenefitsPageV6,
 } from './v6/pages/BenefitsPage';
-import { V6_CONTENT_HEIGHT } from './v6/UiMetrics';
+import { V6_CONTENT_HEIGHT, V6_PAGE_WIDTH, V6_SAFE_CONTENT_HEIGHT } from './v6/UiMetrics';
 
 const { ccclass, property } = _decorator;
 
@@ -2198,18 +2199,34 @@ export class MainUI extends Component {
     private renderFusion() {
         if (!this.pageRoot) return;
         this.ensureFusionParents();
-        const root = this.pageRoot;
-        const page = panel(root, 'FusionPage', 0, 0, 672, 952, new Color(250, 241, 255, 255), 40, true, CuteTheme.caramelSoft, 4);
-        headingTag(page, 'Title', '炼妖研究室', 0, 418, 178, CuteTheme.lilac);
-        text(page, 'Explain', '精准选择两只宝宝。确认前完整查看成长、资质、技能、稀有度和消耗。', 0, 376, 620, 38, 15, CuteTheme.muted, 'center', true);
+        const shell = createV6PageShell(this.pageRoot, 'FusionLayoutV6');
+        const page = panel(
+            shell.content,
+            'FusionPage',
+            0,
+            0,
+            V6_PAGE_WIDTH,
+            V6_SAFE_CONTENT_HEIGHT,
+            new Color(250, 241, 255, 255),
+            32,
+            true,
+            CuteTheme.caramelSoft,
+            4,
+        );
+        headingTag(page, 'Title', '炼妖研究室', 0, 440, 178, CuteTheme.lilac);
+        text(page, 'Explain', '把两只宝宝的技能与天赋交给新的可能性，确认前可完整查看结果范围。', 0, 400, 620, 34, 14, CuteTheme.muted, 'center', true);
+        const steps = panel(page, 'FusionSteps', 0, 350, 620, 44, new Color(255, 252, 239, 210), 18, false, CuteTheme.caramelSoft, 2);
+        tag(steps, 'StepParents', '① 选择父母', -204, 0, 164, CuteTheme.mint);
+        tag(steps, 'StepPreview', '② 查看范围', 0, 0, 164, CuteTheme.paperWarm);
+        tag(steps, 'StepConfirm', '③ 确认炼妖', 204, 0, 164, CuteTheme.peach);
 
         const parentA = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentAId) || null;
         const parentB = GameStore.pets.find((pet) => Number(pet?.id) === this.fusionParentBId) || null;
-        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -160, 165, 'A');
-        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 160, 165, 'B');
-        text(page, 'FusionMark', '＋', 0, 174, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
+        this.fusionParentCard(page, 'ParentA', '父系宝宝', parentA, -160, 142, 'A');
+        this.fusionParentCard(page, 'ParentB', '母系宝宝', parentB, 160, 142, 'B');
+        text(page, 'FusionMark', '＋', 0, 151, 58, 58, 42, CuteTheme.honeyDark, 'center', true);
 
-        const preview = panel(page, 'OutcomeRange', 0, -132, 620, 178, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
+        const preview = panel(page, 'OutcomeRange', 0, -140, 620, 180, CuteTheme.paper, 28, false, CuteTheme.caramelSoft, 2);
         headingTag(preview, 'RangeTitle', '可能结果范围', -220, 63, 190, CuteTheme.paperWarm);
         if (!parentA || !parentB) {
             text(preview, 'RangeEmpty', '分别选择父系和母系宝宝后，这里会自动显示可能出现的物种、稀有度、成长、资质、技能和变异范围。', 0, -4, 560, 92, 16, CuteTheme.muted, 'center', false);
@@ -2223,14 +2240,14 @@ export class MainUI extends Component {
 
         const coreCount=this.inventoryQuantity('fusion_core');
         const essenceCount=this.inventoryQuantity('mutation_essence');
-        const materials=panel(page,'FusionMaterials',0,-276,620,96,new Color(255,249,232,255),24,false,CuteTheme.honey,2);
+        const materials=panel(page,'FusionMaterials',0,-287,620,90,new Color(255,249,232,255),24,false,CuteTheme.honey,2);
         text(materials,'AutoTitle','自动放入炼妖材料',-205,28,180,26,15,CuteTheme.caramel,'left',true);
         tag(materials,'Gold',`金币 1000 / ${formatNumber(Number(GameStore.user?.gold||0))}`,-206,-16,166,Number(GameStore.user?.gold||0)>=1000?CuteTheme.mint:CuteTheme.peach);
         tag(materials,'Core',`合宠核心 1 / ${coreCount}`,-24,-16,166,coreCount>=1?CuteTheme.mint:CuteTheme.peach);
         button(materials,'Essence',this.fusionUseMutationEssence?`✓ 变异精华 1 / ${essenceCount}`:`＋ 变异精华 0 / ${essenceCount}`,205,-4,220,56,()=>this.toggleFusionMutationEssence(),{selected:this.fusionUseMutationEssence,fill:this.fusionUseMutationEssence?CuteTheme.lilac:CuteTheme.paperWarm,fontSize:13,radius:20,subtitle:'可选：变异率 +3%'});
 
-        button(page, 'ExecuteButton', '确认并炼妖', 0, -385, 260, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
-        text(page, 'Cost', '父母会被消耗；核心自动放入，变异精华由玩家决定是否使用', 0, -446, 620, 26, 13, CuteTheme.peachDark, 'center', true);
+        button(page, 'ExecuteButton', '确认并炼妖', 0, -393, 280, 72, () => void this.confirmFusionExecution(), { icon: '🔮', fill: CuteTheme.honey, fontSize: 18, radius: 28, disabled: !parentA || !parentB || this.busy.has('fusion:execute') });
+        text(page, 'Cost', '父母会被永久消耗；核心自动放入，变异精华由你决定是否使用', 0, -457, 620, 26, 13, CuteTheme.peachDark, 'center', true);
     }
 
     private renderAdventure() {
