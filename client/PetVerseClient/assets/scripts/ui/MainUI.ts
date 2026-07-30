@@ -2401,8 +2401,18 @@ export class MainUI extends Component {
         const exploration=Number(region?.exploration||0);
         text(actions,'ExploreTitle',exploration>=100?'区域探索已完成':'推进区域探索',-142,54,240,30,16,CuteTheme.caramel,'center',true);
         text(actions,'NestTitle',region?.nestUnlocked?'首领巢穴已开放':'探索达到100%后开放',142,54,240,30,16,CuteTheme.caramel,'center',true);
-        button(actions,'Explore',exploration>=100?'探索完成':'开始探索',-142,-8,220,64,()=>void this.startRegionBattle('explore',region),{fill:CuteTheme.mint,fontSize:17,radius:24,disabled:this.teamPetIds.length!==5||exploration>=100});
-        button(actions,'Nest',region?.nestUnlocked?(region?.bossCleared?'再次挑战':'挑战首领'):'尚未开放',142,-8,220,64,()=>void this.startRegionBattle('nest',region),{fill:CuteTheme.honey,fontSize:17,radius:24,disabled:this.teamPetIds.length!==5||!region?.nestUnlocked||Number(attempts?.remaining||0)<=0});
+        const exploreDisabled = this.teamPetIds.length !== 5 || exploration >= 100;
+        const exploreDisabledReason = this.teamPetIds.length !== 5 ? '需要完整五宠编队' : exploration >= 100 ? '该区域已完成' : undefined;
+        const nestDisabled = this.teamPetIds.length !== 5 || !region?.nestUnlocked || Number(attempts?.remaining || 0) <= 0;
+        const nestDisabledReason = this.teamPetIds.length !== 5
+            ? '需要完整五宠编队'
+            : !region?.nestUnlocked
+                ? '探索达到100%后开放'
+                : Number(attempts?.remaining || 0) <= 0
+                    ? '今日挑战次数不足'
+                    : undefined;
+        button(actions,'Explore',exploration>=100?'探索完成':'开始探索',-142,-8,220,64,()=>void this.startRegionBattle('explore',region),{fill:CuteTheme.mint,fontSize:17,radius:24,disabled:exploreDisabled,disabledReason:exploreDisabledReason});
+        button(actions,'Nest',region?.nestUnlocked?(region?.bossCleared?'再次挑战':'挑战首领'):'尚未开放',142,-8,220,64,()=>void this.startRegionBattle('nest',region),{fill:CuteTheme.honey,fontSize:17,radius:24,disabled:nestDisabled,disabledReason:nestDisabledReason});
         text(actions,'TeamHint',this.teamPetIds.length===5?`出战：${this.formationName(this.selectedFormationCode)} · 战力 ${formatNumber(this.teamPower())}`:'需要先配置完整五宠编队',0,-65,480,24,11,this.teamPetIds.length===5?CuteTheme.mintDark:CuteTheme.peachDark,'center',true);
     }
 
@@ -2551,6 +2561,7 @@ export class MainUI extends Component {
         button(parent, 'TowerChallenge', '挑战本层', 0, -164, 240, 66, () => void this.startAdventureBattle('tower'), {
             icon: '🏯', fill: CuteTheme.honey, fontSize: 19, radius: 28,
             disabled: this.teamPetIds.length!==5 || this.busy.has('battle:tower'),
+            disabledReason: this.teamPetIds.length!==5 ? '需要完整五宠编队' : this.busy.has('battle:tower') ? '正在进入战斗' : undefined,
         });
     }
 
@@ -2565,6 +2576,7 @@ export class MainUI extends Component {
         button(parent, 'PveChallenge', '开始试炼', 0, -164, 240, 66, () => void this.startAdventureBattle('pve'), {
             icon: '⚔', fill: CuteTheme.mint, fontSize: 19, radius: 28,
             disabled: this.teamPetIds.length!==5 || this.busy.has('battle:pve'),
+            disabledReason: this.teamPetIds.length!==5 ? '需要完整五宠编队' : this.busy.has('battle:pve') ? '正在进入战斗' : undefined,
         });
     }
 

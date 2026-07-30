@@ -348,10 +348,17 @@ export function button(
             text(face, 'Subtitle', subtitle, textLeft, -15, textWidth, 22, 11, subtitleColor, 'left', false);
         }
     } else if (options.icon) {
-        text(face, 'Icon', options.icon, 0, subtitle ? 16 : 8, width - 12, height * 0.55, Math.min(34, height * 0.36), titleColor, 'center', true);
-        text(face, 'Title', title, 0, subtitle ? -18 : -height * 0.28, width - 12, 28, options.fontSize || 17, titleColor, 'center', true);
         if (subtitle) {
-            text(face, 'Subtitle', subtitle, 0, -height * 0.28, width - 16, 24, 12, subtitleColor, 'center', false);
+            const iconWidth = Math.min(44, height - 12);
+            const iconX = -width / 2 + iconWidth / 2 + 8;
+            const textLeft = -width / 2 + iconWidth + 14;
+            const textWidth = Math.max(46, width - iconWidth - 24);
+            text(face, 'Icon', options.icon, iconX, 0, iconWidth, iconWidth, Math.min(28, height * 0.34), titleColor, 'center', true);
+            text(face, 'Title', title, textLeft, 10, textWidth, 27, options.fontSize || 17, titleColor, 'left', true);
+            text(face, 'Subtitle', subtitle, textLeft, -16, textWidth, 22, 11, subtitleColor, 'left', false);
+        } else {
+            text(face, 'Icon', options.icon, 0, 8, width - 12, height * 0.55, Math.min(34, height * 0.36), titleColor, 'center', true);
+            text(face, 'Title', title, 0, -height * 0.28, width - 12, 28, options.fontSize || 17, titleColor, 'center', true);
         }
     } else {
         text(face, 'Title', title, 0, subtitle ? 10 : 0, width - 16, subtitle ? height * 0.55 : height - 8, options.fontSize || 18, titleColor, 'center', true);
