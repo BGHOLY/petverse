@@ -38,7 +38,7 @@ import {
   normalizeGeneCode,
 } from './utils/gene.util';
 
-export { OffspringBlueprint };
+export type { OffspringBlueprint };
 
 interface CreatePetData {
   nickname?: string;
