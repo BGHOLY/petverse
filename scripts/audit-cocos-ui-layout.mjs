@@ -175,6 +175,16 @@ check(
     'The baked home title is covered by one centered dynamic title plate for every page.',
 );
 check(
+    mainUiSource.includes("'PrimaryHomeAction'")
+        && mainUiSource.includes("'领取孵化宝宝'")
+        && mainUiSource.includes("'继续冒险'")
+        && mainUiSource.includes('0,')
+        && mainUiSource.includes('-405,')
+        && mainUiSource.includes('320,')
+        && mainUiSource.includes('72,'),
+    'Home exposes one dynamic primary action above the fixed bottom navigation.',
+);
+check(
     mainUiSource.includes("'TeamQuickActions'"),
     'Adventure team actions use a dedicated card instead of overlapping the story progress footer.',
 );

@@ -1131,6 +1131,32 @@ export class MainUI extends Component {
                 sprite.spriteFrame = frame;
             });
         }
+
+        const homeRuntime = this.pageRoot?.getChildByName('RuntimeContent');
+        if (homeRuntime) {
+            const readyEgg = (GameStore.eggs || []).some((egg: any) => {
+                const status = String(egg?.status || '');
+                return Number(egg?.remainingSeconds || 0) <= 0
+                    && ['incubating', 'hatching', 'ready'].includes(status);
+            });
+            button(
+                homeRuntime,
+                'PrimaryHomeAction',
+                readyEgg ? '领取孵化宝宝' : '继续冒险',
+                0,
+                -405,
+                320,
+                72,
+                () => this.showPage(readyEgg ? 'hatchery' : 'adventure'),
+                {
+                    fill: readyEgg ? CuteTheme.mint : CuteTheme.honey,
+                    fontSize: 20,
+                    radius: 30,
+                    subtitle: readyEgg ? '有宝宝正在等待破壳' : '推进主线，获得宝宝培养材料',
+                    border: readyEgg ? CuteTheme.mintDark : CuteTheme.honeyDark,
+                },
+            );
+        }
     }
 
         private createScrollArea(
