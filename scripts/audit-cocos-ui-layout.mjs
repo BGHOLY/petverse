@@ -168,8 +168,8 @@ check(
 );
 check(
     mainUiSource.includes("'DynamicPageTitlePlate'")
-        && mainUiSource.includes('224,')
-        && mainUiSource.includes('62,')
+        && mainUiSource.includes('268,')
+        && mainUiSource.includes('132,')
         && mainUiSource.includes('titleNode.active = true')
         && mainUiSource.includes('PAGE_TITLE_LABELS[this.currentPage]'),
     'The baked home title is covered by one centered dynamic title plate for every page.',
