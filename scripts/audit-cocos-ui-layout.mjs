@@ -83,7 +83,7 @@ check(
 );
 check(
     pageTitleId !== undefined
-        && sameRect(rect(pageTitleId), { x: 0, y: 4, width: 190, height: 36 }),
+        && sameRect(rect(pageTitleId), { x: 0, y: -10, width: 190, height: 36 }),
     'TopBar contains a centered editor-owned current-page title.',
 );
 check(
@@ -169,7 +169,7 @@ check(
 check(
     mainUiSource.includes("'DynamicPageTitlePlate'")
         && mainUiSource.includes('216,')
-        && mainUiSource.includes('64,')
+        && mainUiSource.includes('80,')
         && mainUiSource.includes('titleNode.active = true')
         && mainUiSource.includes('PAGE_TITLE_LABELS[this.currentPage]'),
     'The baked home title is covered by one centered dynamic title plate for every page.',

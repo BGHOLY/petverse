@@ -968,7 +968,7 @@ export class MainUI extends Component {
                 titleNode.position.x,
                 titleNode.position.y,
                 216,
-                64,
+                80,
                 new Color(255, 246, 220, 252),
                 22,
                 true,
