@@ -37,7 +37,12 @@ export type FivePetBattleOptions = {
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
 type Directive = { type: DirectiveType; targetId?: string; useUltimate?: boolean; requestId?: string };
 
-const DEFAULT_FORMATION_POSITIONS: Array<[number, number]> = [[0, 104], [-196, 26], [196, 26], [-104, -92], [104, -92]];
+// Battle logic still uses the configured formation slots. The presentation uses
+// two stable five-card arcs so every pet remains readable on a 720px screen.
+// Encoding raw formation coordinates directly into card positions caused the
+// five portraits to overlap on several formations and device aspect ratios.
+const ENEMY_VISUAL_POSITIONS: Array<[number, number]> = [[0, 420], [-230, 300], [230, 300], [-110, 170], [110, 170]];
+const ALLY_VISUAL_POSITIONS: Array<[number, number]> = [[0, -195], [-230, -82], [230, -82], [-110, 45], [110, 45]];
 
 const COMMAND_META: Record<Exclude<DirectiveType, 'auto'>, { title: string; icon: string; side: 'enemy' | 'ally'; fill: Color }> = {
     focus: { title: '集火', icon: '🎯', side: 'enemy', fill: CuteTheme.peach },
@@ -91,15 +96,20 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         clearNode(battlefield);
         unitNodes.clear();
         const boss = Boolean(session?.bossBattle || ['boss', 'tower', 'guild-boss'].indexOf(options.mode) >= 0);
-        panel(battlefield, 'Sky', 0, 222, 720, 840, boss ? new Color(83, 70, 112, 255) : new Color(164, 216, 236, 255), 0, false, CuteTheme.transparent, 0);
-        panel(battlefield, 'Ground', 0, -392, 720, 420, boss ? new Color(77, 65, 58, 255) : new Color(180, 218, 157, 255), 0, false, CuteTheme.transparent, 0);
+        panel(battlefield, 'Sky', 0, 242, 720, 800, boss ? new Color(102, 91, 132, 255) : new Color(193, 225, 229, 255), 0, false, CuteTheme.transparent, 0);
+        panel(battlefield, 'Horizon', 0, 78, 720, 338, boss ? new Color(164, 135, 139, 255) : new Color(218, 232, 190, 255), 110, false, CuteTheme.transparent, 0);
+        panel(battlefield, 'Ground', 0, -296, 720, 520, boss ? new Color(102, 82, 73, 255) : new Color(178, 210, 153, 255), 90, false, CuteTheme.transparent, 0);
+        panel(battlefield, 'BattleStage', 0, 56, 664, 720, boss ? new Color(70, 58, 82, 74) : new Color(255, 250, 226, 72), 48, true, boss ? new Color(235, 207, 218, 100) : new Color(255, 255, 255, 120), 2);
+        text(battlefield, 'EnemySideLabel', boss ? '首领阵营' : '敌方阵营', -276, 493, 130, 28, 13, boss ? CuteTheme.peach : CuteTheme.caramel, 'left', true);
+        text(battlefield, 'AllySideLabel', '我的五宠', -276, -244, 130, 28, 13, CuteTheme.mintDark, 'left', true);
+        text(battlefield, 'Versus', '✦  VS  ✦', 0, 89, 180, 36, 19, boss ? CuteTheme.peach : CuteTheme.caramel, 'center', true);
 
-        const top = panel(battlefield, 'TopBar', 0, 590, 700, 82, new Color(255, 250, 232, 246), 26, false, CuteTheme.caramelSoft, 2);
-        text(top, 'Title', options.title || (boss ? '首领战' : options.mode === 'arena' ? '竞技切磋' : '区域冒险'), 0, 14, 300, 36, 22, CuteTheme.caramel, 'center', true);
-        text(top, 'Round', `第 ${Math.max(1, Number(session?.round || 1))} 回合`, -275, -20, 160, 30, 14, CuteTheme.caramel, 'left', true);
-        text(top, 'Formation', `${session?.formationName || session?.formationCode || '阵法'}  VS  ${session?.enemyFormationName || session?.enemyFormationCode || '敌阵'}`, 0, -21, 330, 30, 13, CuteTheme.muted, 'center', true);
-        button(top, 'Report', '战报', 230, 0, 76, 42, () => showBattleReport(), { fill: CuteTheme.sky, fontSize: 13, radius: 18 });
-        button(top, 'Close', '退出', 310, 0, 70, 42, close, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18 });
+        const top = panel(battlefield, 'TopBar', 0, 584, 692, 94, new Color(255, 250, 232, 250), 28, true, CuteTheme.caramelSoft, 3);
+        text(top, 'Title', options.title || (boss ? '首领战' : options.mode === 'arena' ? '竞技切磋' : '区域冒险'), 0, 18, 306, 34, 21, CuteTheme.caramel, 'center', true);
+        tag(top, 'Round', `第 ${Math.max(1, Number(session?.round || 1))} 回合`, -258, -17, 132, CuteTheme.honey);
+        text(top, 'Formation', `${session?.formationName || session?.formationCode || '阵法'}  对阵  ${session?.enemyFormationName || session?.enemyFormationCode || '敌阵'}`, 0, -20, 312, 27, 12, CuteTheme.muted, 'center', true);
+        button(top, 'Report', '战报', 232, 0, 82, 44, () => showBattleReport(), { fill: CuteTheme.sky, fontSize: 13, radius: 18 });
+        button(top, 'Close', '退出', 310, 0, 66, 44, close, { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18 });
 
         if (!session) {
             text(battlefield, 'Loading', '正在布置五宠阵法…', 0, 30, 560, 80, 26, CuteTheme.paper, 'center', true);
@@ -109,14 +119,14 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         renderTeam(session.rightTeam || [], session.enemyFormationCode, true);
         renderTeam(session.leftTeam || [], session.formationCode, false);
 
-        const info = panel(battlefield, 'RoundInfo', 0, -336, 672, 92, new Color(255, 250, 232, 238), 20, false, CuteTheme.caramelSoft, 2);
-        const logs = Array.isArray(session.battleLog) ? session.battleLog.slice(-3) : [];
+        const info = panel(battlefield, 'RoundInfo', 0, -324, 672, 96, new Color(255, 250, 232, 246), 22, true, CuteTheme.caramelSoft, 2);
+        const logs = Array.isArray(session.battleLog) ? session.battleLog.slice(-2) : [];
         const timeline=Array.from({length:Math.min(8,Math.max(1,Number(session?.round||1)))},(_,index)=>index===Math.min(7,Number(session?.round||1)-1)?'●':'○').join(' ');
         text(info,'Timeline',`回合轨迹 ${timeline}`, -310,28,620,24,12,CuteTheme.muted,'left',true);
         const order=(Array.isArray(session?.actionOrder)?session.actionOrder:[]).slice(0,6).map((item:any)=>String(item?.name||'')).filter(Boolean).join(' → ');
-        text(info, 'Logs', `${order?`行动：${order}\n`:''}${logs.map((item: any) => `• ${String(item?.text || '').slice(0, 42)}`).join('\n') || '等待本回合战术指令'}`, -310, -13, 620, 58, 11, CuteTheme.caramel, 'left', false);
+        text(info, 'Logs', `${order?`行动：${order}\n`:''}${logs.map((item: any) => `• ${String(item?.text || '').slice(0, 45)}`).join('\n') || '等待本回合战术指令'}`, -310, -14, 620, 60, 11, CuteTheme.caramel, 'left', false);
 
-        const command = panel(battlefield, 'CommandBar', 0, -506, 700, 244, new Color(255, 246, 224, 252), 30, true, CuteTheme.caramelSoft, 4);
+        const command = panel(battlefield, 'CommandBar', 0, -508, 700, 238, new Color(255, 246, 224, 254), 30, true, CuteTheme.caramelSoft, 4);
         if (session.status !== 'active') {
             renderResult(command);
             return;
@@ -128,11 +138,11 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             return;
         }
 
-        const prompt = promptOverride || `先点指令，再拖动浮动箭头到目标宝宝（${countdown}秒后自动）`;
-        text(command, 'Prompt', prompt, 0, 91, 640, 32, 15, CuteTheme.caramel, 'center', true);
+        const prompt = promptOverride || `选择一个战术指令，再点击目标宝宝（${countdown}秒后自动）`;
+        text(command, 'Prompt', prompt, 0, 88, 640, 32, 14, CuteTheme.caramel, 'center', true);
         const cd = session.cooldowns?.left || {};
         const actions: Array<[Exclude<DirectiveType, 'auto'>, number]> = [['focus', -246], ['guard', -82], ['shield', 82], ['cleanse', 246]];
-        actions.forEach(([type, x]) => createDragCommand(command, type, x, 28, cd));
+        actions.forEach(([type, x]) => createDragCommand(command, type, x, 26, cd));
         if(armedDirective)createDirectiveArrow(armedDirective);
 
         const initialCd = Number(session.ultimate?.initialCooldown || 3);
@@ -140,8 +150,8 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const energyCost=Number(session?.commands?.ultimate?.energyCost||session?.ultimate?.energyCost||cd.formationEnergyCost||100);
         const energy=Number(session?.commands?.ultimate?.energy||cd.formationEnergy||0);
         const ultimateReady = ultimateRemaining <= 0&&energy>=energyCost;
-        progress(command,'FormationEnergy',-115,-18,250,10,energy/Math.max(1,energyCost),CuteTheme.lilac);
-        text(command,'EnergyText',`阵法能量 ${energy}/${energyCost}`,95,-18,180,22,11,CuteTheme.muted,'left',true);
+        progress(command,'FormationEnergy',-115,-20,250,10,energy/Math.max(1,energyCost),CuteTheme.lilac);
+        text(command,'EnergyText',`阵法能量 ${energy}/${energyCost}`,95,-20,180,22,11,CuteTheme.muted,'left',true);
         button(command, 'Ultimate', ultimateReady ? `阵法大招 · ${session.ultimate?.name || '发动'}` : energy<energyCost?`阵法大招 · 能量不足`:`阵法大招 · ${ultimateRemaining}回合后`, -130, -73, 330, 54, () => void send({ type: 'focus', targetId: firstAliveId(true), useUltimate: true }), {
             icon: '✦', fill: CuteTheme.lilac, fontSize: 15, radius: 24, disabled: processing || !ultimateReady,
         });
@@ -184,30 +194,25 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         if (settlementDone) void AudioDirector.playSfx(win ? 'confirm' : 'error');
     };
 
-    const renderTeam = (team: any[], formationCode: string, enemy: boolean) => {
-        const formation=enemy?session?.enemyFormation:session?.formation;
-        const configured=Array.isArray(formation?.positions)?formation.positions:Array.isArray(formation?.slots)?formation.slots:[];
-        const positions:Array<[number,number]>=configured.length===5
-            ? configured.map((slot:any)=>[Number(slot?.x||0)*1.25,Number(slot?.y||0)*0.68] as [number,number])
-            : DEFAULT_FORMATION_POSITIONS;
+    const renderTeam = (team: any[], _formationCode: string, enemy: boolean) => {
+        const positions = enemy ? ENEMY_VISUAL_POSITIONS : ALLY_VISUAL_POSITIONS;
         team.slice(0, 5).forEach((unit: any, index: number) => {
-            const [px, py] = positions[index] || [0, 0];
-            const x = px;
-            const y = enemy ? 335 + py * 0.67 : -82 - py * 0.67;
+            const [x, y] = positions[index] || [0, 0];
             const alive = unit?.alive !== false && Number(unit?.hp || 0) > 0;
-            const card = panel(battlefield, `Unit_${enemy ? 'E' : 'A'}_${unit?.id}`, x, y, 130, 158, alive ? new Color(255, 250, 232, 246) : new Color(118, 118, 118, 185), 22, false, alive ? CuteTheme.caramelSoft : CuteTheme.muted, 2);
+            const teamColor = enemy ? CuteTheme.peachDark : CuteTheme.mintDark;
+            const card = panel(battlefield, `Unit_${enemy ? 'E' : 'A'}_${unit?.id}`, x, y, 118, 146, alive ? new Color(255, 250, 232, 248) : new Color(118, 118, 118, 185), 21, true, alive ? teamColor : CuteTheme.muted, alive ? 3 : 2);
             unitNodes.set(String(unit?.id), { node: card, enemy, alive });
-            image(card, 'Art', getPetArtPath(unit, 'thumb'), 0, 28, 86, 86, CuteTheme.paperWarm);
-            text(card, 'Name', cleanPetDisplayName(unit,'宝宝',9), 0, -25, 118, 24, 12, CuteTheme.caramel, 'center', true);
-            progress(card, 'Hp', 0, -49, 104, 11, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
-            text(card,'HpText',`${formatNumber(unit?.hp||0)}/${formatNumber(unit?.maxHp||1)}`,0,-49,100,18,8,CuteTheme.white,'center',true);
-            if (Number(unit?.shield || 0) > 0){ progress(card, 'Shield', 0, -62, 104, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky); text(card,'ShieldText',`盾${formatNumber(unit.shield)}`,0,-68,100,16,8,CuteTheme.sky,'center',true); }
+            image(card, 'Art', getPetArtPath(unit, 'thumb'), 0, 27, 78, 78, CuteTheme.paperWarm);
+            text(card, 'Name', cleanPetDisplayName(unit,'宝宝',8), 0, -22, 106, 22, 11, CuteTheme.caramel, 'center', true);
+            progress(card, 'Hp', 0, -44, 96, 12, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
+            text(card,'HpText',`${formatNumber(unit?.hp||0)}/${formatNumber(unit?.maxHp||1)}`,0,-44,94,17,8,CuteTheme.white,'center',true);
+            if (Number(unit?.shield || 0) > 0){ progress(card, 'Shield', 0, -58, 96, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky); text(card,'ShieldText',`盾${formatNumber(unit.shield)}`,0,-65,94,15,8,CuteTheme.sky,'center',true); }
             const statusText = Array.isArray(unit?.statuses) ? unit.statuses.slice(0, MAX_VISIBLE_STATUSES).map((s: any) => statusIcon(s?.type)).join('') : '';
-            if (statusText) tag(card, 'Status', statusText, 38, 63, 58, CuteTheme.peach);
+            if (statusText) tag(card, 'Status', statusText, 33, 58, 54, CuteTheme.peach);
             const marks = [...directiveTargets.entries()].filter(([, id]) => id === String(unit?.id));
-            if (marks.length) tag(card, 'DirectiveMark', marks.map(([type]) => COMMAND_META[type as Exclude<DirectiveType, 'auto'>]?.icon || '').join(''), -39, 63, 56, CuteTheme.honey);
+            if (marks.length) tag(card, 'DirectiveMark', marks.map(([type]) => COMMAND_META[type as Exclude<DirectiveType, 'auto'>]?.icon || '').join(''), -33, 58, 52, CuteTheme.honey);
             const focused=String((enemy?session?.cooldowns?.left:session?.cooldowns?.right)?.focusTargetId||'')===String(unit?.id);
-            if(focused)tag(card,'FocusMark','🎯 集火',-34,62,66,CuteTheme.peach);
+            if(focused)tag(card,'FocusMark','🎯 集火',-29,58,62,CuteTheme.peach);
             const chooseTarget=()=>{
                 const type=armedDirective;
                 if(!type||!alive)return;
