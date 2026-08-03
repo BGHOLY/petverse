@@ -2,10 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
 } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { FusionService } from './fusion.service';
 
 @Controller('fusion')
@@ -15,9 +16,9 @@ export class FusionController {
   ) {}
 
   @Post('preview')
-  preview(@Body() body: any) {
+  preview(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.fusionService.preview(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(
         body?.parentAId ||
           body?.petAId ||
@@ -39,9 +40,9 @@ export class FusionController {
   }
 
   @Post('execute')
-  execute(@Body() body: any) {
+  execute(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.fusionService.execute(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(
         body?.parentAId ||
           body?.petAId ||
@@ -64,9 +65,9 @@ export class FusionController {
   }
 
   @Get('history')
-  getHistory() {
+  getHistory(@Headers('x-user-id') userId?: string) {
     return this.fusionService.getHistory(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
     );
   }
 }

@@ -8,7 +8,6 @@ import {
   Put,
 } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
 import { BattleService } from './battle.service';
 import { BattleV10Service } from './battle-v10.service';
 import { BattleTacticsService } from './battle-tactics.service';
@@ -44,75 +43,75 @@ export class BattleController {
   }
 
   @Post('pve')
-  pve(@Body() body: any) {
+  pve(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.battleService.pve(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || body?.myPetId || 0) || undefined,
     );
   }
 
   @Post('friend')
-  friend(@Body() body: any) {
+  friend(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.battleService.friendBattle(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || body?.myPetId || 0) || undefined,
       Number(body?.friendPetId || body?.targetPetId || 0) || undefined,
     );
   }
 
   @Post('start')
-  startBattle(@Body() body: any) {
+  startBattle(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.battleService.startBattle(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.myPetId || body?.petId || 0),
       Number(body?.targetPetId || body?.friendPetId || 0),
     );
   }
 
   @Post('team-pve')
-  teamPve() {
-    return this.battleService.teamPve(DEFAULT_USER_ID);
+  teamPve(@Headers('x-user-id') userId?: string) {
+    return this.battleService.teamPve(resolveRequestUserId(userId));
   }
 
   @Post('team-friend')
-  teamFriend(@Body() body: any) {
+  teamFriend(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.battleService.friendTeamBattle(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.friendUserId || body?.targetUserId || 0) || undefined,
     );
   }
 
   @Post('v10/start')
-  startFivePetBattle(@Body() body: any) {
-    return this.battleV10Service.startPve(DEFAULT_USER_ID, body || {});
+  startFivePetBattle(@Headers('x-user-id') userId: string, @Body() body: any) {
+    return this.battleV10Service.startPve(resolveRequestUserId(userId), body || {});
   }
 
   @Post('v10/command')
-  commandFivePetBattle(@Body() body: any) {
+  commandFivePetBattle(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.battleV10Service.command(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.sessionId || 0),
       body?.directive || body || {},
     );
   }
 
   @Get('v10/session/:id')
-  getFivePetSession(@Param('id') id: string) {
-    return this.battleV10Service.getSession(DEFAULT_USER_ID, Number(id || 0));
+  getFivePetSession(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+    return this.battleV10Service.getSession(resolveRequestUserId(userId), Number(id || 0));
   }
 
   @Get('v10/id/:battleId')
-  getFivePetSessionByBattleId(@Param('battleId') battleId: string) {
-    return this.battleV10Service.getSessionByBattleId(DEFAULT_USER_ID, battleId);
+  getFivePetSessionByBattleId(@Headers('x-user-id') userId: string, @Param('battleId') battleId: string) {
+    return this.battleV10Service.getSessionByBattleId(resolveRequestUserId(userId), battleId);
   }
 
   @Post('v10/settle')
-  settleFivePetBattle(@Body() body: any) {
-    return this.battleV10Service.settle(DEFAULT_USER_ID, body || {});
+  settleFivePetBattle(@Headers('x-user-id') userId: string, @Body() body: any) {
+    return this.battleV10Service.settle(resolveRequestUserId(userId), body || {});
   }
 
   @Post('v10/arena')
-  arenaFivePetBattle(@Body() body: any) {
-    return this.battleV10Service.arena(DEFAULT_USER_ID, body || {});
+  arenaFivePetBattle(@Headers('x-user-id') userId: string, @Body() body: any) {
+    return this.battleV10Service.arena(resolveRequestUserId(userId), body || {});
   }
 }

@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { TowerService } from './tower.service';
 
 @Controller('tower')
@@ -8,26 +8,26 @@ export class TowerController {
   constructor(private readonly towerService: TowerService) {}
 
   @Get('status')
-  getStatus() {
-    return this.towerService.getStatus(DEFAULT_USER_ID);
+  getStatus(@Headers('x-user-id') userId?: string) {
+    return this.towerService.getStatus(resolveRequestUserId(userId));
   }
 
   @Get('me')
-  async getMyRecord() {
-    const record = await this.towerService.getMyRecord(DEFAULT_USER_ID);
+  async getMyRecord(@Headers('x-user-id') userId?: string) {
+    const record = await this.towerService.getMyRecord(resolveRequestUserId(userId));
     return { success: true, record, data: record };
   }
 
   @Post('challenge')
-  challenge(@Body() body: any) {
+  challenge(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.towerService.challengeTower(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0) || undefined,
     );
   }
 
   @Post('challenge-team')
-  challengeTeam() {
-    return this.towerService.challengeTeam(DEFAULT_USER_ID);
+  challengeTeam(@Headers('x-user-id') userId?: string) {
+    return this.towerService.challengeTeam(resolveRequestUserId(userId));
   }
 }

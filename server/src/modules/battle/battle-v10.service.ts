@@ -365,6 +365,10 @@ export class BattleV10Service {
           { battleId },
         );
       }
+      if (result?.session?.mode === 'tower') {
+        await this.dailyTaskService.completeTask(userId, 'towerCompleted');
+        await this.seasonService.syncPlayerScores(userId);
+      }
     }
     return result;
   }
@@ -1133,75 +1137,6 @@ export class BattleV10Service {
     if (rightRemaining > leftDamage * 0.35) return '输出不足';
     if (leftHealing < left.reduce((sum, unit) => sum + unit.maxHp, 0) * 0.08) return '生存不足';
     return '控制与战术配合不足';
-  }
-
-  private async settleSession(session: BattleSessionV10) {
-    if (session.settled) return;
-    session.settled = true;
-    session.rewards = {};
-    if (session.winnerSide !== 'left') return;
-
-    const user = await this.userRepository.findOne({ where: { id: session.userId } });
-    const livingPets = (session.leftTeam as BattleUnit[])
-      .map((unit) => Number(unit.petId || 0))
-      .filter((id) => id > 0);
-
-    if (session.mode === 'tower') {
-      let record = await this.towerRepository.findOne({ where: { userId: session.userId } });
-      if (!record) {
-        record = this.towerRepository.create({
-          userId: session.userId,
-          currentFloor: 1,
-          maxFloor: 0,
-          totalRewardGold: 0,
-        } as TowerRecord);
-      }
-      const floor = Math.max(1, Number(record.currentFloor || 1));
-      const reward = {
-        gold: 200 + floor * 80,
-        diamond: floor % 5 === 0 ? 2 : 0,
-        exp: 100 + floor * 20,
-        floor,
-      };
-      if (user) {
-        user.gold = Number(user.gold || 0) + reward.gold;
-        user.diamond = Number(user.diamond || 0) + reward.diamond;
-        await this.userRepository.save(user);
-      }
-      const expEach = Math.max(1, Math.floor(reward.exp / Math.max(1, livingPets.length)));
-      for (const petId of livingPets) {
-        const pet = await this.petService.getPetById(petId);
-        if (pet && pet.ownerId === session.userId) await this.petService.addExp(pet, expEach);
-      }
-      record.currentFloor = floor + 1;
-      record.maxFloor = Math.max(Number(record.maxFloor || 0), floor);
-      record.totalRewardGold = Number(record.totalRewardGold || 0) + reward.gold;
-      await this.towerRepository.save(record);
-      await this.dailyTaskService.completeTask(session.userId, 'towerCompleted');
-      await this.seasonService.syncPlayerScores(session.userId);
-      session.rewards = { ...reward, expEach };
-      return;
-    }
-
-    if (session.mode === 'pve' || session.mode === 'boss') {
-      const reward = {
-        gold: session.bossBattle ? 320 : 160,
-        diamond: session.bossBattle ? 1 : 0,
-        exp: session.bossBattle ? 220 : 120,
-      };
-      if (user) {
-        user.gold = Number(user.gold || 0) + reward.gold;
-        user.diamond = Number(user.diamond || 0) + reward.diamond;
-        await this.userRepository.save(user);
-      }
-      const expEach = Math.max(1, Math.floor(reward.exp / Math.max(1, livingPets.length)));
-      for (const petId of livingPets) {
-        const pet = await this.petService.getPetById(petId);
-        if (pet && pet.ownerId === session.userId) await this.petService.addExp(pet, expEach);
-      }
-      await this.dailyTaskService.completeTask(session.userId, 'battleCompleted');
-      session.rewards = { ...reward, expEach };
-    }
   }
 
   private finishIfNeeded(session: BattleSessionV10) {

@@ -2,11 +2,12 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Post,
 } from '@nestjs/common';
 
-import { DEFAULT_USER_ID } from '../game-data';
+import { resolveRequestUserId } from '../../common/request-user.util';
 import { ALL_SKILL_CONFIGS } from './config/skill.config';
 import { SkillService } from './skill.service';
 import { getSkillCombatTags } from '../battle/combat-reaction.config';
@@ -44,9 +45,9 @@ export class SkillController {
   }
 
   @Post('learn')
-  learnSkill(@Body() body: any) {
+  learnSkill(@Headers('x-user-id') userId: string, @Body() body: any) {
     return this.skillService.learnSkill(
-      DEFAULT_USER_ID,
+      resolveRequestUserId(userId),
       Number(body?.petId || 0),
       String(body?.skillCode || ''),
       Array.isArray(body?.lockedSkillCodes)
@@ -63,13 +64,14 @@ export class SkillController {
 
   @Get('logs/:petId')
   async getLearningLogs(
+    @Headers('x-user-id') userId: string,
     @Param('petId') petId: string,
   ) {
     return {
       success: true,
       logs:
         await this.skillService.getPetLearningLogs(
-          DEFAULT_USER_ID,
+          resolveRequestUserId(userId),
           Number(petId || 0),
         ),
     };
