@@ -51,7 +51,7 @@ export function renderFormationPanel(
         const counters = Array.isArray(item?.counters) ? item.counters.map((code: string) => overview?.formations?.find((formation: any) => formation?.code === code)?.name?.split('·')[0] || code).join('、') : '';
         const ultimate = item?.ultimate || {};
         const effectSummary = `${item?.description || item?.summary || '不同站位承担不同职责'}${counters ? `\n克制 ${counters}` : ''}${ultimate?.name ? ` · 大招 ${ultimate.name}` : ''}`;
-        text(card, 'Summary', effectSummary, -94, -10, 340, 52, 13, CuteTheme.muted, 'left', false);
+        text(card, 'Summary', effectSummary, -258, -10, 296, 52, 12, CuteTheme.muted, 'left', false);
         const next = item?.nextCost;
         text(card, 'Cost', next ? `下级：${next.knowledge}心得${next.cores ? `＋${next.cores}核心` : ''}` : '已满级', 110, 28, 172, 28, 13, CuteTheme.caramel, 'center', true);
         button(card, 'Select', selected ? '使用中' : '选择', 117, -18, 104, 42, () => actions.onSelect(String(item?.code || 'dragon')), { fill: selected ? CuteTheme.mint : CuteTheme.sky, selected, fontSize: 13, radius: 18 });

@@ -946,7 +946,7 @@ export class MainUI extends Component {
         if (!this.topBar) return;
         this.ensureDynamicPageTitle();
         if (this.nicknameLabel) this.nicknameLabel.string = safeName(GameStore.user?.nickname, '小桃子');
-        if (this.pageTitleLabel) this.pageTitleLabel.string = PAGE_TITLE_LABELS[this.currentPage] || 'PetVerse';
+        if (this.pageTitleLabel) this.pageTitleLabel.string = this.currentPageTitle();
         if (this.levelLabel) this.levelLabel.string = `Lv.${Number(GameStore.user?.level || 1)}`;
         if (this.vipLabel) this.vipLabel.string = `VIP${Number(GameStore.user?.vipLevel || GameStore.user?.vip || 0)}`;
         if (this.goldLabel) this.goldLabel.string = formatNumber(GameStore.user?.gold);
@@ -989,6 +989,23 @@ export class MainUI extends Component {
         this.pageTitleLabel.isBold = true;
     }
 
+    private currentPageTitle() {
+        if (this.teamEditing && (this.currentPage === 'adventure' || this.currentPage === 'formation')) {
+            return '五宠编队';
+        }
+        if (this.currentPage === 'adventure') {
+            if (this.adventureRegionOpen) return '主线探索';
+            const adventureTitles: Record<typeof this.adventureMode, string> = {
+                world: '冒险大陆',
+                tower: '生态之塔',
+                pve: '每日挑战',
+                friend: '好友切磋',
+            };
+            return adventureTitles[this.adventureMode];
+        }
+        return PAGE_TITLE_LABELS[this.currentPage] || 'PetVerse';
+    }
+
     private renderBottomNav() {
         if (!this.bottomNav) return;
         const activeTab = mainTabForPage(this.currentPage);
@@ -1004,6 +1021,7 @@ export class MainUI extends Component {
         const editorPage = this.panelManager?.showPageNode(this.currentPage)
             || resolvePageContainer(this.pageHost, this.currentPage);
         if (!editorPage) return;
+        if (this.pageTitleLabel) this.pageTitleLabel.string = this.currentPageTitle();
 
         if (this.currentPage === 'home') {
             this.pageRoot = editorPage;
@@ -1020,9 +1038,9 @@ export class MainUI extends Component {
             this.pageRoot,
             'FeaturePageBackdrop',
             0,
-            0,
+            -30,
             DESIGN_WIDTH,
-            V6_CONTENT_HEIGHT,
+            V6_CONTENT_HEIGHT + 60,
             new Color(250, 239, 210, 255),
             0,
             false,
@@ -1881,7 +1899,7 @@ export class MainUI extends Component {
         rewards.forEach(([day, reward, icon], index) => {
             const col = index % 4;
             const row = Math.floor(index / 4);
-            const x = -234 + col * 156;
+            const x = row === 0 ? -234 + col * 156 : -156 + col * 156;
             const y = 155 - row * 160;
             const reached = index + 1 <= Number(record?.continuousDays || 0);
             const today = index + 1 === cycleDay && Boolean(info?.canSign);
@@ -2178,7 +2196,7 @@ export class MainUI extends Component {
         image(header,'Pet',getPetArtPath(pet,'thumb'),-250,0,90,90,CuteTheme.paperWarm);
         text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,55,28,430,32,20,CuteTheme.caramel,'left',true);
         text(header,'Role',`定位 ${(pet?.speciesConfig?.roleTags||[getPetSpeciesMeta(pet).role||'综合']).map((value:any)=>this.petRoleLabel(value)).join(' / ')}　技能格 ${Array.isArray(pet?.skills)?pet.skills.length:0}/${Number(pet?.skillSlotCount||3)}`,55,-8,430,28,13,CuteTheme.muted,'left',true);
-        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',55,-40,430,26,12,CuteTheme.peachDark,'left',true);
+        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',55,-35,430,40,11,CuteTheme.peachDark,'left',false);
         const current=panel(page,'Current',-159,42,302,404,new Color(245,252,238,255),24,false,CuteTheme.mintDark,2);
         headingTag(current,'Title','当前技能',0,170,130,CuteTheme.mint);
         const currentSkills=Array.isArray(pet?.skills)?pet.skills:[];
@@ -2214,7 +2232,7 @@ export class MainUI extends Component {
                     : this.busy.has('skill:learn')
                         ? '正在处理'
                         : undefined;
-        button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{icon:'📕',fill:CuteTheme.honey,fontSize:17,radius:28,disabled:learnDisabled,disabledReason:learnDisabledReason});
+        button(desc,'Learn','确认打书',230,-5,160,70,()=>void this.learnSelectedSkill(),{fill:CuteTheme.honey,fontSize:17,radius:28,disabled:learnDisabled,disabledReason:learnDisabledReason});
     }
 
     private renderFusion() {
@@ -2473,13 +2491,13 @@ export class MainUI extends Component {
         headingTag(editor, 'Title', '五宠阵法编队', -210, 382, 190, CuteTheme.mint);
         const counterNames=(Array.isArray(formation?.counters)?formation.counters:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
         const counteredByNames=(Array.isArray(formation?.counteredBy)?formation.counteredBy:[]).map((code:any)=>this.formationName(String(code))).join('、')||'无';
-        text(editor, 'Hint', `总战力 ${formatNumber(this.teamPower())}　克制 ${counterNames} · 受 ${counteredByNames} 克制　点两个阵位交换`, 0, 343, 580, 32, 12, CuteTheme.muted, 'left', true);
+        text(editor, 'Hint', `总战力 ${formatNumber(this.teamPower())}　克制 ${counterNames} · 受 ${counteredByNames} 克制　点两个阵位交换`, -290, 343, 580, 32, 12, CuteTheme.muted, 'left', true);
         const formationCodes = (Array.isArray(this.formationOverview?.formations)?this.formationOverview.formations.map((item:any)=>String(item?.code||item?.id)):['dragon','turtle','crane','tiger','phoenix']).slice(0,5);
         formationCodes.forEach((code,index)=>button(editor,`F_${code}`,this.formationName(code),-240+index*120,300,110,42,()=>{this.selectedFormationCode=code;this.renderCurrentPage(false);},{selected:this.selectedFormationCode===code,fill:this.selectedFormationCode===code?CuteTheme.honey:CuteTheme.paperWarm,fontSize:12,radius:18}));
 
         const ultimate=formation?.ultimate||{};
-        text(editor,'Ultimate',`${ultimate?.icon||'阵'} ${ultimate?.name||'阵法大招'} · 能量 ${Number(ultimate?.energyCost||0)}　${ultimate?.description||formation?.description||'按阵法配置发动全队技能'}`,0,258,572,34,12,CuteTheme.peachDark,'left',true);
-        const field = panel(editor, 'FormationField', 0, 115, 612, 220, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
+        text(editor,'Ultimate',`${ultimate?.icon||'阵'} ${ultimate?.name||'阵法大招'} · 能量 ${Number(ultimate?.energyCost||0)}　${ultimate?.description||formation?.description||'按阵法配置发动全队技能'}`,-286,258,572,34,12,CuteTheme.peachDark,'left',true);
+        const field = panel(editor, 'FormationField', 0, 115, 612, 240, new Color(243, 249, 236, 255), 27, false, CuteTheme.mintDark, 2);
         this.formationSlotNodes.clear();
         const positions = this.formationEditorPositions(this.selectedFormationCode);
         const byId = new Map(GameStore.pets.map((pet)=>[Number(pet?.id||0),pet]));
@@ -2488,13 +2506,13 @@ export class MainUI extends Component {
             const pet = byId.get(petId) || null;
             const pending = Number(this.formationSelectedCandidateId || 0) > 0;
             const slotSelected=index===this.formationSelectedSlotIndex;
-            const slot = panel(field, `Slot_${index}`, x, y, 116, 102, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 21, true, slotSelected?CuteTheme.peachDark:pending ? CuteTheme.mintDark : pet ? CuteTheme.honey : CuteTheme.caramelSoft, slotSelected||pending ? 4 : 2);
+            const slot = panel(field, `Slot_${index}`, x, y, 104, 82, pet ? new Color(255, 247, 219, 255) : new Color(239, 242, 232, 255), 18, true, slotSelected?CuteTheme.peachDark:pending ? CuteTheme.mintDark : pet ? CuteTheme.honey : CuteTheme.caramelSoft, slotSelected||pending ? 4 : 2);
             this.formationSlotNodes.set(index, slot);
-            text(slot, 'Role', `${index+1}号位 · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 40, 104, 18, 11, CuteTheme.mintDark, 'center', true);
-            if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 12, 42, 42, CuteTheme.paperWarm);
-            else text(slot, 'Empty', '＋', 0, 12, 42, 42, 26, CuteTheme.muted, 'center', true);
-            text(slot, 'Name', pet ? this.compactPetName(pet) : pending ? '点此放入' : '空阵位', 0, -18, 102, 18, 12, CuteTheme.caramel, 'center', true);
-            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -38, 104, 18, 11, CuteTheme.peachDark, 'center', true);
+            text(slot, 'Role', `${index+1}号位 · ${this.formationSlotRole(this.selectedFormationCode, index)}`, 0, 30, 96, 16, 10, CuteTheme.mintDark, 'center', true);
+            if (pet) image(slot, 'Pet', getPetArtPath(pet, 'thumb'), 0, 6, 34, 34, CuteTheme.paperWarm);
+            else text(slot, 'Empty', '＋', 0, 6, 34, 34, 24, CuteTheme.muted, 'center', true);
+            text(slot, 'Name', pet ? this.compactPetName(pet) : pending ? '点此放入' : '空阵位', 0, -20, 94, 16, 11, CuteTheme.caramel, 'center', true);
+            text(slot, 'Bonus', this.formationSlotBonus(this.selectedFormationCode, index), 0, -34, 96, 14, 10, CuteTheme.peachDark, 'center', true);
             const selectSlot = (event:any) => this.handleFormationSlotClick(index,event);
             slot.on(Node.EventType.TOUCH_START, () => { this.teamDragSourceSlot=index; this.teamDragPetId=0; this.teamDragMoved=false; });
             slot.on(Node.EventType.TOUCH_MOVE, (event:any) => this.moveTeamDrag(event));
@@ -5284,15 +5302,12 @@ export class MainUI extends Component {
     }
 
     private formationEditorPositions(code:string):Array<[number,number]> {
-        const config=this.formationConfig(code);
-        const configured=Array.isArray(config?.positions)?config.positions:Array.isArray(config?.slots)?config.slots:[];
-        if(configured.length===5)return configured.map((slot:any)=>[Number(slot?.x||0)*1.18,Number(slot?.y||0)*0.36-5] as [number,number]);
         const map:Record<string,Array<[number,number]>>={
-            dragon:[[0,52],[-188,10],[188,10],[-96,-55],[96,-55]],
-            turtle:[[-160,50],[160,50],[0,8],[-150,-58],[150,-58]],
-            crane:[[0,58],[-170,8],[170,8],[-155,-58],[155,-58]],
-            tiger:[[-135,52],[135,52],[0,4],[-178,-58],[178,-58]],
-            phoenix:[[0,58],[-178,14],[178,14],[-105,-58],[105,-58]],
+            dragon:[[0,70],[-195,15],[195,15],[-105,-55],[105,-55]],
+            turtle:[[-170,65],[170,65],[0,12],[-170,-58],[170,-58]],
+            crane:[[0,70],[-190,15],[190,15],[-150,-58],[150,-58]],
+            tiger:[[-150,65],[150,65],[0,10],[-195,-58],[195,-58]],
+            phoenix:[[0,70],[-195,18],[195,18],[-112,-58],[112,-58]],
         };
         return map[String(code)]||map.dragon;
     }

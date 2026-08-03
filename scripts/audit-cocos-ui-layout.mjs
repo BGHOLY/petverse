@@ -163,16 +163,18 @@ const mainUiSource = fs.readFileSync(path.join(
     'client/PetVerseClient/assets/scripts/ui/MainUI.ts',
 ), 'utf8');
 check(
-    mainUiSource.includes("'FeaturePageBackdrop'"),
-    'Every non-home feature page receives a full-width warm backdrop.',
+    mainUiSource.includes("'FeaturePageBackdrop'")
+        && mainUiSource.includes('V6_CONTENT_HEIGHT + 60'),
+    'Every non-home feature page receives a full-width warm backdrop extended beneath the navigation art.',
 );
 check(
     mainUiSource.includes("'DynamicPageTitlePlate'")
         && mainUiSource.includes('216,')
         && mainUiSource.includes('80,')
         && mainUiSource.includes('titleNode.active = true')
-        && mainUiSource.includes('PAGE_TITLE_LABELS[this.currentPage]'),
-    'The baked home title is covered by one centered dynamic title plate for every page.',
+        && mainUiSource.includes('this.currentPageTitle()')
+        && mainUiSource.includes("friend: '好友切磋'"),
+    'The baked home title is covered by one centered dynamic title plate with mode-aware page titles.',
 );
 check(
     mainUiSource.includes("'PrimaryHomeAction'")
@@ -207,15 +209,22 @@ check(
         && mainUiSource.includes("'Current',-159,42,302,404")
         && mainUiSource.includes("'Books',159,42,302,404")
         && mainUiSource.includes("'Learn','")
-        && mainUiSource.includes('230,-5,160,70'),
+        && mainUiSource.includes('230,-5,160,70')
+        && mainUiSource.includes("55,-35,430,40,11,CuteTheme.peachDark,'left',false"),
     'Skill learning uses the safe-area shell, balanced skill/book columns and one clear primary action.',
 );
 check(
     mainUiSource.includes("'TeamEditor', 0, 0, 650, 850")
+        && mainUiSource.includes("'FormationField', 0, 115, 612, 240")
+        && mainUiSource.includes('x, y, 104, 82')
         && mainUiSource.includes("'TeamPetScroll',0,-210,610,270")
         && mainUiSource.includes("'Save','")
         && mainUiSource.includes("245,-382,140,50"),
     'Team editing keeps its formation field, scroll list and save action within the safe viewport.',
+);
+check(
+    mainUiSource.includes("row === 0 ? -234 + col * 156 : -156 + col * 156"),
+    'The second sign-in reward row is centered instead of leaving a one-card gap.',
 );
 check(
     mainUiSource.includes("'PhotoFace'")
@@ -240,6 +249,15 @@ check(
     petPageSource.includes('const LEFT_WIDTH = 184;')
         && petPageSource.includes('const ROSTER_CARD_GAP = 12;'),
     'The pet roster has a distinct wider column and comfortable card spacing.',
+);
+
+const v10PanelsSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v10/V10Panels.ts',
+), 'utf8');
+check(
+    v10PanelsSource.includes("text(card, 'Summary', effectSummary, -258, -10, 296, 52, 12"),
+    'Formation summaries stay clear of select and upgrade buttons.',
 );
 
 const shopPageSource = fs.readFileSync(path.join(
