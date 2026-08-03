@@ -51,6 +51,8 @@ expectText('fusion is transactional and idempotent', fusionService, [
   'normalizedRequestId',
   'requestId: normalizedRequestId',
   'await manager.delete(Pet',
+  "status: 'active'",
+  'Unequip all equipment from fusion pets first',
 ]);
 
 const battleService = read('server/src/modules/battle/battle-v10.service.ts');

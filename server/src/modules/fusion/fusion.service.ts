@@ -11,6 +11,8 @@ import {
   EconomyService,
 } from '../economy/economy.service';
 import { DEFAULT_USER_ID } from '../game-data';
+import { EquipmentItem } from '../equipment/equipment.entity';
+import { Expedition } from '../expedition/expedition.entity';
 import { Pet } from '../pet/pet.entity';
 import { PetService } from '../pet/pet.service';
 import {
@@ -38,6 +40,12 @@ export class FusionService {
 
     @InjectRepository(FusionRecord)
     private readonly fusionRecordRepository: Repository<FusionRecord>,
+
+    @InjectRepository(Expedition)
+    private readonly expeditionRepository: Repository<Expedition>,
+
+    @InjectRepository(EquipmentItem)
+    private readonly equipmentRepository: Repository<EquipmentItem>,
 
     private readonly dataSource: DataSource,
     private readonly petService: PetService,
@@ -479,7 +487,7 @@ export class FusionService {
       };
     }
 
-    const [parentA, parentB, team] =
+    const [parentA, parentB, team, activeExpeditions, equippedItems] =
       await Promise.all([
         this.petRepository.findOne({
           where: { id: parentAId },
@@ -490,12 +498,23 @@ export class FusionService {
         this.petTeamRepository.findOne({
           where: { userId },
         }),
+        this.expeditionRepository.find({
+          where: { userId, status: 'active' },
+        }),
+        this.equipmentRepository.find({
+          where: {
+            ownerId: userId,
+            equippedPetId: In([parentAId, parentBId]),
+          },
+        }),
       ]);
     const message = this.validateParents(
       userId,
       parentA,
       parentB,
       team,
+      activeExpeditions,
+      equippedItems,
     );
     if (message) {
       return {
@@ -516,20 +535,33 @@ export class FusionService {
     parentA: Pet | null,
     parentB: Pet | null,
   ) {
-    const team = await manager.findOne(
-      PetTeam,
-      {
+    const [team, activeExpeditions, equippedItems] = await Promise.all([
+      manager.findOne(PetTeam, {
         where: { userId },
-        lock: {
-          mode: 'pessimistic_write',
+        lock: { mode: 'pessimistic_write' },
+      }),
+      manager.find(Expedition, {
+        where: { userId, status: 'active' },
+        lock: { mode: 'pessimistic_read' },
+      }),
+      manager.find(EquipmentItem, {
+        where: {
+          ownerId: userId,
+          equippedPetId: In([
+            Number(parentA?.id || 0),
+            Number(parentB?.id || 0),
+          ]),
         },
-      },
-    );
+        lock: { mode: 'pessimistic_read' },
+      }),
+    ]);
     return this.validateParents(
       userId,
       parentA,
       parentB,
       team,
+      activeExpeditions,
+      equippedItems,
     );
   }
 
@@ -538,6 +570,8 @@ export class FusionService {
     parentA: Pet | null,
     parentB: Pet | null,
     team: PetTeam | null,
+    activeExpeditions: Expedition[] = [],
+    equippedItems: EquipmentItem[] = [],
   ) {
     if (!parentA || !parentB) {
       return 'Fusion parent not found';
@@ -579,6 +613,21 @@ export class FusionService {
       teamIds.includes(parentB.id)
     ) {
       return 'Remove fusion pets from the active team first';
+    }
+    const parentIds = new Set([Number(parentA.id), Number(parentB.id)]);
+    if (
+      activeExpeditions.some((entry) =>
+        (entry.petIds || []).some((petId) => parentIds.has(Number(petId))),
+      )
+    ) {
+      return 'Claim or finish the active expedition before fusing these pets';
+    }
+    if (
+      equippedItems.some((item) =>
+        parentIds.has(Number(item.equippedPetId || 0)),
+      )
+    ) {
+      return 'Unequip all equipment from fusion pets first';
     }
     return '';
   }
