@@ -111,15 +111,15 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
         new Color(218, 179, 121, 210),
         3,
     );
-    panel(card, 'NestBase', 0, -40, 184, 48, new Color(221, 185, 126, 210), 22, false, new Color(181, 130, 77, 210), 2);
+    panel(card, 'NestBase', 0, -45, 184, 28, new Color(221, 185, 126, 210), 14, false, new Color(181, 130, 77, 210), 2);
 
     if (!slot.egg) {
         const selectedEgg = options.eggs.find((egg) => Number(egg?.id || 0) === options.selectedEggId) || null;
         if (selectedEgg) artImage(chamber, 'SelectedEggArt', getEggArtPath(selectedEgg), 0, 22, 76, 94);
         else drawUiIcon(chamber, 'EmptyEgg', 'hatchery', 0, 18, 62, CuteTheme.honeyDark);
-        text(chamber, 'EmptyState', selectedEgg ? `${getEggDisplayName(selectedEgg)}\n等待放入` : '柔软空窝\n等待宠物蛋', 0, -40, 142, 48, 14, selectedEgg ? CuteTheme.caramel : CuteTheme.muted, 'center', true);
-        text(card, 'Status', selectedEgg ? '已选择宠物蛋' : '温度适宜 · 可以使用', 0, -65, 176, 26, 12, selectedEgg ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
-        button(card, 'ChooseEgg', selectedEgg ? '放入这个窝' : '打开蛋仓库', 0, -111, 148, 42, () => {
+        text(chamber, 'EmptyState', selectedEgg ? `${getEggDisplayName(selectedEgg)}\n等待放入` : '柔软空窝\n等待宠物蛋', 0, -31, 142, 46, 14, selectedEgg ? CuteTheme.caramel : CuteTheme.muted, 'center', true);
+        text(card, 'Status', selectedEgg ? '已选择宠物蛋' : '温度适宜 · 可以使用', 0, -76, 176, 22, 12, selectedEgg ? CuteTheme.honeyDark : CuteTheme.mintDark, 'center', true);
+        button(card, 'ChooseEgg', selectedEgg ? '放入这个窝' : '打开蛋仓库', 0, -116, 148, 40, () => {
             if (selectedEgg) options.onChooseEmptySlot(slot.slot);
             else options.onToggleWarehouse();
         }, { fill: selectedEgg ? CuteTheme.honey : CuteTheme.mint, fontSize: 13, radius: 17 });
@@ -129,10 +129,10 @@ function renderIncubator(parent: Node, slot: HatcherySlotV6, options: HatcheryPa
     artImage(chamber, 'EggArt', getEggArtPath(slot.egg), 0, 20, 86, 106);
     if (slot.egg?.isMutant) tag(chamber, 'Mutant', '变异', 50, 66, 56, CuteTheme.peach);
     text(chamber, 'EggName', getEggDisplayName(slot.egg), 0, -48, 150, 28, 13, CuteTheme.caramel, 'center', true);
-    progress(card, 'Progress', 0, -60, 166, 12, slot.ready ? 1 : 1 - slot.remaining / Math.max(1, slot.total), slot.ready ? CuteTheme.green : CuteTheme.honey);
-    text(card, 'Time', slot.ready ? '孵化完成' : options.formatDuration(slot.remaining), 0, -82, 150, 24, 13, slot.ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
-    button(card, 'Accelerate', '加速', -48, -119, 86, 38, () => options.onAccelerate(slot.egg), { fill: CuteTheme.sky, fontSize: 12, radius: 15, disabled: slot.ready });
-    button(card, 'Collect', slot.ready ? '领取' : '孵化中', 48, -119, 86, 38, () => options.onCollect(slot.egg), { fill: slot.ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 15, disabled: !slot.ready });
+    progress(card, 'Progress', 0, -68, 166, 12, slot.ready ? 1 : 1 - slot.remaining / Math.max(1, slot.total), slot.ready ? CuteTheme.green : CuteTheme.honey);
+    text(card, 'Time', slot.ready ? '孵化完成' : options.formatDuration(slot.remaining), 0, -89, 150, 22, 13, slot.ready ? CuteTheme.mintDark : CuteTheme.honeyDark, 'center', true);
+    button(card, 'Accelerate', '加速', -48, -124, 86, 36, () => options.onAccelerate(slot.egg), { fill: CuteTheme.sky, fontSize: 12, radius: 15, disabled: slot.ready });
+    button(card, 'Collect', slot.ready ? '领取' : '孵化中', 48, -124, 86, 36, () => options.onCollect(slot.egg), { fill: slot.ready ? CuteTheme.honey : CuteTheme.paperWarm, fontSize: 12, radius: 15, disabled: !slot.ready });
 }
 
 function renderEggCard(parent: Node, egg: any, index: number, options: HatcheryPageV6Options) {

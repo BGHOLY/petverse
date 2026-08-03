@@ -68,12 +68,12 @@ export class PanelManager extends Component {
     showInventory() { this.mainUi()?.showInventory?.(); }
     showShop() { this.mainUi()?.showShop?.(); }
     showBreed() { this.mainUi()?.showBreed?.(); }
-    showAdventure() { this.mainUi()?.showTower?.(); }
+    showAdventure() { this.mainUi()?.showAdventure?.(); }
     showHatchery() { this.mainUi()?.showHatchery?.(); }
     showFriend() { this.mainUi()?.showFriend?.(); }
     showSkill() { this.mainUi()?.showSkills?.(); }
     showFusion() { this.mainUi()?.showFusion?.(); }
-    showBattle() { this.mainUi()?.showTower?.(); }
+    showBattle() { this.mainUi()?.showBattle?.(); }
     showTower() { this.mainUi()?.showTower?.(); }
     showRanking() { this.mainUi()?.showRanking?.(); }
     showSettings() { this.mainUi()?.showSettings?.(); }

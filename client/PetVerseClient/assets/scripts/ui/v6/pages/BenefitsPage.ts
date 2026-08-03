@@ -144,10 +144,13 @@ function renderSign(parent: Node, options: BenefitsPageV6Options) {
         };
         const col = index % 4;
         const row = Math.floor(index / 4);
+        const x = row === 0
+            ? -234 + col * 156
+            : -156 + col * 156;
         const card = panel(
             parent,
             `SignDay_${index + 1}`,
-            -234 + col * 156,
+            x,
             155 - row * 160,
             138,
             134,

@@ -428,8 +428,24 @@ export class MainUI extends Component {
     public showBreed() { this.showPage('marriage'); }
     public showHatchery() { this.showPage('hatchery'); }
     public showFriend() { this.showPage('friends'); }
-    public showBattle() { this.showPage('adventure'); }
-    public showTower() { this.showPage('adventure'); }
+    public showAdventure() {
+        this.adventureMode = 'world';
+        this.adventureRegionOpen = false;
+        this.teamEditing = false;
+        this.showPage('adventure');
+    }
+    public showBattle() {
+        this.adventureMode = 'pve';
+        this.adventureRegionOpen = false;
+        this.teamEditing = false;
+        this.showPage('adventure');
+    }
+    public showTower() {
+        this.adventureMode = 'tower';
+        this.adventureRegionOpen = false;
+        this.teamEditing = false;
+        this.showPage('adventure');
+    }
     public showRanking() { this.showPage('ranking'); }
     public showSkills() { this.showPage('skills'); }
     public showSkill() { this.showPage('skills'); }
@@ -896,7 +912,7 @@ export class MainUI extends Component {
         const pages: PageName[] = ['home', 'pet', 'adventure', 'shop', 'more'];
         this.navigationButtons.forEach((buttonComponent, index) => {
             const page = pages[index];
-            if (page) this.bindFixedButton(buttonComponent, () => this.showPage(page));
+            if (page) this.bindFixedButton(buttonComponent, () => this.openPrimaryPage(page));
         });
     }
 
@@ -926,9 +942,18 @@ export class MainUI extends Component {
     }
 
     private openHomeShortcut(shortcut: HomeShortcut) {
-        if (shortcut === 'adventure') this.showPage('adventure');
+        if (shortcut === 'adventure') this.openPrimaryPage('adventure');
         else if (shortcut === 'hatchery') this.showPage('hatchery');
         else this.showPage('formation');
+    }
+
+    private openPrimaryPage(page: PageName) {
+        if (page === 'adventure') {
+            this.adventureMode = 'world';
+            this.adventureRegionOpen = false;
+            this.teamEditing = false;
+        }
+        this.showPage(page);
     }
 
     private refreshAllVisuals() {
@@ -2196,7 +2221,21 @@ export class MainUI extends Component {
         image(header,'Pet',getPetArtPath(pet,'thumb'),-250,0,90,90,CuteTheme.paperWarm);
         text(header,'Name',`${safeName(pet?.nickname,'宝宝')} · ${safeName(pet?.species,getPetSpeciesMeta(pet).name)}`,55,28,430,32,20,CuteTheme.caramel,'left',true);
         text(header,'Role',`定位 ${(pet?.speciesConfig?.roleTags||[getPetSpeciesMeta(pet).role||'综合']).map((value:any)=>this.petRoleLabel(value)).join(' / ')}　技能格 ${Array.isArray(pet?.skills)?pet.skills.length:0}/${Number(pet?.skillSlotCount||3)}`,55,-8,430,28,13,CuteTheme.muted,'left',true);
-        text(header,'Rule',pet?.isLocked?'🔒 当前宝宝已锁定，无法打书。':'打书会随机替换未保护的普通技能；特殊技能不可保护。',55,-35,430,40,11,CuteTheme.peachDark,'left',false);
+        text(
+            header,
+            'Rule',
+            pet?.isLocked
+                ? '当前宝宝已锁定，无法打书。'
+                : '未保护的普通技能会被随机替换\n特殊技能不会被替换',
+            55,
+            -36,
+            420,
+            42,
+            12,
+            CuteTheme.peachDark,
+            'left',
+            false,
+        );
         const current=panel(page,'Current',-159,42,302,404,new Color(245,252,238,255),24,false,CuteTheme.mintDark,2);
         headingTag(current,'Title','当前技能',0,170,130,CuteTheme.mint);
         const currentSkills=Array.isArray(pet?.skills)?pet.skills:[];
@@ -2575,8 +2614,8 @@ export class MainUI extends Component {
         text(rewardCard, 'Title', '通关奖励', 0, 46, 170, 30, 17, CuteTheme.caramel, 'center', true);
         text(rewardCard, 'Reward', `金币 ${formatNumber(reward?.gold || floor * 100)}\n钻石 ${formatNumber(reward?.diamond || 0)}\n经验 ${formatNumber(reward?.exp || floor * 30)}`, 0, -18, 170, 86, 15, CuteTheme.caramel, 'center', true);
 
-        text(parent, 'TowerTip', '使用完整五宠编队迎战守关怪物，胜利后自动进入下一层。', 0, -100, 560, 46, 14, CuteTheme.muted, 'center', true);
-        button(parent, 'TowerChallenge', '挑战本层', 0, -164, 240, 66, () => void this.startAdventureBattle('tower'), {
+        text(parent, 'TowerTip', '使用完整五宠编队迎战守关怪物\n胜利后自动进入下一层', -118, -108, 310, 58, 13, CuteTheme.muted, 'center', true);
+        button(parent, 'TowerChallenge', '挑战本层', 0, -190, 240, 66, () => void this.startAdventureBattle('tower'), {
             icon: '🏯', fill: CuteTheme.honey, fontSize: 19, radius: 28,
             disabled: this.teamPetIds.length!==5 || this.busy.has('battle:tower'),
             disabledReason: this.teamPetIds.length!==5 ? '需要完整五宠编队' : this.busy.has('battle:tower') ? '正在进入战斗' : undefined,

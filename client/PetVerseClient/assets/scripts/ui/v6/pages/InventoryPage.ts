@@ -327,7 +327,7 @@ export function renderInventoryPageV6(parent: Node, options: InventoryPageV6Opti
     createItemScroll(list, options, V6_PAGE_WIDTH - 16, gridHeight - 12);
 
     const footer = panel(page, 'InventoryFooter', 0, cursor - footerHeight / 2, V6_PAGE_WIDTH, footerHeight, new Color(255, 249, 230, 248), 18, true, new Color(205, 158, 103, 215), 2);
-    text(footer, 'Capacity', `容量 ${options.totalCount}/${options.capacity}`, -248, 0, 180, 28, 14, CuteTheme.caramel, 'left', true);
+    text(footer, 'Capacity', `物品种类 ${options.totalCount}`, -248, 0, 180, 28, 14, CuteTheme.caramel, 'left', true);
     text(footer, 'ScrollHint', options.items.length > 16 ? '上下滑动查看更多' : '当前分类已全部显示', 0, 0, 220, 28, 13, CuteTheme.muted, 'center', true);
     button(footer, 'Sort', options.sortLabel, 244, 0, 160, 40, options.onSort, { fill: CuteTheme.honey, fontSize: 12, radius: 15 });
 }

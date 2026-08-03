@@ -210,8 +210,20 @@ check(
         && mainUiSource.includes("'Books',159,42,302,404")
         && mainUiSource.includes("'Learn','")
         && mainUiSource.includes('230,-5,160,70')
-        && mainUiSource.includes("55,-35,430,40,11,CuteTheme.peachDark,'left',false"),
+        && mainUiSource.includes("'未保护的普通技能会被随机替换\\n特殊技能不会被替换'")
+        && mainUiSource.includes("55,\n            -36,\n            420,\n            42,"),
     'Skill learning uses the safe-area shell, balanced skill/book columns and one clear primary action.',
+);
+check(
+    mainUiSource.includes("'TowerTip', '使用完整五宠编队迎战守关怪物\\n胜利后自动进入下一层', -118, -108, 310, 58")
+        && mainUiSource.includes("'TowerChallenge', '挑战本层', 0, -190, 240, 66"),
+    'Tower guidance no longer crosses the reward card or primary challenge action.',
+);
+check(
+    mainUiSource.includes("private openPrimaryPage(page: PageName)")
+        && mainUiSource.includes("if (page === 'adventure')")
+        && mainUiSource.includes("this.adventureMode = 'world';"),
+    'Primary Adventure navigation always returns to the world overview instead of a stale subpage.',
 );
 check(
     mainUiSource.includes("'TeamEditor', 0, 0, 650, 850")
@@ -307,6 +319,28 @@ check(
         && hatcheryPageSource.includes("'EggListPanel'")
         && hatcheryPageSource.includes('Math.ceil(options.eggs.length / 4)'),
     'The hatchery separates its incubators and four-column egg warehouse with clear boundaries.',
+);
+check(
+    hatcheryPageSource.includes("'NestBase', 0, -45, 184, 28")
+        && hatcheryPageSource.includes("'Status', selectedEgg ? '已选择宠物蛋' : '温度适宜 · 可以使用', 0, -76")
+        && hatcheryPageSource.includes("'ChooseEgg', selectedEgg ? '放入这个窝' : '打开蛋仓库', 0, -116"),
+    'Hatchery nest labels, decoration and actions occupy separate vertical bands.',
+);
+
+const benefitsPageSource = fs.readFileSync(path.join(
+    repositoryRoot,
+    'client/PetVerseClient/assets/scripts/ui/v6/pages/BenefitsPage.ts',
+), 'utf8');
+check(
+    benefitsPageSource.includes("const x = row === 0")
+        && benefitsPageSource.includes("? -234 + col * 156")
+        && benefitsPageSource.includes(": -156 + col * 156"),
+    'The final three seven-day sign-in rewards are centered as a balanced row.',
+);
+
+check(
+    inventoryPageSource.includes('`物品种类 ${options.totalCount}`'),
+    'Inventory reports a truthful item-type count instead of a misleading hard capacity.',
 );
 check(
     hatcheryPageSource.includes("'魔法育宠温室'")
