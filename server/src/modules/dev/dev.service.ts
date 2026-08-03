@@ -203,6 +203,8 @@ export class DevService {
           ['青风兔', 'PET003', 'male'],
           ['潮歌獭', 'PET006', 'female'],
           ['银羽鸮', 'PET010', 'male'],
+          ['回归星龙', 'PET009', 'female'],
+          ['回归岩熊', 'PET007', 'male'],
         ],
       },
       {
@@ -215,6 +217,8 @@ export class DevService {
           ['云跃兔', 'PET003', 'female'],
           ['海星獭', 'PET006', 'male'],
           ['霜语鸮', 'PET010', 'female'],
+          ['回归星龙', 'PET009', 'male'],
+          ['回归岩熊', 'PET007', 'female'],
         ],
       },
     ] as const;
@@ -225,6 +229,8 @@ export class DevService {
       const user = await this.userService.ensureDevUser(spec.id, spec.openid, spec.nickname);
       await this.economyService.ensureMinimumBalance(user.id, 10000, 500);
       await this.inventoryService.ensureItemQuantity(user.id, 'breeding_token', 10);
+      await this.inventoryService.ensureItemQuantity(user.id, 'fusion_core', 20);
+      await this.inventoryService.ensureItemQuantity(user.id, 'exp_potion_small', 10);
 
       const existing = await this.petService.getUserPets(user.id);
       const names = new Set(existing.pets.map((pet) => String(pet.nickname)));

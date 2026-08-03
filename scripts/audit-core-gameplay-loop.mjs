@@ -81,6 +81,17 @@ expectText('battle scene supports the complete interactive settlement flow', bat
   'createDragCommand',
 ]);
 
+const liveSmoke = read('scripts/smoke-v11-core-loop.ps1');
+expectText('live V11 smoke covers the complete progression loop', liveSmoke, [
+  "'/inventory/use'",
+  "'/team/set'",
+  "'/expedition/start'",
+  "'/fusion/execute'",
+  "'/battle/v10/settle'",
+  'FusionDuplicateProtected',
+  'BattleDuplicateProtected',
+]);
+
 const failed = checks.filter((check) => !check.passed);
 console.log(`PetVerse core gameplay loop audit: ${checks.length - failed.length}/${checks.length} passed`);
 for (const check of checks) console.log(`${check.passed ? 'PASS' : 'FAIL'} ${check.name}${check.details ? ` (${check.details})` : ''}`);
