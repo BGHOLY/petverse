@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DailyTaskModule } from '../daily-task/daily-task.module';
 import { EconomyModule } from '../economy/economy.module';
 import { EquipmentModule } from '../equipment/equipment.module';
+import { EquipmentItem } from '../equipment/equipment.entity';
+import { Expedition } from '../expedition/expedition.entity';
 import { PetCapacityModule } from '../pet-capacity/pet-capacity.module';
 import { BreedingModule } from '../breeding/breeding.module';
 import { SkillModule } from '../skill/skill.module';
@@ -15,7 +17,7 @@ import { PetService } from './pet.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Pet, PetTeam]),
+    TypeOrmModule.forFeature([Pet, PetTeam, Expedition, EquipmentItem]),
     JwtModule.register({
       secret:
         process.env.JWT_SECRET || 'petverse_dev_secret',

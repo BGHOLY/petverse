@@ -13,6 +13,8 @@ import {
 import { DailyTaskService } from '../daily-task/daily-task.service';
 import { EconomyService } from '../economy/economy.service';
 import { EquipmentService } from '../equipment/equipment.service';
+import { EquipmentItem } from '../equipment/equipment.entity';
+import { Expedition } from '../expedition/expedition.entity';
 import { PetCapacityService } from '../pet-capacity/pet-capacity.service';
 import {
   DEFAULT_USER_ID,
@@ -32,6 +34,7 @@ import {
 } from './config/pet-species.config';
 import { PetTeam } from '../team/pet-team.entity';
 import { Pet } from './pet.entity';
+import { petRemovalRestriction } from './pet-removal-safety';
 import {
   calculateGeneScore,
   generateGeneCode,
@@ -73,6 +76,12 @@ export class PetService {
 
     @InjectRepository(PetTeam)
     private readonly petTeamRepository: Repository<PetTeam>,
+
+    @InjectRepository(Expedition)
+    private readonly expeditionRepository: Repository<Expedition>,
+
+    @InjectRepository(EquipmentItem)
+    private readonly equipmentRepository: Repository<EquipmentItem>,
 
     private readonly skillService: SkillService,
     private readonly breedingService: BreedingService,
@@ -736,16 +745,25 @@ export class PetService {
       };
     }
 
-    const team = await this.petTeamRepository.findOne({
-      where: { userId },
-    });
-    if (
-      Array.isArray(team?.petIds) &&
-      team.petIds.map(Number).includes(pet.id)
-    ) {
+    const [team, activeExpeditions, equippedItem] = await Promise.all([
+      this.petTeamRepository.findOne({ where: { userId } }),
+      this.expeditionRepository.find({
+        where: { userId, status: 'active' },
+      }),
+      this.equipmentRepository.findOne({
+        where: { ownerId: userId, equippedPetId: pet.id },
+      }),
+    ]);
+    const removalRestriction = petRemovalRestriction(
+      pet.id,
+      team,
+      activeExpeditions,
+      equippedItem,
+    );
+    if (removalRestriction) {
       return {
         success: false,
-        message: 'Remove pet from the active team first',
+        message: removalRestriction,
       };
     }
 

@@ -55,6 +55,12 @@ expectText('fusion is transactional and idempotent', fusionService, [
   'Unequip all equipment from fusion pets first',
 ]);
 
+const petRemovalSafety = read('server/src/modules/pet/pet-removal-safety.ts');
+expectText('pet removal protects the active gameplay loop', petRemovalSafety, [
+  'Claim or finish the active expedition before releasing this pet',
+  'Unequip all equipment before releasing this pet',
+]);
+
 const battleService = read('server/src/modules/battle/battle-v10.service.ts');
 expectText('five-pet battle validates, commands and settles safely', battleService, [
   'pets.length !== 5',
