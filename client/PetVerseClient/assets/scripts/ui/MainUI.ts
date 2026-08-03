@@ -22,7 +22,9 @@ import {
 } from 'cc';
 import { EDITOR } from 'cc/env';
 import GameStore from '../data/GameStore';
+import PlayerData from '../data/PlayerData';
 import ApiClient from '../network/ApiClient';
+import ApiConfig from '../network/ApiConfig';
 import PanelManager from '../manager/PanelManager';
 import { ToastManager } from './ToastManager';
 import {
@@ -144,7 +146,7 @@ export class MainUI extends Component {
     static instance: MainUI | null = null;
 
     @property
-    apiBaseUrl = 'http://127.0.0.1:3000/api';
+    apiBaseUrl = '';
 
     @property({ type: EditorPreviewPage, displayName: '编辑器预览页面', tooltip: '在 Cocos 编辑器中切换需要微调的页面。' })
     editorPreviewPage = EditorPreviewPage.Home;
@@ -359,7 +361,9 @@ export class MainUI extends Component {
     onLoad() {
         MainUI.instance = this;
         try { profiler.hideStats(); } catch {}
-        ApiClient.setBaseUrl(this.apiBaseUrl);
+        ApiClient.setBaseUrl(ApiConfig.getBaseUrl(this.apiBaseUrl));
+        ApiClient.setToken(PlayerData.token);
+        ApiClient.setUserId(Number(PlayerData.user?.id || 0));
         ToastManager.bind(this.showToast);
 
         this.unsubscribeStore?.();

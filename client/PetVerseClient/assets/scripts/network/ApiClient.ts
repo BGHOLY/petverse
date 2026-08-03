@@ -1,3 +1,5 @@
+import ApiConfig from './ApiConfig';
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT';
 
 export type ApiResult<T = any> = T & {
@@ -8,7 +10,7 @@ export type ApiResult<T = any> = T & {
 };
 
 export default class ApiClient {
-    public static BASE_URL = 'http://127.0.0.1:3000/api';
+    public static BASE_URL = ApiConfig.getBaseUrl();
     public static TIMEOUT_MS = 9000;
 
     private static pending = new Map<string, Promise<any>>();
@@ -17,7 +19,7 @@ export default class ApiClient {
 
     public static setBaseUrl(url: string) {
         const normalized = String(url || '').trim().replace(/\/+$/, '');
-        if (normalized) this.BASE_URL = normalized;
+        this.BASE_URL = normalized;
     }
 
     public static setToken(token: string) {
@@ -51,6 +53,12 @@ export default class ApiClient {
     }
 
     private static request<T>(method: HttpMethod, path: string, data?: any): Promise<ApiResult<T>> {
+        if (!this.BASE_URL) {
+            return Promise.resolve({
+                success: false,
+                message: ApiConfig.configurationError(),
+            } as ApiResult<T>);
+        }
         const key = this.makeKey(method, path, data);
         const existing = this.pending.get(key);
         if (existing) return existing;
@@ -202,6 +210,7 @@ export default class ApiClient {
     private static errorMessage(error: any) {
         const text = String(error?.message || error?.errMsg || error || '');
         if (/abort|timeout/i.test(text)) return '请求超时，请检查后端服务';
-        return `无法连接后端，请确认 ${this.BASE_URL} 已启动`;
+        if (!this.BASE_URL) return ApiConfig.configurationError();
+        return '暂时无法连接游戏服务器，请稍后重试';
     }
 }

@@ -1,9 +1,15 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import {
+  assertProductionRuntime,
+  configuredCorsOrigins,
+} from './config/runtime.config';
 
 async function bootstrap() {
+  assertProductionRuntime();
   const app = await NestFactory.create(AppModule);
+  const port = Number(process.env.PORT || 3000);
 
   app.setGlobalPrefix('api');
 
@@ -16,15 +22,15 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: true,
+    origin: configuredCorsOrigins(),
     credentials: true,
   });
 
-  await app.listen(process.env.PORT || 3000);
+  await app.listen(port);
 
   console.log('======================================');
   console.log(' PetVerse Server Started Successfully ');
-  console.log(' http://localhost:3000/api');
+  console.log(` http://localhost:${port}/api`);
   console.log('======================================');
 }
 

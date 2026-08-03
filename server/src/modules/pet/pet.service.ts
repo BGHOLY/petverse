@@ -158,9 +158,10 @@ export class PetService {
     return pet;
   }
 
-  async getPetDetail(id: number) {
+  async getPetDetail(id: number, ownerId?: number) {
     const pet = await this.getPetById(id);
     if (!pet) return null;
+    if (ownerId && Number(pet.ownerId) !== Number(ownerId)) return null;
 
     const speciesConfig = findPetSpeciesConfig(
       pet.speciesCode || pet.species,

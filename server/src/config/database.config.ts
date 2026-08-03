@@ -50,6 +50,7 @@ import { WorldExplorationProgress } from '../modules/exploration/world-explorati
 import { EquipmentItem } from '../modules/equipment/equipment.entity';
 import { RewardClaim } from '../modules/reward/reward-claim.entity';
 import { Expedition } from '../modules/expedition/expedition.entity';
+import { shouldSynchronizeDatabase } from './runtime.config';
 
 dotenv.config();
 
@@ -112,5 +113,5 @@ export const databaseConfig: TypeOrmModuleOptions = {
     RewardClaim,
     Expedition,
   ],
-  synchronize: true,
+  synchronize: shouldSynchronizeDatabase(),
 };

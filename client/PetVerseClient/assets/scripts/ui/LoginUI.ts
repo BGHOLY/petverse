@@ -1,5 +1,7 @@
 import { _decorator, Component, director, profiler } from 'cc';
 import NetworkManager from '../network/NetworkManager';
+import ApiClient from '../network/ApiClient';
+import ApiConfig from '../network/ApiConfig';
 import PlayerData from '../data/PlayerData';
 
 const { ccclass } = _decorator;
@@ -8,6 +10,7 @@ const { ccclass } = _decorator;
 export class LoginUI extends Component {
     onLoad() {
         try { profiler.hideStats(); } catch {}
+        ApiClient.setBaseUrl(ApiConfig.getBaseUrl());
     }
 
     async onClickLogin() {
@@ -28,6 +31,8 @@ export class LoginUI extends Component {
 
             PlayerData.token = res.token || res.access_token;
             PlayerData.user = res.user;
+            ApiClient.setToken(PlayerData.token);
+            ApiClient.setUserId(Number(PlayerData.user?.id || 0));
 
             if (PlayerData.user) {
                 PlayerData.user.pets = res.pets || res.user?.pets || [];

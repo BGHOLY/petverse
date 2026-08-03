@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -43,6 +43,11 @@ import { RewardModule } from './modules/reward/reward.module';
 import { ServerTimeModule } from './modules/server-time/server-time.module';
 import { RetentionModule } from './modules/retention/retention.module';
 import { ExpeditionModule } from './modules/expedition/expedition.module';
+import { RequestIdentityMiddleware } from './common/request-identity.middleware';
+
+const developmentOnlyModules = process.env.NODE_ENV === 'production'
+  ? []
+  : [DevModule];
 
 @Module({
   imports: [
@@ -88,9 +93,13 @@ import { ExpeditionModule } from './modules/expedition/expedition.module';
     ServerTimeModule,
     RetentionModule,
     ExpeditionModule,
-    DevModule,
+    ...developmentOnlyModules,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, RequestIdentityMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdentityMiddleware).forRoutes('*');
+  }
+}

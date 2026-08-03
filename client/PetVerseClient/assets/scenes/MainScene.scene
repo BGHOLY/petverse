@@ -12768,7 +12768,7 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "apiBaseUrl": "http://127.0.0.1:3000/api",
+    "apiBaseUrl": "",
     "editorPreviewPage": 0,
     "root": {
       "__id__": 5

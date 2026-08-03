@@ -1,5 +1,6 @@
 import { _decorator, Component } from 'cc';
 import NetworkManager from '../network/NetworkManager';
+import ApiClient from '../network/ApiClient';
 import PlayerData from '../data/PlayerData';
 
 const { ccclass } = _decorator;
@@ -22,6 +23,8 @@ export class TestLogin extends Component {
             if (res && res.success !== false) {
                 PlayerData.token = res.access_token || res.token;
                 PlayerData.user = res.user;
+                ApiClient.setToken(PlayerData.token);
+                ApiClient.setUserId(Number(PlayerData.user?.id || 0));
 
                 if (PlayerData.user) {
                     PlayerData.user.pets = res.pets || res.user?.pets || [];

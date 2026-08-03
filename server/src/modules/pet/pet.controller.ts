@@ -180,7 +180,10 @@ export class PetController {
   }
 
   @Get(':id')
-  async getPetDetail(@Param('id') id: string) {
+  async getPetDetail(
+    @Param('id') id: string,
+    @Headers('x-user-id') userId?: string,
+  ) {
     const petId = Number(id);
 
     if (!Number.isInteger(petId) || petId <= 0) {
@@ -191,7 +194,10 @@ export class PetController {
       };
     }
 
-    const data = await this.petService.getPetDetail(petId);
+    const data = await this.petService.getPetDetail(
+      petId,
+      resolveRequestUserId(userId),
+    );
 
     return {
       success: Boolean(data),
