@@ -10,6 +10,10 @@
 - 正式环境默认禁用数据库自动同步、测试账号请求头和所有种子/开发接口。
 - 正式环境的每个私有请求必须携带有效 JWT；令牌中的用户 ID 会覆盖客户端伪造的 `X-User-Id`。
 - 宠物详情只能读取当前登录账号拥有的宠物。
+- 微信包使用 `wx.login` 获取一次性 `code`，服务端再通过微信接口换取 `openid`；正式环境不接受客户端直接提交 `openid`。
+- 自动测试登录已从正式启动场景禁用，启动页已使用温馨小屋和 Mochi 正式视觉。
+- 全新账号会获得一支已锁定的五宠阵容（坦克、治疗、法系、物理、辅助），以及少量经验药、普通宠物蛋和炼妖材料。
+- 新手赠送只在创建新账号或修复中断的新手初始化时执行，不覆盖旧账号、不重复补领。
 
 ## 本地测试
 
@@ -32,6 +36,8 @@ JWT_SECRET=<独立且不少于32字符的随机密钥>
 DB_SYNCHRONIZE=false
 ALLOW_TEST_USER_HEADER=false
 CORS_ORIGINS=https://你的网页测试域名
+WX_APPID=<微信小游戏 AppID>
+WX_SECRET=<只保存在服务端的 AppSecret>
 ```
 
 微信小游戏必须在微信公众平台配置合法的 HTTPS request 域名。API 地址应包含 `/api`，例如：
@@ -61,6 +67,8 @@ client TypeScript check
 UI architecture audit
 UI input audit
 V12 readiness audit
+V12 release audit
+production-mode smoke test
 git diff --check
 ```
 

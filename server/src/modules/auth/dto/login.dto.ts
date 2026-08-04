@@ -1,8 +1,13 @@
 import { IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
+  @IsOptional()
   @IsString()
-  openid: string;
+  openid?: string;
+
+  @IsOptional()
+  @IsString()
+  code?: string;
 
   @IsOptional()
   @IsString()

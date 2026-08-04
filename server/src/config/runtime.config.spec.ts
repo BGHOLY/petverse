@@ -46,6 +46,8 @@ describe('runtime configuration', () => {
       JWT_SECRET: 'a-unique-production-secret-with-32-chars',
       DB_SYNCHRONIZE: 'false',
       ALLOW_TEST_USER_HEADER: 'false',
+      WX_APPID: 'wx-app-id',
+      WX_SECRET: 'wx-app-secret',
     })).not.toThrow();
   });
 });

@@ -11,6 +11,7 @@ import { Pet } from '../pet/pet.entity';
 
 import { InventoryModule } from '../inventory/inventory.module';
 import { ItemModule } from '../item/item.module';
+import { PetModule } from '../pet/pet.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ItemModule } from '../item/item.module';
 
     InventoryModule,
     ItemModule,
+    PetModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

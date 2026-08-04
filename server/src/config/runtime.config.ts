@@ -52,6 +52,12 @@ export function assertProductionRuntime(
   if (envFlag(env.ALLOW_TEST_USER_HEADER, false)) {
     errors.push('ALLOW_TEST_USER_HEADER must remain false in production');
   }
+  if (!String(env.WX_APPID || '').trim()) {
+    errors.push('WX_APPID is required in production');
+  }
+  if (!String(env.WX_SECRET || '').trim()) {
+    errors.push('WX_SECRET is required in production');
+  }
 
   if (errors.length > 0) {
     throw new Error(`Unsafe production configuration: ${errors.join('; ')}`);
