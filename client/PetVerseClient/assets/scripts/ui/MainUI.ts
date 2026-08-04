@@ -2817,11 +2817,13 @@ export class MainUI extends Component {
             text(row, 'Heart', '💞', 0, 27, 60, 44, 28, CuteTheme.peachDark, 'center', true);
             text(row, 'PetB', safeName(petB?.nickname, '宝宝B'), 210, 28, 180, 30, 17, CuteTheme.caramel, 'center', true);
             const remaining = Number(marriage?.cooldownRemainingSeconds || 0);
-            const state = marriage?.isMyTurn ? (remaining > 0 ? `我的回合 · ${this.formatSeconds(remaining)}` : '轮到我获得宠物蛋') : '等待对方回合';
+            const state = marriage?.isMyTurn
+                ? (remaining > 0 ? `冷却中 · ${this.formatSeconds(remaining)}` : '轮到我发起 · 双方各得1枚')
+                : '等待对方发起下一次孕育';
             text(row, 'State', state, -190, -27, 360, 28, 13, marriage?.isMyTurn ? CuteTheme.peachDark : CuteTheme.muted, 'left', true);
             button(row, 'LayEgg', '产蛋', 225, -30, 112, 46, () => this.openSecondaryConfirmation({
-                title: '确认获得宠物蛋',
-                message: '本次会消耗500金币、1张繁育凭证，以及双方各20点生育力。宠物蛋会直接进入孵化室。',
+                title: '确认共同孕育',
+                message: '本次会消耗发起方500金币、1张繁育凭证，以及双方各20点生育力。双方会各获得1枚同源宠物蛋，并分别独立计算孵化结果。',
                 confirmText: '确认产蛋', icon: '🥚', tone: 'honey', action: () => this.layMarriageEgg(marriage),
             }), { icon: '🥚', fill: CuteTheme.honey, fontSize: 14, radius: 20, disabled: !marriage?.canLayEgg || this.busy.has(`marriage:egg:${marriage?.id}`) });
         });
@@ -2875,7 +2877,7 @@ export class MainUI extends Component {
         button(right, 'ChooseOverview', '查看好友宝宝', 0, -112, 214, 42, () => this.openMarriagePetPicker('target'), { fill: CuteTheme.paperWarm, fontSize: 13, radius: 18, disabled: targetPets.length < 1 });
 
         text(parent, 'Ribbon', '────── 🎀 三代血缘自动校验 🎀 ──────', 0, -80, 560, 42, 16, CuteTheme.peachDark, 'center', true);
-        text(parent, 'Rules', '申请有效期72小时；通过后双方立即各获得一颗独立宠物蛋。\n结缘后再次产蛋会消耗金币、繁育凭证和双方生育力。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
+        text(parent, 'Rules', '申请有效期72小时；通过后双方立即各获得一颗独立宠物蛋。\n结缘后可持续共同孕育：生产环境冷却72小时，无终身次数上限。', 0, -145, 570, 70, 15, CuteTheme.muted, 'center', false);
         button(parent, 'Propose', '发送结缘申请', 0, -245, 250, 64, () => this.openSecondaryConfirmation({
             title: '发送结缘申请',
             message: `${safeName(own?.nickname, '我的宝宝')} 与 ${safeName(target?.nickname, '好友宝宝')} 的申请将在72小时内有效，通过后三代血缘仍会由服务器校验。`,
@@ -4644,7 +4646,7 @@ export class MainUI extends Component {
             const result = await ApiClient.post('/marriage/lay-egg', { marriageId: marriage?.id, requestId: this.requestId('lay-egg') });
             if (result?.success === false) return this.showToast(result?.message || '产蛋失败');
             CuteFeedback.playHatch();
-            this.showToast('宠物蛋已送入孵化室仓库');
+            this.showToast('共同孕育成功，双方宠物蛋已送入各自孵化室');
             const [marriages, eggs, inventory, profile] = await Promise.all([
                 ApiClient.get('/marriage'), ApiClient.get('/hatchery/eggs'), ApiClient.get('/inventory'), ApiClient.get('/user/profile'),
             ]);

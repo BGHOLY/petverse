@@ -44,7 +44,7 @@ export class Pet {
   @Column({ default: 0 })
   breedCount: number;
 
-  @Column({ default: 20 })
+  @Column({ default: 0 })
   breedLimit: number;
 
   @Column({ default: 100 })

@@ -22,5 +22,6 @@ describe('V12 starter team', () => {
     expect(STARTER_INVENTORY.exp_potion_small).toBeGreaterThanOrEqual(3);
     expect(STARTER_INVENTORY.common_pet_egg).toBeGreaterThanOrEqual(2);
     expect(STARTER_INVENTORY.fusion_core).toBeGreaterThanOrEqual(1);
+    expect(STARTER_INVENTORY.breeding_token).toBeGreaterThanOrEqual(1);
   });
 });

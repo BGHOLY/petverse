@@ -69,7 +69,17 @@ UI input audit
 V12 readiness audit
 V12 release audit
 production-mode smoke test
+V12 dual-account marriage smoke test
 git diff --check
 ```
+
+## 结缘与共同孕育
+
+- 结缘通过后，双方立即各获得一枚同源、独立计算结果的宠物蛋。
+- 后续共同孕育由双方轮流发起；发起方支付金币和繁育凭证，双方各消耗20点生育力。
+- 每次共同孕育后，双方仍然各获得一枚独立结果的宠物蛋。
+- 正式环境冷却72小时；开发与自动测试环境默认60秒，并允许通过环境变量覆盖。
+- 不设置终身繁育次数硬上限；历史次数继续记录，用于档案、成就和运营分析。
+- 使用 `node scripts/smoke-v12-marriage.mjs` 可在开发服务器上验证双账号、双蛋、独立随机与重复请求保护。
 
 外部测试前仍需由项目方提供最终 HTTPS API 域名和微信小游戏 AppID；这两项不能由代码自动推断。

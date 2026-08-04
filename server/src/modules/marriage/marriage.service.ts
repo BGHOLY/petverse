@@ -23,6 +23,13 @@ import { User } from '../user/user.entity';
 import { LineageService } from './lineage.service';
 import { MarriageProposal } from './marriage-proposal.entity';
 import { Marriage } from './marriage.entity';
+import {
+  FERTILITY_COST,
+  FERTILITY_RECOVERY_PER_HOUR,
+  getMarriageCooldownSeconds,
+  getMarriageEggOwnerIds,
+  PROPOSAL_EXPIRE_HOURS,
+} from './marriage.config';
 
 const BREEDING_COST: EconomyCost = {
   gold: 500,
@@ -30,11 +37,6 @@ const BREEDING_COST: EconomyCost = {
     breeding_token: 1,
   },
 };
-
-const PROPOSAL_EXPIRE_HOURS = 72;
-const FERTILITY_COST = 20;
-const FERTILITY_RECOVERY_PER_HOUR = 5;
-const DEFAULT_BREED_LIMIT = 20;
 
 @Injectable()
 export class MarriageService {
@@ -625,7 +627,7 @@ export class MarriageService {
             Number(marriage.ownerAId);
           if (nextEggOwnerId !== userId) {
             throw new Error(
-              `It is player ${nextEggOwnerId}'s turn to receive the next egg`,
+              `It is player ${nextEggOwnerId}'s turn to initiate the next breeding`,
             );
           }
 
@@ -648,13 +650,24 @@ export class MarriageService {
           await this.assertBreedReady(petA);
           await this.assertBreedReady(petB);
 
-          const blueprint = this.petService.buildOffspringBlueprint(
-            petA,
-            petB,
-            undefined,
-            'breed',
-            `breed-${userId}-${requestId}`,
+          const eggOwnerIds = getMarriageEggOwnerIds(
+            marriage.ownerAId,
+            marriage.ownerBId,
           );
+          if (!eggOwnerIds.length) {
+            throw new Error('Marriage does not have a valid egg owner');
+          }
+
+          const offspring = eggOwnerIds.map((ownerId) => ({
+            ownerId,
+            blueprint: this.petService.buildOffspringBlueprint(
+              petA,
+              petB,
+              undefined,
+              'breed',
+              `breed-${marriage.id}-${requestId}-owner-${ownerId}`,
+            ),
+          }));
 
           const operation =
             duplicate ||
@@ -667,7 +680,7 @@ export class MarriageService {
                 marriageId: marriage.id,
                 petAId: petA.id,
                 petBId: petB.id,
-                eggOwnerId: userId,
+                eggOwnerIds,
               },
             }));
 
@@ -677,41 +690,51 @@ export class MarriageService {
             BREEDING_COST,
           );
 
-          const egg = await this.eggService.createEgg(
-            {
-              ownerId: userId,
-              parentAId: petA.id,
-              parentBId: petB.id,
-              rarityPotential: blueprint.rarity,
-              quality: blueprint.quality,
-              species: blueprint.species,
-              speciesCode: blueprint.speciesCode,
-              isMutant: blueprint.isMutant,
-              skillSlotCount: blueprint.skillSlotCount,
-              aptitudes: blueprint.aptitudes,
-              growth: blueprint.growth,
-              generation: blueprint.generation,
-              specialSkillCount: blueprint.specialSkillCount,
-              geneCode: blueprint.geneCode,
-              geneScore: blueprint.geneScore,
-              bodyType: blueprint.bodyType,
-              color: blueprint.color,
-              pattern: blueprint.pattern,
-              inheritedSkills: blueprint.inheritedSkills,
-              mutationData: blueprint.mutationData,
-              parentSnapshot: blueprint.parentSnapshot,
-              offspringData: blueprint,
-              randomSeed: blueprint.seed,
-              configVersion: '2.3.0',
-              source: 'marriage',
-            },
-            manager,
-          );
+          const createdEggs: Array<{
+            ownerId: number;
+            egg: Egg;
+            blueprint: (typeof offspring)[number]['blueprint'];
+          }> = [];
+          for (const entry of offspring) {
+            const { ownerId, blueprint } = entry;
+            const egg = await this.eggService.createEgg(
+              {
+                ownerId,
+                marriageId: marriage.id,
+                parentAId: petA.id,
+                parentBId: petB.id,
+                rarityPotential: blueprint.rarity,
+                quality: blueprint.quality,
+                species: blueprint.species,
+                speciesCode: blueprint.speciesCode,
+                isMutant: blueprint.isMutant,
+                skillSlotCount: blueprint.skillSlotCount,
+                aptitudes: blueprint.aptitudes,
+                growth: blueprint.growth,
+                generation: blueprint.generation,
+                specialSkillCount: blueprint.specialSkillCount,
+                geneCode: blueprint.geneCode,
+                geneScore: blueprint.geneScore,
+                bodyType: blueprint.bodyType,
+                color: blueprint.color,
+                pattern: blueprint.pattern,
+                inheritedSkills: blueprint.inheritedSkills,
+                mutationData: blueprint.mutationData,
+                parentSnapshot: blueprint.parentSnapshot,
+                offspringData: blueprint,
+                randomSeed: blueprint.seed,
+                configVersion: '2.5.0-social',
+                source: 'marriage',
+              },
+              manager,
+            );
+            createdEggs.push({ ownerId, egg, blueprint });
+          }
 
           const now = new Date();
           for (const pet of [petA, petB]) {
             pet.breedCount = Number(pet.breedCount || 0) + 1;
-            pet.breedLimit = Number(pet.breedLimit || DEFAULT_BREED_LIMIT);
+            pet.breedLimit = 0;
             pet.fertility = Math.max(
               0,
               Number(pet.fertility || 0) - FERTILITY_COST,
@@ -720,7 +743,8 @@ export class MarriageService {
             pet.lastBreedAt = now;
           }
 
-          marriage.eggCount = Number(marriage.eggCount || 0) + 1;
+          marriage.eggCount =
+            Number(marriage.eggCount || 0) + createdEggs.length;
           marriage.lastEggOwnerId = userId;
           marriage.nextEggOwnerId =
             marriage.ownerAId === marriage.ownerBId
@@ -735,10 +759,20 @@ export class MarriageService {
           await manager.save(Marriage, marriage);
           await manager.save(Pet, [petA, petB]);
 
+          const currentPlayerEgg =
+            createdEggs.find((entry) => entry.ownerId === userId) ||
+            createdEggs[0];
+          const eggViews = createdEggs.map((entry) =>
+            this.eggService.toEggView(entry.egg),
+          );
           const response = {
             success: true,
-            message: 'Egg laid',
-            egg: this.eggService.toEggView(egg),
+            message:
+              createdEggs.length > 1
+                ? 'Eggs laid for both owners'
+                : 'Egg laid',
+            eggs: eggViews,
+            egg: this.eggService.toEggView(currentPlayerEgg.egg),
             marriage: {
               ...marriage,
               canLayEgg: false,
@@ -746,7 +780,8 @@ export class MarriageService {
                 this.getCooldownRemainingSeconds(marriage),
             },
             parents: [petA, petB],
-            inheritance: blueprint,
+            inheritances: createdEggs.map((entry) => entry.blueprint),
+            inheritance: currentPlayerEgg.blueprint,
             cost: BREEDING_COST,
             fertilityCost: FERTILITY_COST,
             requestId,
@@ -1044,9 +1079,19 @@ export class MarriageService {
       order: { id: 'ASC' },
       lock: { mode: 'pessimistic_write' },
     });
-    if (existing.length >= 2) return existing;
-
-    const owners = [...new Set([marriage.ownerAId, marriage.ownerBId])];
+    const owners = getMarriageEggOwnerIds(
+      marriage.ownerAId,
+      marriage.ownerBId,
+    );
+    if (existing.length >= owners.length) {
+      if (!marriage.cooldownEndAt) {
+        marriage.cooldownEndAt = new Date(
+          Date.now() + this.getMarriageCooldownSeconds() * 1000,
+        );
+        await manager.save(Marriage, marriage);
+      }
+      return existing;
+    }
     for (const ownerId of owners) {
       if (existing.some((egg) => egg.ownerId === ownerId)) continue;
       const seed = `marriage-${marriage.id}-owner-${ownerId}-initial`;
@@ -1094,6 +1139,9 @@ export class MarriageService {
     marriage.eggCount = Math.max(Number(marriage.eggCount || 0), existing.length);
     marriage.lastEggOwnerId = 0;
     marriage.nextEggOwnerId = marriage.ownerAId;
+    marriage.cooldownEndAt = new Date(
+      Date.now() + this.getMarriageCooldownSeconds() * 1000,
+    );
     await manager.save(Marriage, marriage);
     return existing;
   }
@@ -1159,10 +1207,6 @@ export class MarriageService {
 
   private async assertBreedReady(pet: Pet) {
     await this.assertPetMarriageParentState(pet);
-    const limit = Number(pet.breedLimit || DEFAULT_BREED_LIMIT);
-    if (Number(pet.breedCount || 0) >= limit) {
-      throw new Error(`${pet.nickname} has reached the breeding limit`);
-    }
     if (Number(pet.fertility || 0) < FERTILITY_COST) {
       throw new Error(`${pet.nickname} does not have enough fertility`);
     }
@@ -1188,8 +1232,6 @@ export class MarriageService {
       pet.married &&
       pet.tradeStatus !== 'listed' &&
       !pet.tradeListingId &&
-      Number(pet.breedCount || 0) <
-        Number(pet.breedLimit || DEFAULT_BREED_LIMIT) &&
       Number(pet.fertility || 0) >= FERTILITY_COST
     );
   }
@@ -1262,6 +1304,6 @@ export class MarriageService {
   }
 
   private getMarriageCooldownSeconds() {
-    return 60;
+    return getMarriageCooldownSeconds();
   }
 }

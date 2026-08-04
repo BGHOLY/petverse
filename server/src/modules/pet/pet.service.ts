@@ -358,7 +358,7 @@ export class PetService {
       tradeListingId: 0,
       gender: data.gender || (Math.random() < 0.5 ? 'male' : 'female'),
       breedCount: 0,
-      breedLimit: 20,
+      breedLimit: 0,
       fertility: 100,
       fertilityUpdatedAt: new Date(),
       lastBreedAt: null,
@@ -548,7 +548,7 @@ export class PetService {
       tradeListingId: 0,
       gender: Math.random() < 0.5 ? 'male' : 'female',
       breedCount: 0,
-      breedLimit: 20,
+      breedLimit: 0,
       fertility: 100,
       fertilityUpdatedAt: new Date(),
       lastBreedAt: null,
@@ -1321,8 +1321,8 @@ export class PetService {
       changed = true;
     }
 
-    if (!pet.breedLimit || pet.breedLimit < 1) {
-      pet.breedLimit = 20;
+    if (pet.breedLimit === undefined || pet.breedLimit === null) {
+      pet.breedLimit = 0;
       changed = true;
     }
 

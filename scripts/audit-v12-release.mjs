@@ -8,6 +8,8 @@ const loginUi = read('client/PetVerseClient/assets/scripts/ui/LoginUI.ts');
 const authService = read('server/src/modules/auth/auth.service.ts');
 const starterTeam = read('server/src/modules/auth/starter-team.config.ts');
 const runtimeConfig = read('server/src/config/runtime.config.ts');
+const marriageConfig = read('server/src/modules/marriage/marriage.config.ts');
+const marriageService = read('server/src/modules/marriage/marriage.service.ts');
 const nodeByName = (name) => loginScene.find((item) => item?.__type__ === 'cc.Node' && item?._name === name);
 const loginManager = nodeByName('LoginManager');
 const managerComponents = (loginManager?._components || []).map((item) => loginScene[item.__id__]);
@@ -28,6 +30,11 @@ const checks = [
   ['new users receive five protected starter pets', /STARTER_TEAM/.test(authService) && /isLocked:\s*true/.test(authService) && (starterTeam.match(/speciesCode:\s*'PET\d+'/g) || []).length === 5],
   ['starter roster covers five unique species', new Set([...starterTeam.matchAll(/speciesCode:\s*'(PET\d+)'/g)].map((match) => match[1])).size === 5],
   ['starter package enables hatching and fusion', /common_pet_egg:\s*2/.test(starterTeam) && /fusion_core:\s*2/.test(starterTeam)],
+  ['starter package enables marriage testing', /breeding_token:\s*2/.test(starterTeam)],
+  ['production marriage cooldown is 72 hours', /PRODUCTION_MARRIAGE_COOLDOWN_SECONDS\s*=\s*72\s*\*\s*60\s*\*\s*60/.test(marriageConfig)],
+  ['marriage has no lifetime breeding cap', /HAS_LIFETIME_BREED_LIMIT\s*=\s*false/.test(marriageConfig) && !/reached the breeding limit/.test(marriageService)],
+  ['repeat marriage rewards both owners', /getMarriageEggOwnerIds/.test(marriageService) && /eggs:\s*eggViews/.test(marriageService)],
+  ['marriage smoke test is available', statSync(resolve(root, 'scripts/smoke-v12-marriage.mjs')).size > 2_000],
   ['login scene remains compact', statSync(resolve(root, 'client/PetVerseClient/assets/scenes/LoginScene.scene')).size < 80_000],
 ];
 

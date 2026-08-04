@@ -1,5 +1,14 @@
 import { Injectable } from '@nestjs/common';
 
+import {
+  DEFAULT_BREED_LIMIT,
+  FERTILITY_COST,
+  FERTILITY_RECOVERY_PER_HOUR,
+  getMarriageCooldownSeconds,
+  HAS_LIFETIME_BREED_LIMIT,
+  PROPOSAL_EXPIRE_HOURS,
+} from '../marriage/marriage.config';
+
 @Injectable()
 export class GameConfigService {
   getPublicConfig() {
@@ -13,13 +22,15 @@ export class GameConfigService {
         skillSlots: { min: 2, max: 10 },
       },
       breeding: {
-        proposalExpireHours: 72,
+        proposalExpireHours: PROPOSAL_EXPIRE_HOURS,
         kinshipCheckDepth: 3,
-        cooldownSeconds: 60,
+        cooldownSeconds: getMarriageCooldownSeconds(),
         fertilityMax: 100,
-        fertilityCost: 20,
-        fertilityRecoveryPerHour: 5,
-        defaultBreedLimit: 20,
+        fertilityCost: FERTILITY_COST,
+        fertilityRecoveryPerHour: FERTILITY_RECOVERY_PER_HOUR,
+        hasLifetimeBreedLimit: HAS_LIFETIME_BREED_LIMIT,
+        defaultBreedLimit: DEFAULT_BREED_LIMIT,
+        eggRewardMode: 'one_per_distinct_owner',
         cost: {
           gold: 500,
           items: { breeding_token: 1 },

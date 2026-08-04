@@ -55,4 +55,5 @@ export const STARTER_INVENTORY: Readonly<Record<string, number>> = {
   exp_potion_small: 5,
   common_pet_egg: 2,
   fusion_core: 2,
+  breeding_token: 2,
 };
