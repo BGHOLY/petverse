@@ -269,23 +269,32 @@ export class InventoryService {
         };
       }
 
-      const eggs = [];
-      for (let index = 0; index < normalizedQuantity; index += 1) {
-        eggs.push(
-          await this.eggService.createEgg({
-            ownerId: userId,
-            rarityPotential:
-              Number(item.effectValue || item.rarity || 1),
-            source: item.itemCode,
-          }),
+      const eggs = await this.dataSource.transaction(async (manager) => {
+        const consumed = await this.consumeItem(
+          userId,
+          normalizedCode,
+          normalizedQuantity,
+          manager,
         );
-      }
-      const consumed = await this.consumeItem(
-        userId,
-        normalizedCode,
-        normalizedQuantity,
-      );
-      if (!consumed) {
+        if (!consumed) return null;
+
+        const created = [];
+        for (let index = 0; index < normalizedQuantity; index += 1) {
+          created.push(
+            await this.eggService.createEgg(
+              {
+                ownerId: userId,
+                rarityPotential:
+                  Number(item.effectValue || item.rarity || 1),
+                source: item.itemCode,
+              },
+              manager,
+            ),
+          );
+        }
+        return created;
+      });
+      if (!eggs) {
         return {
           success: false,
           message: 'Item consumption failed',

@@ -21,6 +21,7 @@ describe('V12 starter team', () => {
   it('gives enough resources to demonstrate growth, hatching and fusion', () => {
     expect(STARTER_INVENTORY.exp_potion_small).toBeGreaterThanOrEqual(3);
     expect(STARTER_INVENTORY.common_pet_egg).toBeGreaterThanOrEqual(2);
+    expect(STARTER_INVENTORY.hatch_sandglass_large).toBeGreaterThanOrEqual(2);
     expect(STARTER_INVENTORY.fusion_core).toBeGreaterThanOrEqual(1);
     expect(STARTER_INVENTORY.breeding_token).toBeGreaterThanOrEqual(1);
   });

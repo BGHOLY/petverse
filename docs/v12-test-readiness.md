@@ -70,8 +70,18 @@ V12 readiness audit
 V12 release audit
 production-mode smoke test
 V12 dual-account marriage smoke test
+V12 new-player journey smoke test
+V12 balance audit
 git diff --check
 ```
+
+## 新玩家首局闭环
+
+- 新账号获得五只已锁定的互补定位宠物，并自动形成五宠队伍。
+- 新手包包含经验药、两枚普通宠物蛋、两枚完整孵化沙漏、两枚炼妖核心和两张繁育凭证。
+- 两枚普通蛋可以在首局完成“入仓—上槽—加速—孵化”，孵化出的两只宠物可直接用于第一次炼妖。
+- 初始金币足以完成一次炼妖；首战、每日任务、离线收益和远征继续提供循环金币。
+- `node scripts/smoke-v12-new-player.mjs` 会用隔离新账号真实验证培养、首战、孵化、炼妖、远征与重复请求保护。
 
 ## 结缘与共同孕育
 
