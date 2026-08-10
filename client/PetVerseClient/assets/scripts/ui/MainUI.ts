@@ -17,7 +17,6 @@ import {
     UITransform,
     Vec2,
     Vec3,
-    profiler,
     tween,
 } from 'cc';
 import { EDITOR } from 'cc/env';
@@ -360,7 +359,6 @@ export class MainUI extends Component {
     private unsubscribeStore: (() => void) | null = null;
     onLoad() {
         MainUI.instance = this;
-        try { profiler.hideStats(); } catch {}
         ApiClient.setBaseUrl(ApiConfig.getBaseUrl(this.apiBaseUrl));
         ApiClient.setToken(PlayerData.token);
         ApiClient.setUserId(Number(PlayerData.user?.id || 0));

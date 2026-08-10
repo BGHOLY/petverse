@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, director, Label, profiler } from 'cc';
+import { _decorator, Button, Component, director, Label } from 'cc';
 import NetworkManager from '../network/NetworkManager';
 import ApiClient from '../network/ApiClient';
 import ApiConfig from '../network/ApiConfig';
@@ -17,7 +17,6 @@ export class LoginUI extends Component {
     private loggingIn = false;
 
     onLoad() {
-        try { profiler.hideStats(); } catch {}
         ApiClient.setBaseUrl(ApiConfig.getBaseUrl());
     }
 
