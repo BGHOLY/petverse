@@ -16,6 +16,8 @@ import {
     text,
 } from '../cute/CuteUiKit';
 import AudioDirector from './AudioDirector';
+import Battle3DStage from './battle3d/Battle3DStage';
+import BattlePresentationDirector from './battle3d/BattlePresentationDirector';
 
 const MAX_VISIBLE_STATUSES = 3;
 
@@ -58,7 +60,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
 
     let session: any = null;
     let processing = false;
-    let autoMode = options.mode === 'arena';
+    let autoMode = true;
     let timerToken = 0;
     let countdown = 8;
     let completionNotified = false;
@@ -69,14 +71,18 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     let armedDirective: Exclude<DirectiveType, 'auto'> | null = null;
     const unitNodes = new Map<string, { node: Node; enemy: boolean; alive: boolean }>();
     const directiveTargets = new Map<DirectiveType, string>();
+    const stage3d = new Battle3DStage(layer);
+    const presentationDirector = new BattlePresentationDirector(stage3d);
 
-    panel(layer, 'BattleV101Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, new Color(24, 27, 42, 255), 0, false, CuteTheme.transparent, 0);
-    const battlefield = panel(layer, 'BattleV101Field', 0, 0, 720, 1280, new Color(224, 242, 226, 255), 0, false, CuteTheme.transparent, 0);
+    panel(layer, 'BattleV101Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, stage3d.available ? new Color(0, 0, 0, 0) : new Color(24, 27, 42, 255), 0, false, CuteTheme.transparent, 0);
+    const battlefield = panel(layer, 'BattleV101Field', 0, 0, 720, 1280, stage3d.available ? new Color(0, 0, 0, 0) : new Color(224, 242, 226, 255), 0, false, CuteTheme.transparent, 0);
 
     const close = () => {
         if (closing) return;
         closing = true;
         timerToken += 1;
+        presentationDirector.dispose();
+        stage3d.dispose();
         if (settlementDone && !completionNotified) {
             completionNotified = true;
             options.onComplete?.(session);
@@ -96,10 +102,12 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         clearNode(battlefield);
         unitNodes.clear();
         const boss = Boolean(session?.bossBattle || ['boss', 'tower', 'guild-boss'].indexOf(options.mode) >= 0);
-        panel(battlefield, 'Sky', 0, 242, 720, 800, boss ? new Color(102, 91, 132, 255) : new Color(193, 225, 229, 255), 0, false, CuteTheme.transparent, 0);
-        panel(battlefield, 'Horizon', 0, 78, 720, 338, boss ? new Color(164, 135, 139, 255) : new Color(218, 232, 190, 255), 110, false, CuteTheme.transparent, 0);
-        panel(battlefield, 'Ground', 0, -296, 720, 520, boss ? new Color(102, 82, 73, 255) : new Color(178, 210, 153, 255), 90, false, CuteTheme.transparent, 0);
-        panel(battlefield, 'BattleStage', 0, 56, 664, 720, boss ? new Color(70, 58, 82, 74) : new Color(255, 250, 226, 72), 48, true, boss ? new Color(235, 207, 218, 100) : new Color(255, 255, 255, 120), 2);
+        if (!stage3d.available) {
+            panel(battlefield, 'Sky', 0, 242, 720, 800, boss ? new Color(102, 91, 132, 255) : new Color(193, 225, 229, 255), 0, false, CuteTheme.transparent, 0);
+            panel(battlefield, 'Horizon', 0, 78, 720, 338, boss ? new Color(164, 135, 139, 255) : new Color(218, 232, 190, 255), 110, false, CuteTheme.transparent, 0);
+            panel(battlefield, 'Ground', 0, -296, 720, 520, boss ? new Color(102, 82, 73, 255) : new Color(178, 210, 153, 255), 90, false, CuteTheme.transparent, 0);
+            panel(battlefield, 'BattleStage', 0, 56, 664, 720, boss ? new Color(70, 58, 82, 74) : new Color(255, 250, 226, 72), 48, true, boss ? new Color(235, 207, 218, 100) : new Color(255, 255, 255, 120), 2);
+        }
         text(battlefield, 'EnemySideLabel', boss ? '首领阵营' : '敌方阵营', -276, 493, 130, 28, 13, boss ? CuteTheme.peach : CuteTheme.caramel, 'left', true);
         text(battlefield, 'AllySideLabel', '我的五宠', -276, -244, 130, 28, 13, CuteTheme.mintDark, 'left', true);
         text(battlefield, 'Versus', '✦  VS  ✦', 0, 89, 180, 36, 19, boss ? CuteTheme.peach : CuteTheme.caramel, 'center', true);
@@ -116,6 +124,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             return;
         }
 
+        stage3d.sync(session.leftTeam || [], session.rightTeam || []);
         renderTeam(session.rightTeam || [], session.enemyFormationCode, true);
         renderTeam(session.leftTeam || [], session.formationCode, false);
 
@@ -126,7 +135,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         const order=(Array.isArray(session?.actionOrder)?session.actionOrder:[]).slice(0,6).map((item:any)=>String(item?.name||'')).filter(Boolean).join(' → ');
         text(info, 'Logs', `${order?`行动：${order}\n`:''}${logs.map((item: any) => `• ${String(item?.text || '').slice(0, 45)}`).join('\n') || '等待本回合战术指令'}`, -310, -14, 620, 60, 11, CuteTheme.caramel, 'left', false);
 
-        const command = panel(battlefield, 'CommandBar', 0, -508, 700, 238, new Color(255, 246, 224, 254), 30, true, CuteTheme.caramelSoft, 4);
+        const command = panel(battlefield, 'CommandBar', 0, -516, 700, 216, new Color(255, 246, 224, 254), 30, true, CuteTheme.caramelSoft, 4);
         if (session.status !== 'active') {
             renderResult(command);
             return;
@@ -138,29 +147,23 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             return;
         }
 
-        const prompt = promptOverride || `选择一个战术指令，再点击目标宝宝（${countdown}秒后自动）`;
-        text(command, 'Prompt', prompt, 0, 88, 640, 32, 14, CuteTheme.caramel, 'center', true);
+        const prompt = promptOverride || '宠物自动战斗 · 点击敌方头像切换集火目标';
+        text(command, 'Prompt', prompt, 0, 74, 640, 32, 14, CuteTheme.caramel, 'center', true);
         const cd = session.cooldowns?.left || {};
-        const actions: Array<[Exclude<DirectiveType, 'auto'>, number]> = [['focus', -246], ['guard', -82], ['shield', 82], ['cleanse', 246]];
-        actions.forEach(([type, x]) => createDragCommand(command, type, x, 26, cd));
-        if(armedDirective)createDirectiveArrow(armedDirective);
+        const focusTargetId=String(cd.focusTargetId||'');
+        text(command,'FocusTarget',focusTargetId?`当前集火：${unitName(focusTargetId)}`:'当前集火：自动选择',-300,34,600,26,12,CuteTheme.peachDark,'left',true);
 
         const initialCd = Number(session.ultimate?.initialCooldown || 3);
         const ultimateRemaining = Math.max(Number(cd.ultimate || 0), initialCd - Number(session.round || 1));
         const energyCost=Number(session?.commands?.ultimate?.energyCost||session?.ultimate?.energyCost||cd.formationEnergyCost||100);
         const energy=Number(session?.commands?.ultimate?.energy||cd.formationEnergy||0);
         const ultimateReady = ultimateRemaining <= 0&&energy>=energyCost;
-        progress(command,'FormationEnergy',-115,-20,250,10,energy/Math.max(1,energyCost),CuteTheme.lilac);
-        text(command,'EnergyText',`阵法能量 ${energy}/${energyCost}`,95,-20,180,22,11,CuteTheme.muted,'left',true);
-        button(command, 'Ultimate', ultimateReady ? `阵法大招 · ${session.ultimate?.name || '发动'}` : energy<energyCost?`阵法大招 · 能量不足`:`阵法大招 · ${ultimateRemaining}回合后`, -130, -73, 330, 54, () => void send({ type: 'focus', targetId: firstAliveId(true), useUltimate: true }), {
+        progress(command,'FormationEnergy',-120,4,250,10,energy/Math.max(1,energyCost),CuteTheme.lilac);
+        text(command,'EnergyText',`阵法能量 ${energy}/${energyCost}`,90,4,180,22,11,CuteTheme.muted,'left',true);
+        button(command, 'Ultimate', ultimateReady ? `阵法大招 · ${session.ultimate?.name || '发动'}` : energy<energyCost?`阵法大招 · 能量不足`:`阵法大招 · ${ultimateRemaining}回合后`, -115, -58, 350, 58, () => void send({ type: 'focus', targetId: focusTargetId||firstAliveId(true), useUltimate: true }), {
             icon: '✦', fill: CuteTheme.lilac, fontSize: 15, radius: 24, disabled: processing || !ultimateReady,
         });
-        button(command, 'Auto', autoMode ? '关闭自动' : '开启自动', 230, -73, 170, 54, () => {
-            autoMode = !autoMode;
-            armedDirective = null;
-            promptOverride = autoMode?'已开启本场自动':'已关闭自动，可继续手动选择指令';
-            if(autoMode)void send({ type: 'auto' });else { timerToken+=1; render(); scheduleAuto(); }
-        }, { icon: '▶', selected: autoMode, fill: CuteTheme.paperWarm, fontSize: 14, radius: 24, disabled: processing });
+        button(command, 'Auto', processing ? '行动演出中' : '自动战斗中', 235, -58, 170, 58, () => {}, { icon: '▶', selected: true, fill: CuteTheme.paperWarm, fontSize: 14, radius: 24, disabled: true });
     };
 
 
@@ -195,18 +198,24 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     };
 
     const renderTeam = (team: any[], _formationCode: string, enemy: boolean) => {
-        const positions = enemy ? ENEMY_VISUAL_POSITIONS : ALLY_VISUAL_POSITIONS;
+        const positions = stage3d.available
+            ? [-248, -124, 0, 124, 248].map((x) => [x, enemy ? 402 : -202] as [number, number])
+            : (enemy ? ENEMY_VISUAL_POSITIONS : ALLY_VISUAL_POSITIONS);
         team.slice(0, 5).forEach((unit: any, index: number) => {
             const [x, y] = positions[index] || [0, 0];
             const alive = unit?.alive !== false && Number(unit?.hp || 0) > 0;
             const teamColor = enemy ? CuteTheme.peachDark : CuteTheme.mintDark;
-            const card = panel(battlefield, `Unit_${enemy ? 'E' : 'A'}_${unit?.id}`, x, y, 118, 146, alive ? new Color(255, 250, 232, 248) : new Color(118, 118, 118, 185), 21, true, alive ? teamColor : CuteTheme.muted, alive ? 3 : 2);
+            const cardWidth=stage3d.available?108:118;
+            const cardHeight=stage3d.available?104:146;
+            const card = panel(battlefield, `Unit_${enemy ? 'E' : 'A'}_${unit?.id}`, x, y, cardWidth, cardHeight, alive ? new Color(255, 250, 232, 238) : new Color(118, 118, 118, 185), 21, true, alive ? teamColor : CuteTheme.muted, alive ? 3 : 2);
             unitNodes.set(String(unit?.id), { node: card, enemy, alive });
-            image(card, 'Art', getPetArtPath(unit, 'thumb'), 0, 27, 78, 78, CuteTheme.paperWarm);
-            text(card, 'Name', cleanPetDisplayName(unit,'宝宝',8), 0, -22, 106, 22, 11, CuteTheme.caramel, 'center', true);
-            progress(card, 'Hp', 0, -44, 96, 12, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
-            text(card,'HpText',`${formatNumber(unit?.hp||0)}/${formatNumber(unit?.maxHp||1)}`,0,-44,94,17,8,CuteTheme.white,'center',true);
-            if (Number(unit?.shield || 0) > 0){ progress(card, 'Shield', 0, -58, 96, 7, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky); text(card,'ShieldText',`盾${formatNumber(unit.shield)}`,0,-65,94,15,8,CuteTheme.sky,'center',true); }
+            const artY=stage3d.available?17:27;
+            const artSize=stage3d.available?54:78;
+            image(card, 'Art', getPetArtPath(unit, 'thumb'), 0, artY, artSize, artSize, CuteTheme.paperWarm);
+            text(card, 'Name', cleanPetDisplayName(unit,'宝宝',8), 0, stage3d.available?-17:-22, cardWidth-12, 20, 10, CuteTheme.caramel, 'center', true);
+            progress(card, 'Hp', 0, stage3d.available?-36:-44, cardWidth-18, 10, Number(unit?.maxHp || 1) ? Number(unit?.hp || 0) / Number(unit.maxHp) : 0, CuteTheme.mintDark);
+            if (!stage3d.available) text(card,'HpText',`${formatNumber(unit?.hp||0)}/${formatNumber(unit?.maxHp||1)}`,0,-44,94,17,8,CuteTheme.white,'center',true);
+            if (Number(unit?.shield || 0) > 0){ progress(card, 'Shield', 0, stage3d.available?-46:-58, cardWidth-18, 6, Math.min(1, Number(unit.shield) / Math.max(1, Number(unit.maxHp || 1) * 0.3)), CuteTheme.sky); if(!stage3d.available)text(card,'ShieldText',`盾${formatNumber(unit.shield)}`,0,-65,94,15,8,CuteTheme.sky,'center',true); }
             const statusText = Array.isArray(unit?.statuses) ? unit.statuses.slice(0, MAX_VISIBLE_STATUSES).map((s: any) => statusIcon(s?.type)).join('') : '';
             if (statusText) tag(card, 'Status', statusText, 33, 58, 54, CuteTheme.peach);
             const marks = [...directiveTargets.entries()].filter(([, id]) => id === String(unit?.id));
@@ -214,6 +223,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             const focused=String((enemy?session?.cooldowns?.left:session?.cooldowns?.right)?.focusTargetId||'')===String(unit?.id);
             if(focused)tag(card,'FocusMark','🎯 集火',-29,58,62,CuteTheme.peach);
             const chooseTarget=()=>{
+                if(stage3d.available&&enemy&&alive){commitDirectiveTarget('focus',String(unit?.id));return;}
                 const type=armedDirective;
                 if(!type||!alive)return;
                 const meta=COMMAND_META[type];
@@ -336,21 +346,14 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     };
 
     const animateEvents = async (events: any[]) => {
-        for (const event of events.slice(0, 14)) {
+        for (const event of events.slice(0, 24)) {
             const target = unitNodes.get(String(event?.targetId || ''))?.node;
-            const actor = unitNodes.get(String(event?.actorId || ''))?.node;
             if (event?.type === 'damage') {
                 void AudioDirector.playSfx(event?.skillName ? 'magic' : 'attack');
-                if (actor?.isValid) {
-                    const direction = (target?.position.x || 0) > actor.position.x ? 18 : -18;
-                    tween(actor).by(0.08, { position: new Vec3(direction, 0, 0) }).by(0.10, { position: new Vec3(-direction, 0, 0) }).start();
-                }
-                if (target?.isValid) tween(target).by(0.05, { position: new Vec3(7, 0, 0) }).by(0.05, { position: new Vec3(-14, 0, 0) }).by(0.05, { position: new Vec3(7, 0, 0) }).start();
             } else if (event?.type === 'heal') void AudioDirector.playSfx('heal');
             else if (/shield/.test(String(event?.type))) void AudioDirector.playSfx('shield');
             else if (event?.type === 'ultimate') {
                 void AudioDirector.playSfx('magic');
-                tween(battlefield).to(0.08,{scale:new Vec3(1.02,1.02,1)}).to(0.14,{scale:Vec3.ONE}).start();
             }
             if(target?.isValid&&['damage','heal','shield','shield-absorb','command-shield','command-cleanse'].includes(String(event?.type))){
                 const isHeal=event?.type==='heal';
@@ -359,7 +362,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
                 const floating=text(target,`Float_${Date.now()}_${Math.random()}`,label,0,76,118,30,event?.critical?18:15,isHeal?CuteTheme.mintDark:isShield?CuteTheme.sky:CuteTheme.peachDark,'center',true);
                 tween(floating.node).by(0.45,{position:new Vec3(0,34,0)}).call(()=>floating?.node?.isValid&&floating.node.destroy()).start();
             }
-            await wait(90);
+            await presentationDirector.play([event]);
         }
     };
 
@@ -436,7 +439,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         timerToken+=1;
         session=null;
         processing=false;
-        autoMode=options.mode==='arena';
+        autoMode=true;
         countdown=8;
         completionNotified=false;
         settlementProcessing=false;
@@ -444,6 +447,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         promptOverride='';
         armedDirective=null;
         directiveTargets.clear();
+        presentationDirector.reset();
         render();
         void start();
     };
