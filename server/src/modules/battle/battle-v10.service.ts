@@ -427,6 +427,7 @@ export class BattleV10Service {
     const events: any[] = [{ round: session.round, type: 'round', text: `第 ${session.round} 回合` }];
     this.tickStatuses(session, left, session.round, events);
     this.tickStatuses(session, right, session.round, events);
+    this.applyBossMechanic(session, left, right, events);
     this.applyDirective(session, 'left', leftDirective, events);
     this.applyDirective(session, 'right', rightDirective, events);
 
@@ -1002,6 +1003,78 @@ export class BattleV10Service {
     }
   }
 
+  private applyBossMechanic(
+    session: BattleSessionV10,
+    playerTeam: BattleUnit[],
+    enemyTeam: BattleUnit[],
+    events: any[],
+  ) {
+    if (!session.bossBattle) return;
+    const boss = enemyTeam.find((unit) => unit.role === 'boss' && unit.alive);
+    if (!boss) return;
+    const cooldowns = session.cooldowns?.right || {};
+    const hpRate = boss.maxHp > 0 ? boss.hp / boss.maxHp : 0;
+
+    if (hpRate <= 0.55 && !cooldowns.bossPhaseTwo) {
+      cooldowns.bossPhaseTwo = true;
+      boss.damageRate += 0.22;
+      boss.speed = Math.max(1, Math.round(boss.speed * 1.12));
+      events.push({
+        round: session.round,
+        type: 'boss-phase',
+        actorId: boss.id,
+        targetIds: playerTeam.filter((unit) => unit.alive).map((unit) => unit.id),
+        phaseCode: 'ANCIENT_GROWTH',
+        text: `${boss.name} 进入古木狂化阶段，伤害和速度提升`,
+      });
+    }
+
+    if (boss.energy >= 100) {
+      const livingPlayers = playerTeam.filter((unit) => unit.alive && unit.hp > 0);
+      events.push({
+        round: session.round,
+        type: 'boss-skill',
+        actorId: boss.id,
+        targetIds: livingPlayers.map((unit) => unit.id),
+        skillCode: 'ANCIENT_ROOT_QUAKE',
+        skillName: '古树根震',
+        text: `${boss.name} 释放古树根震`,
+      });
+      for (const target of livingPlayers) {
+        this.applyDamage(
+          session,
+          boss,
+          target,
+          Math.max(1, Math.round(Math.max(boss.attack, boss.magic) * 0.48)),
+          events,
+          '古树根震',
+          false,
+          { skillCode: 'ANCIENT_ROOT_QUAKE', name: '古树根震', tier: 'special' },
+        );
+      }
+      boss.energy = 0;
+      cooldowns.bossTelegraphRound = 0;
+      session.cooldowns.right = cooldowns;
+      return;
+    }
+
+    boss.energy = Math.min(100, boss.energy + (cooldowns.bossPhaseTwo ? 32 : 26));
+    if (boss.energy >= 75 && Number(cooldowns.bossTelegraphRound || 0) !== Number(session.round)) {
+      cooldowns.bossTelegraphRound = Number(session.round);
+      events.push({
+        round: session.round,
+        type: 'boss-telegraph',
+        actorId: boss.id,
+        targetIds: playerTeam.filter((unit) => unit.alive).map((unit) => unit.id),
+        skillCode: 'ANCIENT_ROOT_QUAKE',
+        skillName: '古树根震',
+        value: boss.energy,
+        text: `${boss.name} 正在蓄力古树根震（${boss.energy}%）`,
+      });
+    }
+    session.cooldowns.right = cooldowns;
+  }
+
   private isSpecialSkill(skill: any) {
     const tier = String(skill?.tier || '').toLowerCase();
     const code = String(skill?.skillCode || skill?.code || '').toUpperCase();
@@ -1201,14 +1274,14 @@ export class BattleV10Service {
 
   private buildEnemyUnits(level: number, difficulty: number, formationCode: string, boss: boolean, featuredSpeciesCode = '') {
     return Array.from({ length: 5 }, (_, slotIndex) => {
-      const species = slotIndex === 0 && featuredSpeciesCode
-        ? findPetSpeciesConfig(featuredSpeciesCode)
+      const species = slotIndex === 0 && (featuredSpeciesCode || boss)
+        ? findPetSpeciesConfig(featuredSpeciesCode || 'PET008')
         : PET_SPECIES_CONFIGS[(level + slotIndex * 3) % PET_SPECIES_CONFIGS.length];
       const multiplier = difficulty * (boss && slotIndex === 0 ? 1.35 : 1);
       const base = {
         id: -(slotIndex + 1),
         ownerId: 0,
-        nickname: boss && slotIndex === 0 ? `巢穴首领·${species.name}` : `守关·${species.name}`,
+        nickname: boss && slotIndex === 0 ? '古树守卫' : `守关·${species.name}`,
         species: species.name,
         speciesCode: species.speciesCode,
         rarity: boss && slotIndex === 0 ? 4 : 2,
@@ -1222,7 +1295,9 @@ export class BattleV10Service {
           speed: Math.round((species.baseStats.speed + level * 3.8) * multiplier),
         },
       } as any;
-      return this.fromPet(base, 'right', slotIndex, formationCode, boss ? 5 : 3);
+      const unit = this.fromPet(base, 'right', slotIndex, formationCode, boss ? 5 : 3);
+      if (boss && slotIndex === 0) unit.role = 'boss';
+      return unit;
     });
   }
 

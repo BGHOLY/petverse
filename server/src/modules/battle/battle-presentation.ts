@@ -44,6 +44,9 @@ const DESCRIPTORS: Record<string, PresentationDescriptor> = {
   },
   'formation-energy': { phase: 'resolve', cue: 'formation.energy' },
   ultimate: { phase: 'action', cue: 'formation.ultimate' },
+  'boss-telegraph': { phase: 'intent', cue: 'boss.telegraph' },
+  'boss-skill': { phase: 'action', cue: 'boss.skill' },
+  'boss-phase': { phase: 'reaction', cue: 'boss.phase' },
   survive: { phase: 'resolve', cue: 'unit.survive' },
   defeat: { phase: 'resolve', cue: 'unit.death' },
   revive: { phase: 'resolve', cue: 'unit.revive' },
@@ -102,4 +105,3 @@ export function decorateBattleEvents(
     } as BattlePresentationEvent;
   });
 }
-

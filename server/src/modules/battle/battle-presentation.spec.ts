@@ -65,5 +65,16 @@ describe('battle presentation events', () => {
     expect(event.presentationCue).toBe('event.generic');
     expect(event.phase).toBe('resolve');
   });
-});
 
+  it('maps boss telegraphs and boss skills to dedicated presentation cues', () => {
+    const events = decorateBattleEvents('battle-boss', [
+      { round: 3, type: 'boss-telegraph', actorId: 'right-1', text: '首领蓄力' },
+      { round: 4, type: 'boss-skill', actorId: 'right-1', text: '首领释放大招' },
+    ]);
+
+    expect(events.map((event) => event.presentationCue)).toEqual([
+      'boss.telegraph',
+      'boss.skill',
+    ]);
+  });
+});

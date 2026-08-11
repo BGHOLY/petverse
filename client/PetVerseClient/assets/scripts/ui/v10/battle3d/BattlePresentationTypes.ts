@@ -54,6 +54,9 @@ const PHASE_BY_TYPE: Record<string, BattlePresentationPhase> = {
     dot: 'impact',
     'combat-reaction': 'reaction',
     ultimate: 'action',
+    'boss-telegraph': 'intent',
+    'boss-skill': 'action',
+    'boss-phase': 'reaction',
     defeat: 'resolve',
     revive: 'resolve',
     finish: 'resolve',
@@ -78,6 +81,9 @@ const CUE_BY_TYPE: Record<string, string> = {
     'formation-passive-trigger': 'formation.passive',
     'formation-energy': 'formation.energy',
     ultimate: 'formation.ultimate',
+    'boss-telegraph': 'boss.telegraph',
+    'boss-skill': 'boss.skill',
+    'boss-phase': 'boss.phase',
     survive: 'unit.survive',
     defeat: 'unit.death',
     revive: 'unit.revive',
@@ -102,4 +108,3 @@ export function normalizePresentationEvent(raw: any, fallbackSequence: number): 
         text: String(raw?.text || ''),
     };
 }
-

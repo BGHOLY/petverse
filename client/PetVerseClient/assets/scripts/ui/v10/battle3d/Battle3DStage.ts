@@ -142,6 +142,18 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             case 'formation.ultimate':
                 await this.ultimate(event.side || 'left', duration(620));
                 return;
+            case 'boss.telegraph':
+                await this.bossTelegraph(actor, duration(520));
+                return;
+            case 'boss.skill':
+                await this.bossSkill(actor, duration(720));
+                return;
+            case 'boss.phase':
+                await Promise.all([
+                    this.pulse(actor?.root, duration(520), 1.22),
+                    this.cameraPunch(duration(520), 0.24),
+                ]);
+                return;
             case 'unit.death':
                 await this.defeat(target, duration(420));
                 return;
@@ -281,6 +293,8 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         if (speciesCode === 'PET002') this.buildTurtle(root, color);
         else if (speciesCode === 'PET008') this.buildDeer(root, color);
         else this.buildFox(root, color);
+
+        if (unit.role === 'boss') root.setScale(1.16, 1.16, 1.16);
 
         this.unitVisuals.set(String(unit.id), { root, home: home.clone(), side });
     }
@@ -450,6 +464,33 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         await Promise.all([
             this.cameraPunch(durationMs * 0.45, 0.28),
             ...targets.map((visual) => this.pulse(visual.root, durationMs, 1.17)),
+        ]);
+    }
+
+    private async bossTelegraph(actor: UnitVisual | undefined, durationMs: number) {
+        if (!actor?.root?.isValid || !this.unitRoot?.isValid) {
+            await this.delay(durationMs);
+            return;
+        }
+        const ring = this.createPrimitive(
+            this.unitRoot,
+            `BossTelegraph_${Date.now()}`,
+            'torus',
+            new Color(255, 116, 84, 230),
+        );
+        ring.setPosition(actor.root.position.x, 0.1, actor.root.position.z);
+        ring.setScale(0.6, 0.06, 0.6);
+        await Promise.all([
+            this.tweenNode(ring, durationMs, { scale: new Vec3(2.2, 0.06, 2.2) }, 'quadOut'),
+            this.pulse(actor.root, durationMs, 1.16),
+        ]);
+        if (ring.isValid) ring.destroy();
+    }
+
+    private async bossSkill(actor: UnitVisual | undefined, durationMs: number) {
+        await Promise.all([
+            this.pulse(actor?.root, durationMs, 1.24),
+            this.cameraPunch(durationMs, 0.35),
         ]);
     }
 
