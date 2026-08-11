@@ -17,11 +17,16 @@ import {
     BattleUnitSnapshot,
 } from './BattlePresentationTypes';
 import type { BattlePresentationAdapter } from './BattlePresentationDirector';
+import {
+    getBattlePetVisualProfile,
+    type BattlePetFallbackArchetype,
+} from './BattlePetVisualRegistry';
 
 type UnitVisual = {
     root: Node;
     home: Vec3;
     side: 'left' | 'right';
+    baseScale: number;
 };
 
 type CameraState = {
@@ -100,7 +105,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             const alive = unit.alive !== false && Number(unit.hp || 0) > 0;
             visual.root.active = alive;
             if (alive && visual.root.scale.y < 0.2) {
-                visual.root.setScale(0.82, 0.82, 0.82);
+                visual.root.setScale(visual.baseScale, visual.baseScale, visual.baseScale);
                 visual.root.setRotationFromEuler(0, visual.side === 'left' ? 180 : 0, 0);
             }
         });
@@ -176,7 +181,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             if (!visual.root?.isValid) continue;
             visual.root.active = true;
             visual.root.setPosition(visual.home);
-            visual.root.setScale(0.82, 0.82, 0.82);
+            visual.root.setScale(visual.baseScale, visual.baseScale, visual.baseScale);
             visual.root.setRotationFromEuler(0, visual.side === 'left' ? 180 : 0, 0);
         }
     }
@@ -284,19 +289,33 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         this.unitRoot.addChild(root);
         const home = (side === 'left' ? LEFT_POSITIONS : RIGHT_POSITIONS)[index] || Vec3.ZERO;
         root.setPosition(home);
-        root.setScale(0.82, 0.82, 0.82);
         root.setRotationFromEuler(0, side === 'left' ? 180 : 0, 0);
 
         const palette = side === 'left' ? ALLY_COLORS : ENEMY_COLORS;
         const color = palette[index % palette.length];
-        const speciesCode = String(unit.speciesCode || '').toUpperCase();
-        if (speciesCode === 'PET002') this.buildTurtle(root, color);
-        else if (speciesCode === 'PET008') this.buildDeer(root, color);
+        const profile = getBattlePetVisualProfile(unit.speciesCode);
+        this.buildFallbackArchetype(root, color, profile.fallbackArchetype);
+        const baseScale = unit.role === 'boss'
+            ? Math.max(1.16, profile.battleScale * 1.32)
+            : profile.battleScale;
+        root.setScale(baseScale, baseScale, baseScale);
+
+        this.unitVisuals.set(String(unit.id), {
+            root,
+            home: home.clone(),
+            side,
+            baseScale,
+        });
+    }
+
+    private buildFallbackArchetype(
+        root: Node,
+        color: Color,
+        archetype: BattlePetFallbackArchetype,
+    ) {
+        if (archetype === 'turtle') this.buildTurtle(root, color);
+        else if (archetype === 'deer') this.buildDeer(root, color);
         else this.buildFox(root, color);
-
-        if (unit.role === 'boss') root.setScale(1.16, 1.16, 1.16);
-
-        this.unitVisuals.set(String(unit.id), { root, home: home.clone(), side });
     }
 
     private buildFox(root: Node, color: Color) {
@@ -429,11 +448,15 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         const amount = critical ? 0.22 : 0.12;
         await this.tweenNode(node, durationMs * 0.34, {
             position: new Vec3(home.x + amount, home.y, home.z),
-            scale: new Vec3(0.9, 0.72, 0.9),
+            scale: new Vec3(
+                target.baseScale * 1.1,
+                target.baseScale * 0.88,
+                target.baseScale * 1.1,
+            ),
         }, 'quadOut');
         await this.tweenNode(node, durationMs * 0.66, {
             position: home,
-            scale: new Vec3(0.82, 0.82, 0.82),
+            scale: new Vec3(target.baseScale, target.baseScale, target.baseScale),
         }, 'backOut');
     }
 
@@ -500,7 +523,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             return;
         }
         await this.tweenNode(target.root, durationMs, {
-            scale: new Vec3(0.82, 0.08, 0.82),
+            scale: new Vec3(target.baseScale, 0.08, target.baseScale),
             position: new Vec3(target.home.x, -0.2, target.home.z),
         }, 'quadIn');
         target.root.active = false;
@@ -513,9 +536,9 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         }
         target.root.active = true;
         target.root.setPosition(target.home.x, -0.2, target.home.z);
-        target.root.setScale(0.82, 0.08, 0.82);
+        target.root.setScale(target.baseScale, 0.08, target.baseScale);
         await this.tweenNode(target.root, durationMs, {
-            scale: new Vec3(0.82, 0.82, 0.82),
+            scale: new Vec3(target.baseScale, target.baseScale, target.baseScale),
             position: target.home,
         }, 'backOut');
     }

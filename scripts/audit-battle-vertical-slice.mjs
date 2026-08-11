@@ -15,6 +15,8 @@ const paths = {
   director: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePresentationDirector.ts',
   stage: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/Battle3DStage.ts',
   types: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePresentationTypes.ts',
+  visualRegistry: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePetVisualRegistry.ts',
+  productionSpec: 'docs/battle-pet-production-v1.md',
 };
 
 const files = Object.fromEntries(
@@ -25,6 +27,7 @@ const checks = [
   ['vertical-slice brief exists', exists(paths.brief)],
   ['presentation contract exists', exists(paths.contract)],
   ['3D asset budget exists', exists(paths.budget)],
+  ['pet production specification exists', exists(paths.productionSpec)],
   ['brief locks 720x1280', /720\s*[×x]\s*1280/i.test(files.brief)],
   ['brief locks five-versus-five battle', /5\s*v\s*5|5v5|五宠对五宠|五对五/i.test(files.brief)],
   ['brief limits player input to focus and formation ultimate', /集火/.test(files.brief) && /阵法大招/.test(files.brief)],
@@ -50,9 +53,11 @@ const checks = [
   ['3D stage handles boss skill', /boss\.skill/.test(files.stage)],
   ['3D stage handles damage impact', /damage\.hit/.test(files.stage)],
   ['3D stage handles formation ultimate', /formation\.ultimate/.test(files.stage)],
+  ['three representative pet profiles are registered', ['PET001', 'PET002', 'PET008'].every((code) => files.visualRegistry.includes(code))],
+  ['formal pet prefabs have graybox fallback profiles', /prefabPath/.test(files.visualRegistry) && /fallbackArchetype/.test(files.visualRegistry)],
   ['director sorts events deterministically', /\.sort\(/.test(files.director) && /sequence/.test(files.director)],
   ['director deduplicates events', /playedEventIds/.test(files.director)],
-  ['all client scripts have meta files', [paths.battleScene, paths.director, paths.stage, paths.types].every((path) => exists(`${path}.meta`))],
+  ['all client scripts have meta files', [paths.battleScene, paths.director, paths.stage, paths.types, paths.visualRegistry].every((path) => exists(`${path}.meta`))],
 ];
 
 let failed = 0;
