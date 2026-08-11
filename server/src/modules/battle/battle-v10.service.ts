@@ -21,6 +21,10 @@ import { BattleSessionV10 } from './battle-session.entity';
 import { FORMATION_ENERGY_GAINS, battleRewardConfig } from './battle-reward.config';
 import { getSkillCombatTags } from './combat-reaction.config';
 import { seededBattleRandom } from './battle-random.util';
+import {
+  decorateBattleEvents,
+  nextBattleEventSequence,
+} from './battle-presentation';
 
 type Side = 'left' | 'right';
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
@@ -135,6 +139,7 @@ export class BattleV10Service {
     const regionCode = String(body?.regionCode || '');
     const stageCode = String(body?.stageCode || (bossBattle ? 'boss' : 'stage-1'));
     let resumed = false;
+    const createdBattleId = randomUUID();
     const session = await this.dataSource.transaction(async (manager) => {
       const userRepository = manager.getRepository(User);
       await userRepository.findOne({ where: { id: userId }, lock: { mode: 'pessimistic_write' } });
@@ -147,8 +152,31 @@ export class BattleV10Service {
         resumed = true;
         return existing;
       }
+      const initialBattleLog = decorateBattleEvents(createdBattleId, [
+        {
+          round: 0,
+          type: 'start',
+          text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}`,
+        },
+        {
+          round: 0,
+          type: 'formation-passive',
+          side: 'left',
+          formationCode,
+          passiveRule: getFormationConfig(formationCode).passiveRule,
+          text: `我方阵法被动：${getFormationConfig(formationCode).passiveRule.name}`,
+        },
+        {
+          round: 0,
+          type: 'formation-passive',
+          side: 'right',
+          formationCode: enemyFormationCode,
+          passiveRule: getFormationConfig(enemyFormationCode).passiveRule,
+          text: `敌方阵法被动：${getFormationConfig(enemyFormationCode).passiveRule.name}`,
+        },
+      ]);
       return repository.save(repository.create({
-        battleId: randomUUID(),
+        battleId: createdBattleId,
         userId,
         mode,
         chapterCode,
@@ -163,29 +191,7 @@ export class BattleV10Service {
         rightTeam,
         cooldowns: this.initialCooldownState(formationCode, enemyFormationCode),
         tactics: teamResult.tactics || {},
-        battleLog: [
-          {
-            round: 0,
-            type: 'start',
-            text: `五宠出战：${getFormationConfig(formationCode).name} VS ${getFormationConfig(enemyFormationCode).name}`,
-          },
-          {
-            round: 0,
-            type: 'formation-passive',
-            side: 'left',
-            formationCode,
-            passiveRule: getFormationConfig(formationCode).passiveRule,
-            text: `我方阵法被动：${getFormationConfig(formationCode).passiveRule.name}`,
-          },
-          {
-            round: 0,
-            type: 'formation-passive',
-            side: 'right',
-            formationCode: enemyFormationCode,
-            passiveRule: getFormationConfig(enemyFormationCode).passiveRule,
-            text: `敌方阵法被动：${getFormationConfig(enemyFormationCode).passiveRule.name}`,
-          },
-        ],
+        battleLog: initialBattleLog,
         winnerSide: '',
         bossBattle,
         settled: false,
@@ -250,9 +256,14 @@ export class BattleV10Service {
         session.cooldowns?.right || {},
         session.tactics || {},
       );
-      const roundEvents = this.runRound(session, directive, enemyDirective);
+      const rawRoundEvents = this.runRound(session, directive, enemyDirective);
+      this.finishIfNeeded(session, rawRoundEvents);
+      const roundEvents = decorateBattleEvents(
+        session.battleId,
+        rawRoundEvents,
+        nextBattleEventSequence(session.battleLog),
+      );
       session.battleLog = [...(session.battleLog || []), ...roundEvents].slice(-600);
-      this.finishIfNeeded(session);
       if (session.status === 'active') session.round += 1;
       else {
         session.finishedAt = new Date();
@@ -1139,7 +1150,7 @@ export class BattleV10Service {
     return '控制与战术配合不足';
   }
 
-  private finishIfNeeded(session: BattleSessionV10) {
+  private finishIfNeeded(session: BattleSessionV10, events: any[] = []) {
     const leftAlive = (session.leftTeam as BattleUnit[]).some((unit) => unit.alive && unit.hp > 0);
     const rightAlive = (session.rightTeam as BattleUnit[]).some((unit) => unit.alive && unit.hp > 0);
     if (!leftAlive || !rightAlive) {
@@ -1152,11 +1163,11 @@ export class BattleV10Service {
       session.winnerSide = leftRate >= rightRate ? 'left' : 'right';
     }
     if (session.status === 'finished') {
-      session.battleLog = [...(session.battleLog || []), {
+      events.push({
         round: session.round,
         type: 'finish',
         text: session.winnerSide === 'left' ? '我方五宠获胜' : '敌方五宠获胜',
-      }];
+      });
     }
   }
 
@@ -1518,7 +1529,7 @@ export class BattleV10Service {
       enemyTeam: right,
       cooldowns: session.cooldowns,
       tactics: session.tactics,
-      battleLog: session.battleLog || [],
+      battleLog: decorateBattleEvents(session.battleId, session.battleLog || []),
       actionOrder: [...left, ...right]
         .filter((unit) => unit.alive && unit.hp > 0)
         .sort((a, b) => b.speed - a.speed || a.slotIndex - b.slotIndex)
