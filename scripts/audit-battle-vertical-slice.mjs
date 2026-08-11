@@ -17,6 +17,7 @@ const paths = {
   types: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePresentationTypes.ts',
   visualRegistry: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePetVisualRegistry.ts',
   productionSpec: 'docs/battle-pet-production-v1.md',
+  engineConfig: 'client/PetVerseClient/settings/v2/packages/engine.json',
 };
 
 const files = Object.fromEntries(
@@ -45,6 +46,7 @@ const checks = [
   ['boss phase transition exists', /boss-phase/.test(files.battleService)],
   ['battle scene owns the 3D stage', /new Battle3DStage/.test(files.battleScene)],
   ['battle scene owns the presentation director', /new BattlePresentationDirector/.test(files.battleScene)],
+  ['battle hides underlying 2D shell while active', /GlobalBackground/.test(files.battleScene) && /BottomNavigation/.test(files.battleScene) && /restoreUnderlyingUi/.test(files.battleScene)],
   ['battle scene supports focus selection', /focus/i.test(files.battleScene) && /focusTargetId/.test(files.battleScene)],
   ['battle scene supports formation ultimate', /formation ultimate|阵法大招|formationUltimate/i.test(files.battleScene)],
   ['3D stage creates ten unit slots', /LEFT_POSITIONS/.test(files.stage) && /RIGHT_POSITIONS/.test(files.stage) && /slice\(0,\s*5\)/.test(files.stage)],
@@ -57,6 +59,9 @@ const checks = [
   ['formal pet prefabs have graybox fallback profiles', /prefabPath/.test(files.visualRegistry) && /fallbackArchetype/.test(files.visualRegistry)],
   ['director sorts events deterministically', /\.sort\(/.test(files.director) && /sequence/.test(files.director)],
   ['director deduplicates events', /playedEventIds/.test(files.director)],
+  ['Cocos 3D engine module is enabled', /"3d"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
+  ['Cocos primitive module is enabled', /"primitive"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
+  ['Cocos skeletal animation module is enabled', /"skeletal-animation"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
   ['all client scripts have meta files', [paths.battleScene, paths.director, paths.stage, paths.types, paths.visualRegistry].every((path) => exists(`${path}.meta`))],
 ];
 

@@ -69,6 +69,7 @@ const ENEMY_COLORS = [
 
 export default class Battle3DStage implements BattlePresentationAdapter {
     readonly available: boolean;
+    readonly failureReason: string;
 
     private readonly unitVisuals = new Map<string, UnitVisual>();
     private readonly materials = new Map<string, Material>();
@@ -79,9 +80,25 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     private cameraNode: Node | null = null;
     private camera: Camera | null = null;
     private teamSignature = '';
+    private initializationStep = 'not-started';
 
     constructor(private readonly ownerLayer: Node) {
-        this.available = this.buildWorld();
+        let available = false;
+        let failureReason = '';
+        try {
+            available = this.buildWorld();
+        } catch (error) {
+            failureReason = `${this.initializationStep}: ${error instanceof Error ? error.stack || error.message : String(error)}`;
+            console.warn('[Battle3DStage] initialization failed; using 2D fallback.', error);
+            this.restoreUiCameras();
+            if (this.worldRoot?.isValid) this.worldRoot.destroy();
+            this.worldRoot = null;
+            this.unitRoot = null;
+            this.cameraNode = null;
+            this.camera = null;
+        }
+        this.available = available;
+        this.failureReason = failureReason;
     }
 
     sync(leftTeam: BattleUnitSnapshot[], rightTeam: BattleUnitSnapshot[]) {
@@ -187,13 +204,16 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     }
 
     dispose() {
-        for (const state of this.cameraStates) {
-            if (!state.camera?.isValid) continue;
-            state.camera.priority = state.priority;
-            state.camera.clearFlags = state.clearFlags;
-        }
-        this.cameraStates.length = 0;
+        this.restoreUiCameras();
         if (this.worldRoot?.isValid) this.worldRoot.destroy();
+        for (const material of this.materials.values()) {
+            if (material?.isValid) material.destroy();
+        }
+        for (const mesh of this.meshes.values()) {
+            if (mesh?.isValid) mesh.destroy();
+        }
+        this.materials.clear();
+        this.meshes.clear();
         this.worldRoot = null;
         this.unitRoot = null;
         this.cameraNode = null;
@@ -202,13 +222,17 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     }
 
     private buildWorld() {
+        this.initializationStep = 'resolve-scene';
         const scene = this.ownerLayer.scene;
         if (!scene) return false;
 
+        this.initializationStep = 'remove-existing-stage';
         const existing = scene.getChildByName('Battle3DVerticalSlice');
         if (existing?.isValid) existing.destroy();
 
-        for (const camera of scene.getComponentsInChildren(Camera)) {
+        this.initializationStep = 'collect-ui-cameras';
+        const sceneCameras = scene.getComponentsInChildren('cc.Camera') as Camera[];
+        for (const camera of sceneCameras) {
             if ((camera.visibility & Layers.BitMask.UI_2D) === 0) continue;
             this.cameraStates.push({
                 camera,
@@ -219,11 +243,13 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             camera.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
         }
 
+        this.initializationStep = 'create-world-root';
         const root = new Node('Battle3DVerticalSlice');
         root.layer = Layers.BitMask.DEFAULT;
         scene.addChild(root);
         this.worldRoot = root;
 
+        this.initializationStep = 'create-stage-camera';
         const cameraNode = new Node('Battle3DCamera');
         cameraNode.layer = Layers.BitMask.DEFAULT;
         root.addChild(cameraNode);
@@ -241,12 +267,23 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         this.cameraNode = cameraNode;
         this.camera = camera;
 
+        this.initializationStep = 'build-environment';
         this.createEnvironment(root);
         const units = new Node('BattleUnits');
         units.layer = Layers.BitMask.DEFAULT;
         root.addChild(units);
         this.unitRoot = units;
+        this.initializationStep = 'ready';
         return true;
+    }
+
+    private restoreUiCameras() {
+        for (const state of this.cameraStates) {
+            if (!state.camera?.isValid) continue;
+            state.camera.priority = state.priority;
+            state.camera.clearFlags = state.clearFlags;
+        }
+        this.cameraStates.length = 0;
     }
 
     private createEnvironment(root: Node) {

@@ -21,10 +21,10 @@
             "_value": true
           },
           "skeletal-animation": {
-            "_value": false
+            "_value": true
           },
           "3d": {
-            "_value": false
+            "_value": true
           },
           "meshopt": {
             "_value": false
@@ -101,7 +101,7 @@
             "_value": true
           },
           "primitive": {
-            "_value": false
+            "_value": true
           },
           "profiler": {
             "_value": false
@@ -192,6 +192,7 @@
         },
         "includeModules": [
           "2d",
+          "3d",
           "affine-transform",
           "animation",
           "audio",
@@ -202,7 +203,9 @@
           "graphics",
           "intersection-2d",
           "mask",
+          "primitive",
           "rich-text",
+          "skeletal-animation",
           "tween",
           "ui"
         ],

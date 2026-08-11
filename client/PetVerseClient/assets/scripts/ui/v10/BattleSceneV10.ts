@@ -1,4 +1,4 @@
-import { BlockInputEvents, Color, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
+import { Color, EventTouch, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
 import ApiClient from '../../network/ApiClient';
 import { getPetArtPath } from '../pet/PetArtRegistry';
 import { cleanPetDisplayName } from '../pet/PetNameFormatter';
@@ -56,7 +56,25 @@ const COMMAND_META: Record<Exclude<DirectiveType, 'auto'>, { title: string; icon
 export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     clearNode(layer);
     layer.active = true;
-    if (!layer.getComponent(BlockInputEvents)) layer.addComponent(BlockInputEvents);
+    const appRoot = layer.parent?.parent || null;
+    const hiddenDuringBattle = ['GlobalBackground', 'PageRoot', 'TopBar', 'BottomNavigation']
+        .map((name) => appRoot?.getChildByName(name) || null)
+        .filter((node): node is Node => Boolean(node?.isValid));
+    const previousActiveStates = new Map<Node, boolean>();
+    for (const node of hiddenDuringBattle) {
+        previousActiveStates.set(node, node.active);
+        node.active = false;
+    }
+    const restoreUnderlyingUi = () => {
+        for (const [node, wasActive] of previousActiveStates.entries()) {
+            if (node?.isValid) node.active = wasActive;
+        }
+        previousActiveStates.clear();
+    };
+    const stopTouchPropagation = (event: EventTouch) => {
+        event.propagationStopped = true;
+    };
+    layer.on(Node.EventType.TOUCH_START, stopTouchPropagation);
 
     let session: any = null;
     let processing = false;
@@ -76,13 +94,14 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
 
     panel(layer, 'BattleV101Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, stage3d.available ? new Color(0, 0, 0, 0) : new Color(24, 27, 42, 255), 0, false, CuteTheme.transparent, 0);
     const battlefield = panel(layer, 'BattleV101Field', 0, 0, 720, 1280, stage3d.available ? new Color(0, 0, 0, 0) : new Color(224, 242, 226, 255), 0, false, CuteTheme.transparent, 0);
-
     const close = () => {
         if (closing) return;
         closing = true;
         timerToken += 1;
         presentationDirector.dispose();
         stage3d.dispose();
+        restoreUnderlyingUi();
+        layer.off(Node.EventType.TOUCH_START, stopTouchPropagation);
         if (settlementDone && !completionNotified) {
             completionNotified = true;
             options.onComplete?.(session);
