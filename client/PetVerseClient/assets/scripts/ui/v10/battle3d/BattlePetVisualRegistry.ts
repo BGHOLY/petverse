@@ -1,10 +1,10 @@
-export type BattlePetFallbackArchetype = 'fox' | 'turtle' | 'deer';
+export type BattlePetFallbackArchetype = 'fox' | 'turtle' | 'deer' | 'guardian';
 
 export type BattlePetVisualProfile = {
     speciesCode: string;
     displayName: string;
     element: 'fire' | 'earth' | 'wood';
-    combatRole: 'burst' | 'tank' | 'healer';
+    combatRole: 'burst' | 'tank' | 'healer' | 'boss';
     bundleName: string;
     prefabPath: string;
     formalAssetReady: boolean;
@@ -33,7 +33,7 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET001/PET001_Battle',
         formalAssetReady: false,
-        productionRevision: 'PET001-V1',
+        productionRevision: 'PET001-V2',
         fallbackArchetype: 'fox',
         battleScale: 0.86,
         requiredAnimations: REQUIRED_ANIMATIONS,
@@ -46,7 +46,7 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET002/PET002_Battle',
         formalAssetReady: false,
-        productionRevision: 'PET002-DRAFT',
+        productionRevision: 'PET002-V1',
         fallbackArchetype: 'turtle',
         battleScale: 0.9,
         requiredAnimations: REQUIRED_ANIMATIONS,
@@ -59,9 +59,22 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET008/PET008_Battle',
         formalAssetReady: false,
-        productionRevision: 'PET008-DRAFT',
+        productionRevision: 'PET008-V1',
         fallbackArchetype: 'deer',
         battleScale: 0.88,
+        requiredAnimations: REQUIRED_ANIMATIONS,
+    },
+    BOSS001: {
+        speciesCode: 'BOSS001',
+        displayName: '古树守卫',
+        element: 'wood',
+        combatRole: 'boss',
+        bundleName: 'battle-chapter-01',
+        prefabPath: 'bosses/AncientGuardian/AncientGuardian_Battle',
+        formalAssetReady: false,
+        productionRevision: 'BOSS001-V1',
+        fallbackArchetype: 'guardian',
+        battleScale: 0.94,
         requiredAnimations: REQUIRED_ANIMATIONS,
     },
 };

@@ -26,9 +26,11 @@ import BattlePetAssetLoader from './BattlePetAssetLoader';
 
 type UnitVisual = {
     root: Node;
+    modelRoot: Node;
     home: Vec3;
     side: 'left' | 'right';
     baseScale: number;
+    speciesCode: string;
     animation: SkeletalAnimation | null;
 };
 
@@ -144,6 +146,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 return;
             case 'damage.hit':
                 this.playUnitAnimation(actor, event.skillCode || event.skillName ? 'active_skill' : 'basic_attack');
+                this.playUnitAnimation(target, 'hit', false);
                 await this.attackAndHit(actor, target, duration(360), Boolean(event.critical));
                 return;
             case 'status.tick':
@@ -194,6 +197,9 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 this.playUnitAnimation(target, 'idle', false);
                 return;
             case 'battle.finish':
+                for (const visual of this.unitVisuals.values()) {
+                    if (visual.root.active) this.playUnitAnimation(visual, 'victory', false);
+                }
                 await this.pulse(this.unitRoot, duration(260), 1.025);
                 return;
             default:
@@ -210,6 +216,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             visual.root.setPosition(visual.home);
             visual.root.setScale(visual.baseScale, visual.baseScale, visual.baseScale);
             visual.root.setRotationFromEuler(0, visual.side === 'left' ? 180 : 0, 0);
+            visual.modelRoot.setPosition(Vec3.ZERO);
+            visual.modelRoot.setScale(Vec3.ONE);
+            visual.modelRoot.setRotationFromEuler(0, 0, 0);
+            this.playUnitAnimation(visual, 'idle', false);
         }
     }
 
@@ -339,27 +349,33 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         root.setPosition(home);
         root.setRotationFromEuler(0, side === 'left' ? 180 : 0, 0);
 
+        const modelRoot = new Node('ModelRoot');
+        modelRoot.layer = Layers.BitMask.DEFAULT;
+        root.addChild(modelRoot);
+
         const palette = side === 'left' ? ALLY_COLORS : ENEMY_COLORS;
         const color = palette[index % palette.length];
-        const profile = getBattlePetVisualProfile(unit.speciesCode);
+        const profile = getBattlePetVisualProfile(unit.role === 'boss' ? 'BOSS001' : unit.speciesCode);
         this.buildFallbackArchetype(
-            root,
+            modelRoot,
             color,
             profile.fallbackArchetype,
-            String(unit.speciesCode || '').toUpperCase(),
+            profile.speciesCode,
         );
-        const baseScale = unit.role === 'boss'
-            ? Math.max(1.16, profile.battleScale * 1.32)
-            : profile.battleScale;
+        const baseScale = profile.battleScale;
         root.setScale(baseScale, baseScale, baseScale);
 
-        this.unitVisuals.set(String(unit.id), {
+        const visual: UnitVisual = {
             root,
+            modelRoot,
             home: home.clone(),
             side,
             baseScale,
+            speciesCode: profile.speciesCode,
             animation: null,
-        });
+        };
+        this.unitVisuals.set(String(unit.id), visual);
+        this.playUnitAnimation(visual, 'enter');
         void this.upgradeToFormalVisual(String(unit.id), profile);
     }
 
@@ -373,28 +389,32 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             this.buildFlameTailFox(root);
             return;
         }
-        if (archetype === 'turtle') this.buildTurtle(root, color);
+        if (speciesCode === 'PET002') this.buildRockshellTurtle(root);
+        else if (speciesCode === 'PET008') this.buildForestSpiritDeer(root);
+        else if (speciesCode === 'BOSS001' || archetype === 'guardian') this.buildAncientGuardian(root);
+        else if (archetype === 'turtle') this.buildTurtle(root, color);
         else if (archetype === 'deer') this.buildDeer(root, color);
         else this.buildFox(root, color);
     }
 
     private buildFlameTailFox(root: Node) {
-        const cream = new Color(250, 226, 183, 255);
-        const warmCream = new Color(255, 241, 210, 255);
-        const ember = new Color(246, 123, 55, 255);
-        const gold = new Color(255, 186, 70, 255);
-        const violet = new Color(109, 65, 151, 255);
+        const flameOrange = new Color(230, 103, 38, 255);
+        const warmOrange = new Color(247, 145, 54, 255);
+        const cream = new Color(255, 235, 194, 255);
+        const ember = new Color(211, 63, 28, 255);
+        const gold = new Color(255, 190, 55, 255);
+        const amber = new Color(126, 71, 24, 255);
 
-        const body = this.createPrimitive(root, 'Body', 'capsule', cream);
+        const body = this.createPrimitive(root, 'Body', 'capsule', flameOrange);
         body.setPosition(0, 0.78, 0.08);
         body.setScale(0.52, 0.74, 0.55);
         body.setRotationFromEuler(90, 0, 0);
 
-        const chest = this.createPrimitive(root, 'ChestFur', 'sphere', warmCream);
+        const chest = this.createPrimitive(root, 'ChestFur', 'sphere', cream);
         chest.setPosition(0, 1.02, -0.35);
         chest.setScale(0.48, 0.58, 0.3);
 
-        const head = this.createPrimitive(root, 'Head', 'sphere', warmCream);
+        const head = this.createPrimitive(root, 'Head', 'sphere', warmOrange);
         head.setPosition(0, 1.58, -0.2);
         head.setScale(0.58, 0.55, 0.54);
 
@@ -406,32 +426,32 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             const ear = this.createPrimitive(root, `Ear_${index}`, 'cone', ember);
             ear.setPosition(x, 2.06, -0.18);
             ear.setScale(0.27, 0.54, 0.24);
-            const inner = this.createPrimitive(root, `EarInner_${index}`, 'cone', warmCream);
+            const inner = this.createPrimitive(root, `EarInner_${index}`, 'cone', cream);
             inner.setPosition(x, 2.04, -0.34);
             inner.setScale(0.14, 0.34, 0.1);
         });
 
         [-0.28, 0.28].forEach((x, index) => {
-            const eye = this.createPrimitive(root, `Eye_${index}`, 'sphere', violet);
+            const eye = this.createPrimitive(root, `Eye_${index}`, 'sphere', amber);
             eye.setPosition(x, 1.66, -0.67);
             eye.setScale(0.12, 0.16, 0.07);
         });
 
-        const moonMark = this.createPrimitive(root, 'MoonFlameMark', 'torus', gold);
-        moonMark.setPosition(0, 1.9, -0.69);
-        moonMark.setScale(0.14, 0.05, 0.14);
-        moonMark.setRotationFromEuler(90, 0, 0);
+        const foreheadFlame = this.createPrimitive(root, 'ForeheadFlameMark', 'cone', cream);
+        foreheadFlame.setPosition(0, 1.92, -0.69);
+        foreheadFlame.setScale(0.12, 0.24, 0.05);
+        foreheadFlame.setRotationFromEuler(90, 0, 0);
 
         [-0.29, 0.29].forEach((x, index) => {
-            const frontLeg = this.createPrimitive(root, `FrontLeg_${index}`, 'capsule', cream);
+            const frontLeg = this.createPrimitive(root, `FrontLeg_${index}`, 'capsule', flameOrange);
             frontLeg.setPosition(x, 0.35, -0.34);
             frontLeg.setScale(0.16, 0.48, 0.17);
-            const backLeg = this.createPrimitive(root, `BackLeg_${index}`, 'capsule', cream);
+            const backLeg = this.createPrimitive(root, `BackLeg_${index}`, 'capsule', flameOrange);
             backLeg.setPosition(x, 0.34, 0.35);
             backLeg.setScale(0.19, 0.45, 0.2);
         });
 
-        const tailBase = this.createPrimitive(root, 'TailBase', 'capsule', cream);
+        const tailBase = this.createPrimitive(root, 'TailBase', 'capsule', warmOrange);
         tailBase.setPosition(0.5, 0.82, 0.42);
         tailBase.setScale(0.28, 0.62, 0.29);
         tailBase.setRotationFromEuler(18, 0, -52);
@@ -444,9 +464,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         tailTip.setScale(0.3, 0.66, 0.3);
         tailTip.setRotationFromEuler(0, 0, 10);
 
-        const charm = this.createPrimitive(root, 'MoonstoneCharm', 'sphere', violet);
-        charm.setPosition(0, 1.17, -0.69);
-        charm.setScale(0.12, 0.14, 0.07);
+        const chestAccent = this.createPrimitive(root, 'ChestFlameAccent', 'cone', gold);
+        chestAccent.setPosition(0, 1.1, -0.66);
+        chestAccent.setScale(0.1, 0.22, 0.05);
+        chestAccent.setRotationFromEuler(90, 0, 0);
     }
 
     private async upgradeToFormalVisual(unitId: string, profile: ReturnType<typeof getBattlePetVisualProfile>) {
@@ -456,8 +477,8 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             if (loaded?.node?.isValid) loaded.node.destroy();
             return;
         }
-        visual.root.destroyAllChildren();
-        visual.root.addChild(loaded.node);
+        visual.modelRoot.destroyAllChildren();
+        visual.modelRoot.addChild(loaded.node);
         this.setLayerRecursively(loaded.node, Layers.BitMask.DEFAULT);
         visual.animation = loaded.animation;
         this.playUnitAnimation(visual, 'enter');
@@ -474,7 +495,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         returnToIdle = true,
     ) {
         const animation = visual?.animation;
-        if (!animation?.isValid) return;
+        if (!animation?.isValid) {
+            this.playProceduralAnimation(visual, clipName, returnToIdle);
+            return;
+        }
         const clip = animation.clips.find((item) => item?.name === clipName);
         if (!clip) return;
         animation.crossFade(clipName, 0.08);
@@ -484,6 +508,286 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             if (!expectedRoot?.isValid || visual.animation !== animation || !animation.isValid) return;
             animation.crossFade('idle', 0.12);
         }, Math.max(100, Number(clip.duration || 0.6) * 1000));
+    }
+
+    private playProceduralAnimation(
+        visual: UnitVisual | undefined,
+        clipName: string,
+        returnToIdle = true,
+    ) {
+        if (!visual?.modelRoot?.isValid) return;
+        const node = visual.modelRoot;
+        const finish = (milliseconds: number) => {
+            if (!returnToIdle || clipName === 'death' || clipName === 'victory') return;
+            setTimeout(() => {
+                if (!node?.isValid) return;
+                tween(node)
+                    .to(0.12, { position: Vec3.ZERO, scale: Vec3.ONE })
+                    .start();
+            }, milliseconds);
+        };
+
+        const isFox = visual.speciesCode === 'PET001';
+        const isTurtle = visual.speciesCode === 'PET002';
+        const isDeer = visual.speciesCode === 'PET008';
+        const isBoss = visual.speciesCode === 'BOSS001';
+
+        switch (clipName) {
+            case 'enter':
+                node.setPosition(0, 0.7, 0);
+                node.setScale(0.72, 0.72, 0.72);
+                tween(node)
+                    .to(0.42, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'backOut' })
+                    .start();
+                finish(480);
+                break;
+            case 'idle':
+                tween(node)
+                    .to(isBoss ? 0.72 : 0.45, {
+                        position: new Vec3(0, isTurtle ? 0.012 : 0.035, 0),
+                        scale: isBoss
+                            ? new Vec3(1.008, 0.992, 1.008)
+                            : new Vec3(1.015, 0.985, 1.015),
+                    }, { easing: 'sineInOut' })
+                    .to(isBoss ? 0.72 : 0.45, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'sineInOut' })
+                    .start();
+                break;
+            case 'basic_attack':
+                tween(node)
+                    .to(isBoss ? 0.24 : 0.12, {
+                        position: new Vec3(0, isTurtle ? -0.11 : -0.06, isFox ? 0.18 : 0.1),
+                        scale: isTurtle
+                            ? new Vec3(1.09, 0.84, 1.09)
+                            : new Vec3(0.98, 0.94, 1.05),
+                    }, { easing: 'quadIn' })
+                    .to(isBoss ? 0.2 : 0.16, {
+                        position: new Vec3(0, isBoss ? -0.02 : 0.08, isFox ? -0.23 : -0.16),
+                        scale: isBoss
+                            ? new Vec3(1.08, 0.92, 1.08)
+                            : new Vec3(1.06, 1.04, 0.94),
+                    }, { easing: 'quadOut' })
+                    .start();
+                finish(isBoss ? 520 : 310);
+                break;
+            case 'active_skill':
+                tween(node)
+                    .to(isBoss ? 0.34 : 0.2, {
+                        position: new Vec3(0, isTurtle ? -0.14 : -0.08, 0),
+                        scale: isTurtle
+                            ? new Vec3(1.12, 0.78, 1.12)
+                            : isDeer
+                                ? new Vec3(0.95, 1.06, 0.95)
+                                : new Vec3(0.92, 0.92, 0.92),
+                    }, { easing: 'quadIn' })
+                    .to(isBoss ? 0.28 : 0.22, {
+                        position: new Vec3(0, isBoss ? 0.08 : isDeer ? 0.24 : 0.16, 0),
+                        scale: isBoss
+                            ? new Vec3(1.16, 0.9, 1.16)
+                            : isTurtle
+                                ? new Vec3(1.2, 0.96, 1.2)
+                                : new Vec3(1.13, 1.13, 1.13),
+                    }, { easing: 'backOut' })
+                    .start();
+                finish(isBoss ? 720 : 470);
+                break;
+            case 'hit':
+                tween(node)
+                    .to(0.1, { position: new Vec3(0.12, -0.05, 0), scale: new Vec3(1.06, 0.9, 1.03) }, { easing: 'quadOut' })
+                    .to(0.16, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'backOut' })
+                    .start();
+                break;
+            case 'death':
+                tween(node)
+                    .to(0.36, { position: new Vec3(0, -0.3, 0), scale: new Vec3(1.08, 0.42, 1.08) }, { easing: 'quadIn' })
+                    .start();
+                break;
+            case 'victory':
+                tween(node)
+                    .to(0.18, { position: new Vec3(0, 0.22, 0), scale: new Vec3(1.07, 1.07, 1.07) }, { easing: 'quadOut' })
+                    .to(0.22, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'backOut' })
+                    .start();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private buildRockshellTurtle(root: Node) {
+        const skin = new Color(215, 164, 92, 255);
+        const belly = new Color(244, 216, 161, 255);
+        const rock = new Color(119, 105, 82, 255);
+        const moss = new Color(112, 143, 74, 255);
+        const amber = new Color(255, 184, 68, 255);
+        const eyeColor = new Color(95, 56, 24, 255);
+
+        const body = this.createPrimitive(root, 'Body', 'sphere', skin);
+        body.setPosition(0, 0.62, 0);
+        body.setScale(0.82, 0.5, 0.92);
+        const bellyPlate = this.createPrimitive(root, 'BellyPlate', 'sphere', belly);
+        bellyPlate.setPosition(0, 0.58, -0.52);
+        bellyPlate.setScale(0.53, 0.38, 0.32);
+        const shell = this.createPrimitive(root, 'RockShell', 'sphere', rock);
+        shell.setPosition(0, 0.92, 0.24);
+        shell.setScale(0.91, 0.58, 0.84);
+
+        const rockOffsets = [
+            [-0.48, 1.18, 0.08], [0, 1.34, 0.04], [0.48, 1.18, 0.08],
+            [-0.62, 0.98, 0.37], [0, 1.08, 0.5], [0.62, 0.98, 0.37],
+        ];
+        rockOffsets.forEach(([x, y, z], index) => {
+            const piece = this.createPrimitive(root, `ShellRock_${index}`, 'sphere', index % 2 ? this.shiftColor(rock, 18) : rock);
+            piece.setPosition(x, y, z);
+            piece.setScale(0.38, 0.27, 0.34);
+        });
+        [[-0.42, 1.26, -0.2], [0.43, 1.19, 0.18], [0, 1.49, 0.12]].forEach(([x, y, z], index) => {
+            const crystal = this.createPrimitive(root, `AmberCrystal_${index}`, 'cone', amber);
+            crystal.setPosition(x, y, z);
+            crystal.setScale(0.18, 0.48 - index * 0.05, 0.18);
+        });
+        const mossBand = this.createPrimitive(root, 'MossBand', 'torus', moss);
+        mossBand.setPosition(0, 1.08, 0.15);
+        mossBand.setScale(0.7, 0.1, 0.62);
+
+        const head = this.createPrimitive(root, 'Head', 'sphere', skin);
+        head.setPosition(0, 0.8, -0.98);
+        head.setScale(0.46, 0.42, 0.5);
+        [-0.24, 0.24].forEach((x, index) => {
+            const eye = this.createPrimitive(root, `Eye_${index}`, 'sphere', eyeColor);
+            eye.setPosition(x, 0.9, -1.41);
+            eye.setScale(0.09, 0.12, 0.06);
+        });
+        [[-0.58, -0.45], [0.58, -0.45], [-0.58, 0.5], [0.58, 0.5]].forEach(([x, z], index) => {
+            const leg = this.createPrimitive(root, `Leg_${index}`, 'capsule', skin);
+            leg.setPosition(x, 0.28, z);
+            leg.setScale(0.24, 0.4, 0.27);
+        });
+        const sprout = this.createPrimitive(root, 'LeafSprout', 'cone', moss);
+        sprout.setPosition(-0.18, 1.66, 0.1);
+        sprout.setScale(0.13, 0.38, 0.08);
+        sprout.setRotationFromEuler(0, 0, -24);
+    }
+
+    private buildForestSpiritDeer(root: Node) {
+        const fur = new Color(202, 143, 75, 255);
+        const cream = new Color(250, 230, 190, 255);
+        const darkWood = new Color(112, 71, 38, 255);
+        const leaf = new Color(123, 157, 66, 255);
+        const flower = new Color(255, 224, 123, 255);
+        const eyeColor = new Color(151, 112, 29, 255);
+
+        const body = this.createPrimitive(root, 'Body', 'capsule', fur);
+        body.setPosition(0, 0.95, 0.12);
+        body.setScale(0.5, 0.82, 0.54);
+        body.setRotationFromEuler(90, 0, 0);
+        const chest = this.createPrimitive(root, 'CreamChest', 'sphere', cream);
+        chest.setPosition(0, 1.11, -0.37);
+        chest.setScale(0.42, 0.58, 0.28);
+        const head = this.createPrimitive(root, 'Head', 'sphere', fur);
+        head.setPosition(0, 1.75, -0.2);
+        head.setScale(0.47, 0.51, 0.43);
+        const muzzle = this.createPrimitive(root, 'Muzzle', 'sphere', cream);
+        muzzle.setPosition(0, 1.65, -0.58);
+        muzzle.setScale(0.28, 0.22, 0.22);
+
+        [-0.35, 0.35].forEach((x, index) => {
+            const ear = this.createPrimitive(root, `Ear_${index}`, 'cone', fur);
+            ear.setPosition(x, 2.08, -0.15);
+            ear.setScale(0.22, 0.42, 0.18);
+            ear.setRotationFromEuler(0, 0, index ? -24 : 24);
+            const eye = this.createPrimitive(root, `Eye_${index}`, 'sphere', eyeColor);
+            eye.setPosition(x * 0.67, 1.8, -0.57);
+            eye.setScale(0.095, 0.13, 0.06);
+        });
+
+        [-0.22, 0.22].forEach((x, side) => {
+            const antler = this.createPrimitive(root, `Antler_${side}`, 'capsule', darkWood);
+            antler.setPosition(x, 2.39, -0.05);
+            antler.setScale(0.09, 0.62, 0.09);
+            antler.setRotationFromEuler(0, 0, side ? -16 : 16);
+            [-0.2, 0.18].forEach((branchX, branchIndex) => {
+                const branch = this.createPrimitive(root, `AntlerBranch_${side}_${branchIndex}`, 'cone', darkWood);
+                branch.setPosition(x + (side ? -branchX : branchX), 2.42 + branchIndex * 0.23, -0.03);
+                branch.setScale(0.07, 0.32, 0.07);
+                branch.setRotationFromEuler(0, 0, side ? -38 : 38);
+                const bud = this.createPrimitive(root, `AntlerLeaf_${side}_${branchIndex}`, 'sphere', leaf);
+                bud.setPosition(x + (side ? -branchX : branchX) * 1.35, 2.61 + branchIndex * 0.22, -0.02);
+                bud.setScale(0.11, 0.18, 0.06);
+            });
+        });
+
+        [-0.26, 0.26].forEach((x) => {
+            const frontLeg = this.createPrimitive(root, `FrontLeg_${x}`, 'capsule', cream);
+            frontLeg.setPosition(x, 0.38, -0.3);
+            frontLeg.setScale(0.13, 0.62, 0.14);
+            const backLeg = this.createPrimitive(root, `BackLeg_${x}`, 'capsule', fur);
+            backLeg.setPosition(x, 0.38, 0.42);
+            backLeg.setScale(0.15, 0.62, 0.16);
+        });
+        [-0.2, 0, 0.2].forEach((x, index) => {
+            const wreathLeaf = this.createPrimitive(root, `WreathLeaf_${index}`, 'sphere', leaf);
+            wreathLeaf.setPosition(x, 1.25 - Math.abs(x) * 0.45, -0.62);
+            wreathLeaf.setScale(0.17, 0.1, 0.07);
+        });
+        const blossom = this.createPrimitive(root, 'WreathFlower', 'sphere', flower);
+        blossom.setPosition(0, 1.22, -0.7);
+        blossom.setScale(0.12, 0.12, 0.06);
+        const tail = this.createPrimitive(root, 'LeafTail', 'cone', leaf);
+        tail.setPosition(0, 1.02, 0.75);
+        tail.setScale(0.24, 0.46, 0.24);
+        tail.setRotationFromEuler(66, 0, 0);
+    }
+
+    private buildAncientGuardian(root: Node) {
+        const bark = new Color(91, 65, 43, 255);
+        const barkLight = new Color(132, 94, 55, 255);
+        const moss = new Color(83, 121, 67, 255);
+        const leaf = new Color(129, 158, 77, 255);
+        const core = new Color(255, 190, 62, 255);
+        const eye = new Color(255, 143, 45, 255);
+
+        const trunk = this.createPrimitive(root, 'Trunk', 'capsule', bark);
+        trunk.setPosition(0, 1.6, 0);
+        trunk.setScale(0.82, 1.38, 0.68);
+        const chest = this.createPrimitive(root, 'ChestBark', 'sphere', barkLight);
+        chest.setPosition(0, 2.18, -0.18);
+        chest.setScale(1.0, 0.76, 0.68);
+        const lifeCore = this.createPrimitive(root, 'LifeCore', 'sphere', core);
+        lifeCore.setPosition(0, 2.16, -0.82);
+        lifeCore.setScale(0.32, 0.32, 0.12);
+        const head = this.createPrimitive(root, 'Head', 'sphere', barkLight);
+        head.setPosition(0, 3.05, -0.18);
+        head.setScale(0.58, 0.63, 0.5);
+        [-0.25, 0.25].forEach((x, index) => {
+            const bossEye = this.createPrimitive(root, `Eye_${index}`, 'sphere', eye);
+            bossEye.setPosition(x, 3.12, -0.63);
+            bossEye.setScale(0.09, 0.08, 0.05);
+        });
+
+        [-0.92, 0.92].forEach((x, side) => {
+            const arm = this.createPrimitive(root, `RootArm_${side}`, 'capsule', bark);
+            arm.setPosition(x, 1.65, -0.02);
+            arm.setScale(0.3, 1.15, 0.32);
+            arm.setRotationFromEuler(0, 0, side ? -18 : 18);
+            const hand = this.createPrimitive(root, `RootHand_${side}`, 'sphere', barkLight);
+            hand.setPosition(x * 1.2, 0.72, -0.1);
+            hand.setScale(0.42, 0.38, 0.44);
+            const leg = this.createPrimitive(root, `RootLeg_${side}`, 'capsule', bark);
+            leg.setPosition(x * 0.46, 0.58, 0.12);
+            leg.setScale(0.34, 0.72, 0.38);
+        });
+
+        [-0.54, 0, 0.54].forEach((x, index) => {
+            const crown = this.createPrimitive(root, `CrownBranch_${index}`, 'capsule', bark);
+            crown.setPosition(x, 3.73 + (index === 1 ? 0.2 : 0), -0.03);
+            crown.setScale(0.12, 0.72, 0.12);
+            crown.setRotationFromEuler(0, 0, x * -32);
+            const crownLeaf = this.createPrimitive(root, `CrownLeaf_${index}`, 'sphere', leaf);
+            crownLeaf.setPosition(x * 1.28, 4.31 + (index === 1 ? 0.18 : 0), -0.02);
+            crownLeaf.setScale(0.2, 0.28, 0.1);
+        });
+        const shoulderMoss = this.createPrimitive(root, 'ShoulderMoss', 'torus', moss);
+        shoulderMoss.setPosition(0, 2.55, 0.02);
+        shoulderMoss.setScale(0.92, 0.12, 0.72);
     }
 
     private buildFox(root: Node, color: Color) {
