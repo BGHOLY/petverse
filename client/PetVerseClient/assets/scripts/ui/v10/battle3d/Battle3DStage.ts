@@ -7,6 +7,7 @@ import {
     MeshRenderer,
     Node,
     primitives,
+    SkeletalAnimation,
     tween,
     utils,
     Vec3,
@@ -21,12 +22,14 @@ import {
     getBattlePetVisualProfile,
     type BattlePetFallbackArchetype,
 } from './BattlePetVisualRegistry';
+import BattlePetAssetLoader from './BattlePetAssetLoader';
 
 type UnitVisual = {
     root: Node;
     home: Vec3;
     side: 'left' | 'right';
     baseScale: number;
+    animation: SkeletalAnimation | null;
 };
 
 type CameraState = {
@@ -75,6 +78,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     private readonly materials = new Map<string, Material>();
     private readonly meshes = new Map<string, Mesh>();
     private readonly cameraStates: CameraState[] = [];
+    private readonly assetLoader = new BattlePetAssetLoader();
     private worldRoot: Node | null = null;
     private unitRoot: Node | null = null;
     private cameraNode: Node | null = null;
@@ -139,15 +143,18 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 await this.pulse(this.unitRoot, duration(170), 1.018);
                 return;
             case 'damage.hit':
+                this.playUnitAnimation(actor, event.skillCode || event.skillName ? 'active_skill' : 'basic_attack');
                 await this.attackAndHit(actor, target, duration(360), Boolean(event.critical));
                 return;
             case 'status.tick':
                 await this.hit(target, duration(210), false);
                 return;
             case 'support.heal':
+                this.playUnitAnimation(actor, 'active_skill');
                 await this.supportPulse(target, duration(320), 'heal');
                 return;
             case 'support.shield':
+                this.playUnitAnimation(actor, 'active_skill');
             case 'shield.absorb':
                 await this.supportPulse(target, duration(280), 'shield');
                 return;
@@ -168,6 +175,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 await this.bossTelegraph(actor, duration(520));
                 return;
             case 'boss.skill':
+                this.playUnitAnimation(actor, 'active_skill');
                 await this.bossSkill(actor, duration(720));
                 return;
             case 'boss.phase':
@@ -177,11 +185,13 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 ]);
                 return;
             case 'unit.death':
+                this.playUnitAnimation(target, 'death', false);
                 await this.defeat(target, duration(420));
                 return;
             case 'unit.revive':
             case 'unit.survive':
                 await this.revive(target, duration(420));
+                this.playUnitAnimation(target, 'idle', false);
                 return;
             case 'battle.finish':
                 await this.pulse(this.unitRoot, duration(260), 1.025);
@@ -219,6 +229,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         this.cameraNode = null;
         this.camera = null;
         this.unitVisuals.clear();
+        this.assetLoader.clear();
     }
 
     private buildWorld() {
@@ -331,7 +342,12 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         const palette = side === 'left' ? ALLY_COLORS : ENEMY_COLORS;
         const color = palette[index % palette.length];
         const profile = getBattlePetVisualProfile(unit.speciesCode);
-        this.buildFallbackArchetype(root, color, profile.fallbackArchetype);
+        this.buildFallbackArchetype(
+            root,
+            color,
+            profile.fallbackArchetype,
+            String(unit.speciesCode || '').toUpperCase(),
+        );
         const baseScale = unit.role === 'boss'
             ? Math.max(1.16, profile.battleScale * 1.32)
             : profile.battleScale;
@@ -342,17 +358,132 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             home: home.clone(),
             side,
             baseScale,
+            animation: null,
         });
+        void this.upgradeToFormalVisual(String(unit.id), profile);
     }
 
     private buildFallbackArchetype(
         root: Node,
         color: Color,
         archetype: BattlePetFallbackArchetype,
+        speciesCode: string,
     ) {
+        if (speciesCode === 'PET001') {
+            this.buildFlameTailFox(root);
+            return;
+        }
         if (archetype === 'turtle') this.buildTurtle(root, color);
         else if (archetype === 'deer') this.buildDeer(root, color);
         else this.buildFox(root, color);
+    }
+
+    private buildFlameTailFox(root: Node) {
+        const cream = new Color(250, 226, 183, 255);
+        const warmCream = new Color(255, 241, 210, 255);
+        const ember = new Color(246, 123, 55, 255);
+        const gold = new Color(255, 186, 70, 255);
+        const violet = new Color(109, 65, 151, 255);
+
+        const body = this.createPrimitive(root, 'Body', 'capsule', cream);
+        body.setPosition(0, 0.78, 0.08);
+        body.setScale(0.52, 0.74, 0.55);
+        body.setRotationFromEuler(90, 0, 0);
+
+        const chest = this.createPrimitive(root, 'ChestFur', 'sphere', warmCream);
+        chest.setPosition(0, 1.02, -0.35);
+        chest.setScale(0.48, 0.58, 0.3);
+
+        const head = this.createPrimitive(root, 'Head', 'sphere', warmCream);
+        head.setPosition(0, 1.58, -0.2);
+        head.setScale(0.58, 0.55, 0.54);
+
+        const muzzle = this.createPrimitive(root, 'Muzzle', 'sphere', cream);
+        muzzle.setPosition(0, 1.48, -0.66);
+        muzzle.setScale(0.32, 0.23, 0.24);
+
+        [-0.32, 0.32].forEach((x, index) => {
+            const ear = this.createPrimitive(root, `Ear_${index}`, 'cone', ember);
+            ear.setPosition(x, 2.06, -0.18);
+            ear.setScale(0.27, 0.54, 0.24);
+            const inner = this.createPrimitive(root, `EarInner_${index}`, 'cone', warmCream);
+            inner.setPosition(x, 2.04, -0.34);
+            inner.setScale(0.14, 0.34, 0.1);
+        });
+
+        [-0.28, 0.28].forEach((x, index) => {
+            const eye = this.createPrimitive(root, `Eye_${index}`, 'sphere', violet);
+            eye.setPosition(x, 1.66, -0.67);
+            eye.setScale(0.12, 0.16, 0.07);
+        });
+
+        const moonMark = this.createPrimitive(root, 'MoonFlameMark', 'torus', gold);
+        moonMark.setPosition(0, 1.9, -0.69);
+        moonMark.setScale(0.14, 0.05, 0.14);
+        moonMark.setRotationFromEuler(90, 0, 0);
+
+        [-0.29, 0.29].forEach((x, index) => {
+            const frontLeg = this.createPrimitive(root, `FrontLeg_${index}`, 'capsule', cream);
+            frontLeg.setPosition(x, 0.35, -0.34);
+            frontLeg.setScale(0.16, 0.48, 0.17);
+            const backLeg = this.createPrimitive(root, `BackLeg_${index}`, 'capsule', cream);
+            backLeg.setPosition(x, 0.34, 0.35);
+            backLeg.setScale(0.19, 0.45, 0.2);
+        });
+
+        const tailBase = this.createPrimitive(root, 'TailBase', 'capsule', cream);
+        tailBase.setPosition(0.5, 0.82, 0.42);
+        tailBase.setScale(0.28, 0.62, 0.29);
+        tailBase.setRotationFromEuler(18, 0, -52);
+        const tailMid = this.createPrimitive(root, 'TailFlameMid', 'capsule', gold);
+        tailMid.setPosition(0.88, 1.22, 0.5);
+        tailMid.setScale(0.31, 0.64, 0.31);
+        tailMid.setRotationFromEuler(12, 0, -24);
+        const tailTip = this.createPrimitive(root, 'TailFlameTip', 'cone', ember);
+        tailTip.setPosition(0.99, 1.78, 0.5);
+        tailTip.setScale(0.3, 0.66, 0.3);
+        tailTip.setRotationFromEuler(0, 0, 10);
+
+        const charm = this.createPrimitive(root, 'MoonstoneCharm', 'sphere', violet);
+        charm.setPosition(0, 1.17, -0.69);
+        charm.setScale(0.12, 0.14, 0.07);
+    }
+
+    private async upgradeToFormalVisual(unitId: string, profile: ReturnType<typeof getBattlePetVisualProfile>) {
+        const loaded = await this.assetLoader.instantiate(profile);
+        const visual = this.unitVisuals.get(unitId);
+        if (!loaded || !visual?.root?.isValid) {
+            if (loaded?.node?.isValid) loaded.node.destroy();
+            return;
+        }
+        visual.root.destroyAllChildren();
+        visual.root.addChild(loaded.node);
+        this.setLayerRecursively(loaded.node, Layers.BitMask.DEFAULT);
+        visual.animation = loaded.animation;
+        this.playUnitAnimation(visual, 'enter');
+    }
+
+    private setLayerRecursively(node: Node, layer: number) {
+        node.layer = layer;
+        node.children.forEach((child) => this.setLayerRecursively(child, layer));
+    }
+
+    private playUnitAnimation(
+        visual: UnitVisual | undefined,
+        clipName: string,
+        returnToIdle = true,
+    ) {
+        const animation = visual?.animation;
+        if (!animation?.isValid) return;
+        const clip = animation.clips.find((item) => item?.name === clipName);
+        if (!clip) return;
+        animation.crossFade(clipName, 0.08);
+        if (!returnToIdle || clipName === 'idle' || clipName === 'death') return;
+        const expectedRoot = visual.root;
+        setTimeout(() => {
+            if (!expectedRoot?.isValid || visual.animation !== animation || !animation.isValid) return;
+            animation.crossFade('idle', 0.12);
+        }, Math.max(100, Number(clip.duration || 0.6) * 1000));
     }
 
     private buildFox(root: Node, color: Color) {

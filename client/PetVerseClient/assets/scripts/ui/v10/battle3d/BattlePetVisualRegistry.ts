@@ -7,6 +7,8 @@ export type BattlePetVisualProfile = {
     combatRole: 'burst' | 'tank' | 'healer';
     bundleName: string;
     prefabPath: string;
+    formalAssetReady: boolean;
+    productionRevision: string;
     fallbackArchetype: BattlePetFallbackArchetype;
     battleScale: number;
     requiredAnimations: readonly string[];
@@ -30,6 +32,8 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         combatRole: 'burst',
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET001/PET001_Battle',
+        formalAssetReady: false,
+        productionRevision: 'PET001-V1',
         fallbackArchetype: 'fox',
         battleScale: 0.86,
         requiredAnimations: REQUIRED_ANIMATIONS,
@@ -41,6 +45,8 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         combatRole: 'tank',
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET002/PET002_Battle',
+        formalAssetReady: false,
+        productionRevision: 'PET002-DRAFT',
         fallbackArchetype: 'turtle',
         battleScale: 0.9,
         requiredAnimations: REQUIRED_ANIMATIONS,
@@ -52,6 +58,8 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         combatRole: 'healer',
         bundleName: 'pet-starter-01',
         prefabPath: 'pets/PET008/PET008_Battle',
+        formalAssetReady: false,
+        productionRevision: 'PET008-DRAFT',
         fallbackArchetype: 'deer',
         battleScale: 0.88,
         requiredAnimations: REQUIRED_ANIMATIONS,
@@ -67,4 +75,3 @@ export function getBattlePetVisualProfile(speciesCode: unknown): BattlePetVisual
 export function listBattlePetVisualProfiles() {
     return Object.values(PROFILES);
 }
-

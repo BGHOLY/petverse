@@ -30,6 +30,15 @@ pet-starter-01/pets/PET008/PET008_Battle
 
 当正式 Prefab 尚未下载或加载失败时，战斗自动使用当前程序化狐、龟、鹿灰盒。模型资源缺失不得阻断战斗结算、集火或阵法大招。
 
+PET001 的已锁定生产资料：
+
+```text
+docs/art/characters/pet001-flame-tail-fox-turnaround-v1.png
+docs/art/characters/pet001-flame-tail-fox-production-v1.md
+```
+
+参考图只用于建模，不属于客户端运行资源。正式 Prefab 只有在通过动画、体积和真机性能检查后，才允许在注册表中启用。
+
 ## 3. 统一坐标与骨架约束
 
 - 模型正面朝 Cocos `-Z`；脚底位于 `Y=0`；根节点原点位于双脚或身体投影中心。
@@ -104,4 +113,3 @@ victory
 4. 模型加载失败时灰盒自动接管，玩家仍可完成普通战和首领战。
 5. 替换正式 Prefab 后不修改 `BattleSceneV10`、服务端结算或页面 UI。
 6. 微信构建报告必须继续输出主包、分包、最大单文件和重复资源。
-

@@ -16,6 +16,7 @@ const paths = {
   stage: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/Battle3DStage.ts',
   types: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePresentationTypes.ts',
   visualRegistry: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePetVisualRegistry.ts',
+  visualLoader: 'client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattlePetAssetLoader.ts',
   productionSpec: 'docs/battle-pet-production-v1.md',
   engineConfig: 'client/PetVerseClient/settings/v2/packages/engine.json',
 };
@@ -57,12 +58,14 @@ const checks = [
   ['3D stage handles formation ultimate', /formation\.ultimate/.test(files.stage)],
   ['three representative pet profiles are registered', ['PET001', 'PET002', 'PET008'].every((code) => files.visualRegistry.includes(code))],
   ['formal pet prefabs have graybox fallback profiles', /prefabPath/.test(files.visualRegistry) && /fallbackArchetype/.test(files.visualRegistry)],
+  ['formal pet prefabs use an explicit readiness gate', /formalAssetReady/.test(files.visualRegistry)],
+  ['formal pet loader falls back safely', /loadBundle/.test(files.visualLoader) && /return null/.test(files.visualLoader)],
   ['director sorts events deterministically', /\.sort\(/.test(files.director) && /sequence/.test(files.director)],
   ['director deduplicates events', /playedEventIds/.test(files.director)],
   ['Cocos 3D engine module is enabled', /"3d"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
   ['Cocos primitive module is enabled', /"primitive"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
   ['Cocos skeletal animation module is enabled', /"skeletal-animation"\s*:\s*\{\s*"_value"\s*:\s*true/s.test(files.engineConfig)],
-  ['all client scripts have meta files', [paths.battleScene, paths.director, paths.stage, paths.types, paths.visualRegistry].every((path) => exists(`${path}.meta`))],
+  ['all client scripts have meta files', [paths.battleScene, paths.director, paths.stage, paths.types, paths.visualRegistry, paths.visualLoader].every((path) => exists(`${path}.meta`))],
 ];
 
 let failed = 0;
