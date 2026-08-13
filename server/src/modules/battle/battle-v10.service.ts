@@ -1029,7 +1029,9 @@ export class BattleV10Service {
       });
     }
 
-    if (boss.energy >= 100) {
+    const bossEnergy = Math.max(0, Number(cooldowns.bossEnergy || 0));
+    const bossTelegraphRound = Math.max(0, Number(cooldowns.bossTelegraphRound || 0));
+    if (bossTelegraphRound > 0 && Number(session.round) > bossTelegraphRound) {
       const livingPlayers = playerTeam.filter((unit) => unit.alive && unit.hp > 0);
       events.push({
         round: session.round,
@@ -1052,14 +1054,14 @@ export class BattleV10Service {
           { skillCode: 'ANCIENT_ROOT_QUAKE', name: '古树根震', tier: 'special' },
         );
       }
-      boss.energy = 0;
+      cooldowns.bossEnergy = 0;
       cooldowns.bossTelegraphRound = 0;
       session.cooldowns.right = cooldowns;
       return;
     }
 
-    boss.energy = Math.min(100, boss.energy + (cooldowns.bossPhaseTwo ? 32 : 26));
-    if (boss.energy >= 75 && Number(cooldowns.bossTelegraphRound || 0) !== Number(session.round)) {
+    cooldowns.bossEnergy = Math.min(100, bossEnergy + (cooldowns.bossPhaseTwo ? 32 : 26));
+    if (cooldowns.bossEnergy >= 75 && bossTelegraphRound <= 0) {
       cooldowns.bossTelegraphRound = Number(session.round);
       events.push({
         round: session.round,
@@ -1068,8 +1070,8 @@ export class BattleV10Service {
         targetIds: playerTeam.filter((unit) => unit.alive).map((unit) => unit.id),
         skillCode: 'ANCIENT_ROOT_QUAKE',
         skillName: '古树根震',
-        value: boss.energy,
-        text: `${boss.name} 正在蓄力古树根震（${boss.energy}%）`,
+        value: cooldowns.bossEnergy,
+        text: `${boss.name} 正在蓄力古树根震（${cooldowns.bossEnergy}%）`,
       });
     }
     session.cooldowns.right = cooldowns;
