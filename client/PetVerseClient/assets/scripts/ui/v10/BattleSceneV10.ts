@@ -166,7 +166,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
             return;
         }
 
-        const prompt = promptOverride || '宠物自动战斗 · 点击敌方头像切换集火目标';
+        const prompt = promptOverride || String(session?.stage?.tutorialTip || '宠物自动战斗 · 点击敌方头像切换集火目标');
         text(command, 'Prompt', prompt, 0, 74, 640, 32, 14, CuteTheme.caramel, 'center', true);
         const cd = session.cooldowns?.left || {};
         const focusTargetId=String(cd.focusTargetId||'');
@@ -202,13 +202,18 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         text(command, 'Result', settlementProcessing ? '正在结算…' : win ? '胜利！' : session.winnerSide ? '挑战失败' : '战斗结束', 0, 78, 500, 48, 30, win ? CuteTheme.mintDark : CuteTheme.peachDark, 'center', true);
         const summary = session.summary || {};
         const settlement=session?.settlement||{};
+        const debrief=settlement?.debrief||{};
         const rewards = settlement?.reward || session?.rewards || {};
         const itemCount=Object.values(rewards?.items||{}).reduce((sum:number,value:any)=>sum+Number(value||0),0);
         const rewardText = win && settlementDone
             ? `奖励 金币${formatNumber(rewards.gold || 0)} · 玩家经验${formatNumber(rewards.playerExp || 0)} · 宠物经验${formatNumber(rewards.petExp || 0)}${itemCount?` · 材料${itemCount}`:''}`
             : (!win&&settlementDone?`失败原因：${String(settlement?.failureReason||'请调整阵容与阵法')}`:'等待服务端确认奖励');
         const exploration=settlement?.exploration;
-        text(command, 'Summary', `总伤害 ${formatNumber(summary?.left?.damage || settlement?.statistics?.totalDamage || 0)}　治疗 ${formatNumber(summary?.left?.healing || settlement?.statistics?.totalHealing || 0)}　承伤 ${formatNumber(summary?.left?.taken || settlement?.statistics?.damageTaken || 0)}　回合 ${Math.max(1, Number(session.round || 1))}\n${rewardText}${exploration?`\n探索度 ${Number(exploration.value||0)}%${exploration.nestUnlocked?' · 首领巢穴已解锁':''}`:''}`, 0, 8, 660, 86, 13, CuteTheme.caramel, 'center', false);
+        const firstFallen=debrief?.firstFallen?`最先倒下：${String(debrief.firstFallen.name||'未知宠物')}（第${Number(debrief.firstFallen.round||1)}回合）`:'';
+        const critical=Array.isArray(debrief?.criticalEvents)?String(debrief.criticalEvents[0]||''):'';
+        const recommendation=Array.isArray(debrief?.recommendations)?String(debrief.recommendations[0]||''):'';
+        const failureReview=!win&&settlementDone?[firstFallen,critical,recommendation?`建议：${recommendation}`:''].filter(Boolean).join('\n'):'';
+        text(command, 'Summary', `总伤害 ${formatNumber(summary?.left?.damage || settlement?.statistics?.totalDamage || 0)}　治疗 ${formatNumber(summary?.left?.healing || settlement?.statistics?.totalHealing || 0)}　承伤 ${formatNumber(summary?.left?.taken || settlement?.statistics?.damageTaken || 0)}　回合 ${Math.max(1, Number(session.round || 1))}\n${rewardText}${failureReview?`\n${failureReview}`:''}${exploration&&!failureReview?`\n探索度 ${Number(exploration.value||0)}%${exploration.nestUnlocked?' · 首领巢穴已解锁':''}`:''}`, 0, 0, 660, 96, 12, CuteTheme.caramel, 'center', false);
         const three=win&&Boolean(options.onNext);
         button(command, 'CloseResult', '返回冒险', three?-218:-120, -82, three?150:190, 52, close, { icon: '↩', fill: CuteTheme.honey, fontSize: 15, radius: 23, disabled:settlementProcessing });
         button(command, 'Replay', '再次挑战', three?0:120, -82, three?150:190, 52, () => restartBattle(), { icon: '⚔', fill: CuteTheme.mint, fontSize: 15, radius: 23, disabled:settlementProcessing });

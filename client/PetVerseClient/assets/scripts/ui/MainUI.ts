@@ -2449,7 +2449,13 @@ export class MainUI extends Component {
         text(detail,'Species',`可发现：${discoverable}`,0,38,520,26,12,CuteTheme.caramel,'left',true);
         text(detail,'Power',`推荐战力 ${formatNumber(region?.recommendedPower||0)} · ${safeName(region?.element,'生态')}系生态`,0,10,520,24,12,CuteTheme.muted,'left',true);
         const lastEvent=region?.lastEvent;
-        text(detail,'Event',lastEvent?`最近事件：${safeName(lastEvent?.title,'探索事件')} · 探索 +${Number(lastEvent?.explorationGain||0)}%`:'下一次推进将触发区域探索事件',0,-18,520,24,11,lastEvent?CuteTheme.mintDark:CuteTheme.muted,'left',true);
+        const currentStage=(Array.isArray(region?.stages)?region.stages:[]).find((stage:any)=>String(stage?.code||stage?.stageCode||'')===String(region?.nextStageCode||''));
+        const stageLine=currentStage
+            ? `下一关：${safeName(currentStage?.title,'区域试炼')} · ${safeName(currentStage?.objective,'完成当前关卡目标')}`
+            : lastEvent
+                ? `最近事件：${safeName(lastEvent?.title,'探索事件')} · 探索 +${Number(lastEvent?.explorationGain||0)}%`
+                : '下一次推进将触发区域探索事件';
+        text(detail,'Event',stageLine,0,-18,520,24,11,currentStage?CuteTheme.peachDark:(lastEvent?CuteTheme.mintDark:CuteTheme.muted),'left',true);
         const firstReward=(Array.isArray(region?.firstRewards)?region.firstRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
         const completionReward=(Array.isArray(region?.completionRewards)?region.completionRewards:[]).map((reward:any)=>safeName(reward?.label,'奖励')).join('、');
         text(detail,'Rewards',`${region?.firstRewardClaimed?'首次奖励已领取':`首次：${firstReward||'待同步'}`} · 完成：${completionReward||'待同步'}`,0,-46,520,24,10,CuteTheme.peachDark,'left',true);
@@ -2479,20 +2485,34 @@ export class MainUI extends Component {
         if(this.teamPetIds.length!==5){this.showToast('世界主线需要完整五宠编队');return;}
         if(!this.battleLayer||!region?.code)return;
         this.adventureMode='world';
+        const stageCode=kind==='nest'?'boss':String(region?.nextStageCode||`stage-${Math.min(5,Math.floor(Number(region?.exploration||0)/20)+1)}`);
+        const stage=kind==='nest'
+            ? region?.bossStage
+            : (Array.isArray(region?.stages)?region.stages:[]).find((item:any)=>String(item?.code||item?.stageCode||'')===stageCode);
         showFivePetBattle(this.battleLayer,{
             mode:kind==='nest'?'boss':'pve',
-            title:kind==='nest'?`${safeName(region?.name,'区域')}·首领巢穴`:`${safeName(region?.name,'区域')}·生态探索`,
+            title:stage?.title?`${safeName(region?.name,'区域')}·${safeName(stage.title,'区域试炼')}`:(kind==='nest'?`${safeName(region?.name,'区域')}·首领巢穴`:`${safeName(region?.name,'区域')}·生态探索`),
             formationCode:this.selectedFormationCode,
-            difficulty:Number(region?.difficulty||1),
+            difficulty:Number(stage?.difficulty||region?.difficulty||1),
             enemySpeciesCode:String(region?.speciesCode||''),
             chapterCode:String(region?.chapter||''),
             regionCode:String(region?.code||''),
-            stageCode:kind==='nest'?'boss':String(region?.nextStageCode||`stage-${Math.min(5,Math.floor(Number(region?.exploration||0)/20)+1)}`),
+            stageCode,
             onClose:()=>{this.showPage('adventure');void this.refreshWorldExploration();},
             onSettle:(session:any)=>this.settleRegionBattle(kind,region,session),
             onComplete:()=>void this.refreshAfterBattle(),
-            onNext:kind==='explore'?()=>{this.showPage('adventure');void this.refreshWorldExploration();}:undefined,
+            onNext:kind==='explore'?()=>setTimeout(()=>void this.continueRegionBattle(String(region?.code||'')),180):undefined,
         });
+    }
+
+    private async continueRegionBattle(regionCode:string) {
+        const result=await ApiClient.get('/exploration/world');
+        this.applyWorldExploration(result);
+        const regions=this.worldExploration?.world?.regions||this.worldExploration?.regions||result?.world?.regions||result?.data?.regions||[];
+        const region=(Array.isArray(regions)?regions:[]).find((item:any)=>String(item?.code||'')===String(regionCode||''));
+        if(region?.nextStageCode){await this.startRegionBattle('explore',region);return;}
+        this.showPage('adventure');
+        this.showToast(region?.nestUnlocked?'区域探索完成，首领巢穴已经开放':'区域进度已更新');
     }
 
     private async settleRegionBattle(kind:'explore'|'nest',region:any,session:any) {
