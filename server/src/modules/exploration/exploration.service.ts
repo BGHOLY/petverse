@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { BattleSessionV10 } from '../battle/battle-session.entity';
+import { buildBattleDebrief } from '../battle/battle-debrief';
 import { battleRewardConfig } from '../battle/battle-reward.config';
+import { battleStageViews } from '../battle/battle-stage.config';
 import { DailyTaskService } from '../daily-task/daily-task.service';
 import { EconomyService } from '../economy/economy.service';
 import { EquipmentService } from '../equipment/equipment.service';
@@ -372,6 +374,7 @@ export class ExplorationService {
     const left = Array.isArray(battle.leftTeam) ? battle.leftTeam : [];
     const right = Array.isArray(battle.rightTeam) ? battle.rightTeam : [];
     const sum = (team: any[], key: string) => team.reduce((total, unit) => total + Number(unit?.[key] || 0), 0);
+    const failureReason = won ? '' : '本次阵容未能完成关卡目标，请调整编队或阵法';
     return {
       battleId: battle.battleId,
       sessionId: battle.id,
@@ -385,7 +388,8 @@ export class ExplorationService {
       statistics: { totalDamage: sum(left, 'damageDealt'), totalHealing: sum(left, 'healingDone'), damageTaken: sum(left, 'damageTaken'), enemyDamage: sum(right, 'damageDealt') },
       reward,
       exploration: { value: Number(state?.exploration || 0), nestUnlocked: Boolean(state?.nestUnlocked), bossCleared: Boolean(state?.bossCleared), unlockedRegionCode },
-      failureReason: won ? '' : '本次阵容未能完成关卡目标，请调整编队或阵法',
+      failureReason,
+      debrief: buildBattleDebrief(battle, won, failureReason),
       nextActions: won ? ['next-stage', 'retry', 'return-adventure'] : ['adjust-team', 'change-formation', 'strengthen-pet', 'retry', 'return-adventure'],
       settledAt: new Date().toISOString(),
     };
@@ -455,6 +459,7 @@ export class ExplorationService {
       const state = progress.regions?.[region.code] || {};
       const clearedStages = Array.isArray(state.clearedStages) ? state.clearedStages.map(String) : [];
       const stageStars = state.stageStars && typeof state.stageStars === 'object' ? state.stageStars : {};
+      const configuredStages = battleStageViews(region.code, false);
       return {
         ...region,
         index,
@@ -462,7 +467,16 @@ export class ExplorationService {
         clearedStages,
         stageStars,
         nextStageCode: this.nextUnclearedStage(clearedStages),
-        stages: this.stageSequence().map((code) => ({ code, cleared: clearedStages.includes(code), stars: Number(stageStars[code] || 0) })),
+        stages: this.stageSequence().map((code) => {
+          const configured = configuredStages.find((stage) => stage.stageCode === code);
+          return {
+            ...(configured || { stageCode: code, title: `区域关卡 ${code.replace('stage-', '')}` }),
+            code,
+            cleared: clearedStages.includes(code),
+            stars: Number(stageStars[code] || 0),
+          };
+        }),
+        bossStage: battleStageViews(region.code, true)[0] || null,
       };
     });
     return {

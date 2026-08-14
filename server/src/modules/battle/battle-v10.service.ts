@@ -25,6 +25,8 @@ import {
   decorateBattleEvents,
   nextBattleEventSequence,
 } from './battle-presentation';
+import { buildBattleDebrief } from './battle-debrief';
+import { findBattleStageConfig } from './battle-stage.config';
 
 type Side = 'left' | 'right';
 type DirectiveType = 'auto' | 'focus' | 'guard' | 'shield' | 'cleanse';
@@ -121,7 +123,12 @@ export class BattleV10Service {
     const formationLevel = await this.formationService.getLevel(userId, formationCode);
     const averageLevel = Math.max(1, Math.round(pets.reduce((sum, pet) => sum + Number(pet.level || 1), 0) / pets.length));
     const bossBattle = Boolean(body?.boss || body?.mode === 'boss' || body?.mode === 'tower' || body?.mode === 'nest' || body?.mode === 'guild-boss');
-    let difficulty = Math.max(0.8, Math.min(8, Number(body?.difficulty || (bossBattle ? 1.25 : 1))));
+    const mode = String(body?.mode || (bossBattle ? 'boss' : 'pve'));
+    const chapterCode = String(body?.chapterCode || '');
+    const regionCode = String(body?.regionCode || '');
+    const stageCode = String(body?.stageCode || (bossBattle ? 'boss' : 'stage-1'));
+    const stageConfig = findBattleStageConfig(regionCode, stageCode, bossBattle);
+    let difficulty = Math.max(0.8, Math.min(8, Number(stageConfig?.difficulty || body?.difficulty || (bossBattle ? 1.25 : 1))));
     if (body?.mode === 'tower') {
       const record = await this.towerRepository.findOne({ where: { userId } });
       const floor = Math.max(1, Number(record?.currentFloor || 1));
@@ -129,15 +136,17 @@ export class BattleV10Service {
     }
     const battleSeed = String(body?.seed || randomUUID());
     const enemyFormationCode = getFormationConfig(
-      body?.enemyFormationCode || this.randomFormationCode(battleSeed),
+      stageConfig?.enemyFormationCode || body?.enemyFormationCode || this.randomFormationCode(battleSeed),
     ).code;
     const leftTeam = this.buildPlayerUnits(pets, teamResult.slotAssignments, formationCode, formationLevel, 'left');
-    const rightTeam = this.buildEnemyUnits(averageLevel, difficulty, enemyFormationCode, bossBattle, String(body?.enemySpeciesCode || ''));
-
-    const mode = String(body?.mode || (bossBattle ? 'boss' : 'pve'));
-    const chapterCode = String(body?.chapterCode || '');
-    const regionCode = String(body?.regionCode || '');
-    const stageCode = String(body?.stageCode || (bossBattle ? 'boss' : 'stage-1'));
+    const rightTeam = this.buildEnemyUnits(
+      averageLevel,
+      difficulty,
+      enemyFormationCode,
+      bossBattle,
+      String(body?.enemySpeciesCode || ''),
+      stageConfig?.enemySpeciesCodes,
+    );
     let resumed = false;
     const createdBattleId = randomUUID();
     const session = await this.dataSource.transaction(async (manager) => {
@@ -184,7 +193,7 @@ export class BattleV10Service {
         stageCode,
         status: 'active',
         round: 1,
-        maxRounds: bossBattle ? 35 : 25,
+        maxRounds: Number(stageConfig?.maxRounds || (bossBattle ? 35 : 25)),
         formationCode,
         enemyFormationCode,
         leftTeam,
@@ -1192,6 +1201,7 @@ export class BattleV10Service {
     const rightDamage = right.reduce((sum, unit) => sum + Number(unit.damageDealt || 0), 0);
     const leftHealing = left.reduce((sum, unit) => sum + Number(unit.healingDone || 0), 0);
     const leftTaken = left.reduce((sum, unit) => sum + Number(unit.damageTaken || 0), 0);
+    const failureReason = won ? '' : this.failureReason(session);
     return {
       battleId: session.battleId,
       sessionId: session.id,
@@ -1205,7 +1215,8 @@ export class BattleV10Service {
       survivingPets: left.filter((unit) => unit.alive && unit.hp > 0).map((unit) => ({ petId: unit.petId, name: unit.name, hp: unit.hp, maxHp: unit.maxHp })),
       statistics: { totalDamage: leftDamage, totalHealing: leftHealing, damageTaken: leftTaken, enemyDamage: rightDamage },
       reward,
-      failureReason: won ? '' : this.failureReason(session),
+      failureReason,
+      debrief: buildBattleDebrief(session, won, failureReason),
       nextActions: won ? ['next-stage', 'retry', 'return-adventure'] : ['adjust-team', 'change-formation', 'strengthen-pet', 'retry', 'return-adventure'],
       settledAt: new Date().toISOString(),
     };
@@ -1274,11 +1285,21 @@ export class BattleV10Service {
     return ordered.slice(0, 5).map((pet, slotIndex) => this.fromPet(pet, side, slotIndex, formationCode, formationLevel));
   }
 
-  private buildEnemyUnits(level: number, difficulty: number, formationCode: string, boss: boolean, featuredSpeciesCode = '') {
+  private buildEnemyUnits(
+    level: number,
+    difficulty: number,
+    formationCode: string,
+    boss: boolean,
+    featuredSpeciesCode = '',
+    configuredSpeciesCodes: readonly string[] = [],
+  ) {
     return Array.from({ length: 5 }, (_, slotIndex) => {
-      const species = slotIndex === 0 && (featuredSpeciesCode || boss)
-        ? findPetSpeciesConfig(featuredSpeciesCode || 'PET008')
-        : PET_SPECIES_CONFIGS[(level + slotIndex * 3) % PET_SPECIES_CONFIGS.length];
+      const configuredSpeciesCode = String(configuredSpeciesCodes[slotIndex] || '');
+      const species = configuredSpeciesCode
+        ? findPetSpeciesConfig(configuredSpeciesCode)
+        : slotIndex === 0 && (featuredSpeciesCode || boss)
+          ? findPetSpeciesConfig(featuredSpeciesCode || 'PET008')
+          : PET_SPECIES_CONFIGS[(level + slotIndex * 3) % PET_SPECIES_CONFIGS.length];
       const multiplier = difficulty * (boss && slotIndex === 0 ? 1.35 : 1);
       const base = {
         id: -(slotIndex + 1),
@@ -1572,6 +1593,11 @@ export class BattleV10Service {
     const right = session.rightTeam as BattleUnit[];
     const leftFormation = getFormationConfig(session.formationCode);
     const rightFormation = getFormationConfig(session.enemyFormationCode);
+    const stage = findBattleStageConfig(
+      session.regionCode,
+      session.stageCode,
+      Boolean(session.bossBattle),
+    );
     return {
       id: session.id,
       battleId: session.battleId,
@@ -1580,6 +1606,9 @@ export class BattleV10Service {
       chapterCode: session.chapterCode || '',
       regionCode: session.regionCode || '',
       stageCode: session.stageCode || '',
+      stage: stage
+        ? { ...stage, enemySpeciesCodes: [...stage.enemySpeciesCodes] }
+        : null,
       status: session.status,
       round: session.round,
       maxRounds: session.maxRounds,
