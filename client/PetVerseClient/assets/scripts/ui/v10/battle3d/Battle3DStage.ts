@@ -23,6 +23,10 @@ import {
     type BattlePetFallbackArchetype,
 } from './BattlePetVisualRegistry';
 import BattlePetAssetLoader from './BattlePetAssetLoader';
+import {
+    resolveBattleQualityProfile,
+    type BattleQualityProfile,
+} from './BattleQualityPolicy';
 
 type UnitVisual = {
     root: Node;
@@ -32,6 +36,18 @@ type UnitVisual = {
     baseScale: number;
     speciesCode: string;
     animation: SkeletalAnimation | null;
+    formal: boolean;
+};
+
+export type BattleStageDiagnostics = {
+    qualityTier: string;
+    targetFps: number;
+    playedEvents: number;
+    formalUnits: number;
+    fallbackUnits: number;
+    skippedEffects: number;
+    maxConcurrentEffects: number;
+    assetValidationReports: ReturnType<BattlePetAssetLoader['getValidationReports']>;
 };
 
 type CameraState = {
@@ -87,8 +103,17 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     private camera: Camera | null = null;
     private teamSignature = '';
     private initializationStep = 'not-started';
+    private activeTransientEffects = 0;
+    private maxConcurrentEffects = 0;
+    private skippedEffects = 0;
+    private playedEvents = 0;
+    private formalUnits = 0;
+    private fallbackUnits = 0;
 
-    constructor(private readonly ownerLayer: Node) {
+    constructor(
+        private readonly ownerLayer: Node,
+        private readonly quality: BattleQualityProfile = resolveBattleQualityProfile(),
+    ) {
         let available = false;
         let failureReason = '';
         try {
@@ -118,6 +143,8 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             this.teamSignature = signature;
             this.unitRoot.destroyAllChildren();
             this.unitVisuals.clear();
+            this.formalUnits = 0;
+            this.fallbackUnits = 0;
             left.forEach((unit, index) => this.createUnit(unit, 'left', index));
             right.forEach((unit, index) => this.createUnit(unit, 'right', index));
         }
@@ -136,6 +163,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
 
     async play(event: BattlePresentationEvent, speed: number) {
         if (!this.available || !this.worldRoot?.isValid) return;
+        this.playedEvents += 1;
         const duration = (milliseconds: number) => milliseconds / Math.max(0.5, speed);
         const actor = this.unitVisuals.get(String(event.actorId || ''));
         const target = this.unitVisuals.get(String(event.targetId || ''));
@@ -175,7 +203,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
                 await this.ultimate(event.side || 'left', duration(620));
                 return;
             case 'boss.telegraph':
-                await this.bossTelegraph(actor, duration(520));
+                await this.bossTelegraph(actor, duration(820));
                 return;
             case 'boss.skill':
                 this.playUnitAnimation(actor, 'active_skill');
@@ -223,6 +251,19 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         }
     }
 
+    getDiagnostics(): BattleStageDiagnostics {
+        return {
+            qualityTier: this.quality.tier,
+            targetFps: this.quality.targetFps,
+            playedEvents: this.playedEvents,
+            formalUnits: this.formalUnits,
+            fallbackUnits: this.fallbackUnits,
+            skippedEffects: this.skippedEffects,
+            maxConcurrentEffects: this.maxConcurrentEffects,
+            assetValidationReports: this.assetLoader.getValidationReports(),
+        };
+    }
+
     dispose() {
         this.restoreUiCameras();
         if (this.worldRoot?.isValid) this.worldRoot.destroy();
@@ -240,6 +281,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         this.camera = null;
         this.unitVisuals.clear();
         this.assetLoader.clear();
+        this.activeTransientEffects = 0;
     }
 
     private buildWorld() {
@@ -373,8 +415,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             baseScale,
             speciesCode: profile.speciesCode,
             animation: null,
+            formal: false,
         };
         this.unitVisuals.set(String(unit.id), visual);
+        this.fallbackUnits += 1;
         this.playUnitAnimation(visual, 'enter');
         void this.upgradeToFormalVisual(String(unit.id), profile);
     }
@@ -481,6 +525,11 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         visual.modelRoot.addChild(loaded.node);
         this.setLayerRecursively(loaded.node, Layers.BitMask.DEFAULT);
         visual.animation = loaded.animation;
+        if (!visual.formal) {
+            visual.formal = true;
+            this.formalUnits += 1;
+            this.fallbackUnits = Math.max(0, this.fallbackUnits - 1);
+        }
         this.playUnitAnimation(visual, 'enter');
     }
 
@@ -858,12 +907,18 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         const geometry = kind === 'plane'
             ? primitives.plane({ width: 1, length: 1, widthSegments: 1, lengthSegments: 1 })
             : kind === 'torus'
-                ? primitives.torus(0.5, 0.055, { radialSegments: 20, tubularSegments: 8 })
+                ? primitives.torus(0.5, 0.055, {
+                    radialSegments: this.quality.torusSegments,
+                    tubularSegments: Math.max(5, Math.floor(this.quality.torusSegments * 0.42)),
+                })
                 : kind === 'capsule'
-                    ? primitives.capsule(0.5, 0.5, 1.5, { sides: 12, heightSegments: 8 })
+                    ? primitives.capsule(0.5, 0.5, 1.5, {
+                        sides: this.quality.primitiveSegments,
+                        heightSegments: Math.max(4, Math.floor(this.quality.primitiveSegments * 0.66)),
+                    })
                     : kind === 'cone'
-                        ? primitives.cone(0.5, 1, { radialSegments: 12 })
-                        : primitives.sphere(0.5, { segments: 16 });
+                        ? primitives.cone(0.5, 1, { radialSegments: this.quality.primitiveSegments })
+                        : primitives.sphere(0.5, { segments: this.quality.primitiveSegments });
         const mesh = utils.MeshUtils.createMesh(geometry);
         this.meshes.set(kind, mesh);
         return mesh;
@@ -905,6 +960,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         await this.tweenNode(actor.root, durationMs * 0.36, { position: destination }, 'quadOut');
         await Promise.all([
             this.hit(target, durationMs * 0.34, critical),
+            this.impactBurst(target, durationMs * 0.34, critical),
             critical ? this.cameraPunch(durationMs * 0.34, 0.2) : Promise.resolve(),
         ]);
         await this.tweenNode(actor.root, durationMs * 0.3, { position: origin }, 'quadIn');
@@ -937,6 +993,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             await this.delay(durationMs);
             return;
         }
+        if (!this.reserveTransientEffect()) {
+            await this.pulse(target.root, durationMs, 1.12);
+            return;
+        }
         const ring = this.createPrimitive(
             this.unitRoot,
             `Effect_${kind}_${Date.now()}`,
@@ -947,11 +1007,15 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         );
         ring.setPosition(target.root.position.x, 0.14, target.root.position.z);
         ring.setScale(0.5, 0.06, 0.5);
-        await Promise.all([
-            this.tweenNode(ring, durationMs, { scale: new Vec3(1.7, 0.06, 1.7) }, 'quadOut'),
-            this.pulse(target.root, durationMs, 1.12),
-        ]);
-        if (ring.isValid) ring.destroy();
+        try {
+            await Promise.all([
+                this.tweenNode(ring, durationMs, { scale: new Vec3(1.7, 0.06, 1.7) }, 'quadOut'),
+                this.pulse(target.root, durationMs, 1.12),
+            ]);
+        } finally {
+            if (ring.isValid) ring.destroy();
+            this.releaseTransientEffect();
+        }
     }
 
     private async ultimate(side: 'left' | 'right', durationMs: number) {
@@ -967,6 +1031,10 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             await this.delay(durationMs);
             return;
         }
+        if (!this.reserveTransientEffect()) {
+            await this.pulse(actor.root, durationMs, 1.16);
+            return;
+        }
         const ring = this.createPrimitive(
             this.unitRoot,
             `BossTelegraph_${Date.now()}`,
@@ -975,18 +1043,98 @@ export default class Battle3DStage implements BattlePresentationAdapter {
         );
         ring.setPosition(actor.root.position.x, 0.1, actor.root.position.z);
         ring.setScale(0.6, 0.06, 0.6);
-        await Promise.all([
-            this.tweenNode(ring, durationMs, { scale: new Vec3(2.2, 0.06, 2.2) }, 'quadOut'),
-            this.pulse(actor.root, durationMs, 1.16),
-        ]);
-        if (ring.isValid) ring.destroy();
+        try {
+            await Promise.all([
+                this.tweenNode(ring, durationMs, { scale: new Vec3(2.65, 0.06, 2.65) }, 'quadOut'),
+                this.pulse(actor.root, durationMs, 1.18),
+            ]);
+        } finally {
+            if (ring.isValid) ring.destroy();
+            this.releaseTransientEffect();
+        }
     }
 
     private async bossSkill(actor: UnitVisual | undefined, durationMs: number) {
+        const center = actor?.root?.isValid
+            ? actor.root.position.clone()
+            : new Vec3(0, 0.08, -1.8);
+        const shockwaves = this.quality.enableSecondaryVfx
+            ? [
+                this.shockwave(center, durationMs * 0.78, 3.8),
+                this.delay(durationMs * 0.16).then(() => this.shockwave(center, durationMs * 0.68, 5.2)),
+            ]
+            : [this.shockwave(center, durationMs * 0.78, 4.2)];
         await Promise.all([
             this.pulse(actor?.root, durationMs, 1.24),
             this.cameraPunch(durationMs, 0.35),
+            ...shockwaves,
         ]);
+    }
+
+    private async impactBurst(
+        target: UnitVisual | undefined,
+        durationMs: number,
+        critical: boolean,
+    ) {
+        if (!this.quality.enableSecondaryVfx || !target?.root?.isValid || !this.unitRoot?.isValid) return;
+        if (!this.reserveTransientEffect()) return;
+        const burst = this.createPrimitive(
+            this.unitRoot,
+            `ImpactBurst_${Date.now()}`,
+            'torus',
+            critical ? new Color(255, 220, 103, 235) : new Color(255, 151, 104, 220),
+        );
+        burst.setPosition(target.root.position.x, 0.75, target.root.position.z);
+        burst.setRotationFromEuler(90, 0, 0);
+        burst.setScale(0.16, 0.16, 0.16);
+        try {
+            await this.tweenNode(
+                burst,
+                durationMs,
+                { scale: new Vec3(critical ? 1.4 : 0.95, critical ? 1.4 : 0.95, critical ? 1.4 : 0.95) },
+                'quadOut',
+            );
+        } finally {
+            if (burst.isValid) burst.destroy();
+            this.releaseTransientEffect();
+        }
+    }
+
+    private async shockwave(center: Vec3, durationMs: number, targetScale: number) {
+        if (!this.unitRoot?.isValid || !this.reserveTransientEffect()) return;
+        const ring = this.createPrimitive(
+            this.unitRoot,
+            `BossShockwave_${Date.now()}_${this.activeTransientEffects}`,
+            'torus',
+            new Color(255, 91, 73, 225),
+        );
+        ring.setPosition(center.x, 0.09, center.z);
+        ring.setScale(0.35, 0.06, 0.35);
+        try {
+            await this.tweenNode(
+                ring,
+                durationMs,
+                { scale: new Vec3(targetScale, 0.06, targetScale) },
+                'quadOut',
+            );
+        } finally {
+            if (ring.isValid) ring.destroy();
+            this.releaseTransientEffect();
+        }
+    }
+
+    private reserveTransientEffect() {
+        if (this.activeTransientEffects >= this.quality.maxTransientEffects) {
+            this.skippedEffects += 1;
+            return false;
+        }
+        this.activeTransientEffects += 1;
+        this.maxConcurrentEffects = Math.max(this.maxConcurrentEffects, this.activeTransientEffects);
+        return true;
+    }
+
+    private releaseTransientEffect() {
+        this.activeTransientEffects = Math.max(0, this.activeTransientEffects - 1);
     }
 
     private async defeat(target: UnitVisual | undefined, durationMs: number) {
@@ -1032,9 +1180,14 @@ export default class Battle3DStage implements BattlePresentationAdapter {
             await this.delay(durationMs);
             return;
         }
+        const scaledAmount = amount * this.quality.cameraShakeScale;
         const home = new Vec3(0, 8.7, 11.8);
         await this.tweenNode(this.cameraNode, durationMs * 0.36, {
-            position: new Vec3(amount, 8.7 - amount * 0.5, 11.8 - amount),
+            position: new Vec3(
+                scaledAmount,
+                8.7 - scaledAmount * 0.5,
+                11.8 - scaledAmount,
+            ),
         }, 'quadOut');
         await this.tweenNode(this.cameraNode, durationMs * 0.64, { position: home }, 'quadIn');
         this.cameraNode.lookAt(new Vec3(0, 0.35, 0));

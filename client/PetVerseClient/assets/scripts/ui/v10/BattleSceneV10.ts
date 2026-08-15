@@ -1,4 +1,4 @@
-import { Color, EventTouch, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
+import { Color, EventTouch, game, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
 import ApiClient from '../../network/ApiClient';
 import { getPetArtPath } from '../pet/PetArtRegistry';
 import { cleanPetDisplayName } from '../pet/PetNameFormatter';
@@ -17,7 +17,9 @@ import {
 } from '../cute/CuteUiKit';
 import AudioDirector from './AudioDirector';
 import Battle3DStage from './battle3d/Battle3DStage';
+import BattleAudioRouter from './battle3d/BattleAudioRouter';
 import BattlePresentationDirector from './battle3d/BattlePresentationDirector';
+import { resolveBattleQualityProfile } from './battle3d/BattleQualityPolicy';
 
 const MAX_VISIBLE_STATUSES = 3;
 
@@ -89,7 +91,11 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     let armedDirective: Exclude<DirectiveType, 'auto'> | null = null;
     const unitNodes = new Map<string, { node: Node; enemy: boolean; alive: boolean }>();
     const directiveTargets = new Map<DirectiveType, string>();
-    const stage3d = new Battle3DStage(layer);
+    const qualityProfile = resolveBattleQualityProfile();
+    const previousFrameRate = game.frameRate;
+    game.frameRate = qualityProfile.targetFps;
+    const stage3d = new Battle3DStage(layer, qualityProfile);
+    const audioRouter = new BattleAudioRouter();
     const presentationDirector = new BattlePresentationDirector(stage3d);
 
     panel(layer, 'BattleV101Dim', 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, stage3d.available ? new Color(0, 0, 0, 0) : new Color(24, 27, 42, 255), 0, false, CuteTheme.transparent, 0);
@@ -98,8 +104,12 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         if (closing) return;
         closing = true;
         timerToken += 1;
+        const diagnostics = stage3d.getDiagnostics();
+        console.info('[BattleSceneV10] battle presentation diagnostics', diagnostics);
         presentationDirector.dispose();
         stage3d.dispose();
+        audioRouter.reset();
+        game.frameRate = previousFrameRate;
         restoreUnderlyingUi();
         layer.off(Node.EventType.TOUCH_START, stopTouchPropagation);
         if (settlementDone && !completionNotified) {
@@ -370,15 +380,14 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
     };
 
     const animateEvents = async (events: any[]) => {
-        for (const event of events.slice(0, 24)) {
-            const target = unitNodes.get(String(event?.targetId || ''))?.node;
-            if (event?.type === 'damage') {
-                void AudioDirector.playSfx(event?.skillName ? 'magic' : 'attack');
-            } else if (event?.type === 'heal') void AudioDirector.playSfx('heal');
-            else if (/shield/.test(String(event?.type))) void AudioDirector.playSfx('shield');
-            else if (event?.type === 'ultimate') {
-                void AudioDirector.playSfx('magic');
+        const presentableEvents = events.slice(0, 24);
+        for (let index = 0; index < presentableEvents.length; index += 1) {
+            const event = presentableEvents[index];
+            if (index > 0 && index % qualityProfile.maxEventsPerBatch === 0) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 0));
             }
+            const target = unitNodes.get(String(event?.targetId || ''))?.node;
+            audioRouter.play(event);
             if(target?.isValid&&['damage','heal','shield','shield-absorb','command-shield','command-cleanse'].includes(String(event?.type))){
                 const isHeal=event?.type==='heal';
                 const isShield=/shield/.test(String(event?.type));
@@ -471,6 +480,7 @@ export function showFivePetBattle(layer: Node, options: FivePetBattleOptions) {
         promptOverride='';
         armedDirective=null;
         directiveTargets.clear();
+        audioRouter.reset();
         presentationDirector.reset();
         render();
         void start();
