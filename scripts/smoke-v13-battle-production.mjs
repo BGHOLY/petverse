@@ -47,7 +47,9 @@ async function finishBattle(token, initialSession, runId, useInitialFocus = fals
     steps += 1;
     let directive = { type: 'auto' };
     if (useInitialFocus && !focused) {
-      const target = session.rightTeam?.find((unit) => unit?.alive && unit?.hp > 0);
+      const target = (session.rightTeam || [])
+        .filter((unit) => unit?.alive && unit?.hp > 0)
+        .sort((left, right) => Number(left?.maxHp || left?.hp || 0) - Number(right?.maxHp || right?.hp || 0))[0];
       assert(target?.id, 'focus target is missing');
       directive = { type: 'focus', targetId: String(target.id) };
       focused = true;
@@ -137,7 +139,10 @@ const normalStart = await api('/battle/v10/start', {
     mode: 'pve',
     stageCode: `v13-production-normal-${runId}`,
     seed: `v13-production-normal-seed-${runId}`,
-    difficulty: 1.15,
+    // This smoke verifies presentation events rather than chapter balance. Keep
+    // the enemy team weak enough to guarantee at least one deterministic defeat
+    // and therefore exercise focus-retarget on fresh and long-lived databases.
+    difficulty: 0.65,
     formationCode: 'dragon',
   },
 });
