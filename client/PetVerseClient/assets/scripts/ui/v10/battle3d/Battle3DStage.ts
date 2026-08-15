@@ -517,7 +517,7 @@ export default class Battle3DStage implements BattlePresentationAdapter {
     private async upgradeToFormalVisual(unitId: string, profile: ReturnType<typeof getBattlePetVisualProfile>) {
         const loaded = await this.assetLoader.instantiate(profile);
         const visual = this.unitVisuals.get(unitId);
-        if (!loaded || !visual?.root?.isValid) {
+        if (!loaded || !visual?.root?.isValid || visual.speciesCode !== profile.speciesCode) {
             if (loaded?.node?.isValid) loaded.node.destroy();
             return;
         }
