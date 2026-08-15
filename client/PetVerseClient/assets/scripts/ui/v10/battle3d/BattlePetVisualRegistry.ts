@@ -3,8 +3,8 @@ export type BattlePetFallbackArchetype = 'fox' | 'turtle' | 'deer' | 'guardian';
 export type BattlePetVisualProfile = {
     speciesCode: string;
     displayName: string;
-    element: 'fire' | 'earth' | 'wood';
-    combatRole: 'burst' | 'tank' | 'healer' | 'boss';
+    element: 'fire' | 'earth' | 'wind' | 'light' | 'thunder' | 'water' | 'dark' | 'wood' | 'star' | 'ice';
+    combatRole: 'burst' | 'tank' | 'healer' | 'support' | 'control' | 'boss';
     bundleName: string;
     prefabPath: string;
     formalAssetReady: boolean;
@@ -12,6 +12,11 @@ export type BattlePetVisualProfile = {
     fallbackArchetype: BattlePetFallbackArchetype;
     battleScale: number;
     requiredAnimations: readonly string[];
+    delivery: 'local' | 'remote';
+    maxTriangles: number;
+    maxMaterials: number;
+    maxNodes: number;
+    compressedBudgetBytes: number;
 };
 
 const REQUIRED_ANIMATIONS = [
@@ -23,6 +28,32 @@ const REQUIRED_ANIMATIONS = [
     'death',
     'victory',
 ] as const;
+
+const pendingProfile = (
+    speciesCode: string,
+    displayName: string,
+    element: BattlePetVisualProfile['element'],
+    combatRole: BattlePetVisualProfile['combatRole'],
+    fallbackArchetype: BattlePetFallbackArchetype,
+    battleScale = 0.86,
+): BattlePetVisualProfile => ({
+    speciesCode,
+    displayName,
+    element,
+    combatRole,
+    bundleName: 'pet-pack-02',
+    prefabPath: `pets/${speciesCode}/${speciesCode}_Battle`,
+    formalAssetReady: false,
+    productionRevision: `${speciesCode}-PENDING`,
+    fallbackArchetype,
+    battleScale,
+    requiredAnimations: REQUIRED_ANIMATIONS,
+    delivery: 'remote',
+    maxTriangles: 12000,
+    maxMaterials: 1,
+    maxNodes: 120,
+    compressedBudgetBytes: 2 * 1024 * 1024,
+});
 
 const PROFILES: Record<string, BattlePetVisualProfile> = {
     PET001: {
@@ -37,6 +68,11 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         fallbackArchetype: 'fox',
         battleScale: 0.86,
         requiredAnimations: REQUIRED_ANIMATIONS,
+        delivery: 'remote',
+        maxTriangles: 12000,
+        maxMaterials: 1,
+        maxNodes: 120,
+        compressedBudgetBytes: 2 * 1024 * 1024,
     },
     PET002: {
         speciesCode: 'PET002',
@@ -50,7 +86,17 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         fallbackArchetype: 'turtle',
         battleScale: 0.9,
         requiredAnimations: REQUIRED_ANIMATIONS,
+        delivery: 'remote',
+        maxTriangles: 12000,
+        maxMaterials: 1,
+        maxNodes: 120,
+        compressedBudgetBytes: 2 * 1024 * 1024,
     },
+    PET003: pendingProfile('PET003', '疾风兔', 'wind', 'burst', 'fox', 0.82),
+    PET004: pendingProfile('PET004', '月光猫', 'light', 'healer', 'fox', 0.84),
+    PET005: pendingProfile('PET005', '雷角兽', 'thunder', 'burst', 'guardian', 0.86),
+    PET006: pendingProfile('PET006', '潮汐獭', 'water', 'support', 'turtle', 0.84),
+    PET007: pendingProfile('PET007', '影刃狼', 'dark', 'burst', 'fox', 0.88),
     PET008: {
         speciesCode: 'PET008',
         displayName: '森灵鹿',
@@ -63,7 +109,14 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         fallbackArchetype: 'deer',
         battleScale: 0.88,
         requiredAnimations: REQUIRED_ANIMATIONS,
+        delivery: 'remote',
+        maxTriangles: 12000,
+        maxMaterials: 1,
+        maxNodes: 120,
+        compressedBudgetBytes: 2 * 1024 * 1024,
     },
+    PET009: pendingProfile('PET009', '星辉龙', 'star', 'support', 'guardian', 0.88),
+    PET010: pendingProfile('PET010', '霜羽鸮', 'ice', 'control', 'deer', 0.82),
     BOSS001: {
         speciesCode: 'BOSS001',
         displayName: '古树守卫',
@@ -76,6 +129,11 @@ const PROFILES: Record<string, BattlePetVisualProfile> = {
         fallbackArchetype: 'guardian',
         battleScale: 0.94,
         requiredAnimations: REQUIRED_ANIMATIONS,
+        delivery: 'remote',
+        maxTriangles: 25000,
+        maxMaterials: 2,
+        maxNodes: 180,
+        compressedBudgetBytes: 4 * 1024 * 1024,
     },
 };
 
