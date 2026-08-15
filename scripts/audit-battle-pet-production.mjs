@@ -77,7 +77,7 @@ checks.push(
   ['shared V2 production contract exists', exists(paths.sharedSpecification)],
   ['asset loader and meta exist', exists(paths.loader) && exists(`${paths.loader}.meta`)],
   ['loader uses bundles and profile paths', loader.includes('loadBundle') && loader.includes('profile.bundleName') && loader.includes('profile.prefabPath')],
-  ['loader validates required skeletal clips', loader.includes('validateAnimations') && loader.includes('requiredAnimations')],
+  ['loader validates required skeletal clips', loader.includes('validateBattleAsset') && exists('client/PetVerseClient/assets/scripts/ui/v10/battle3d/BattleAssetValidator.ts')],
   ['loader fails safely when a formal asset is unavailable', loader.includes('return null')],
   ['formal assets require explicit readiness', registry.includes('formalAssetReady')],
   ['all four unapproved formal assets remain disabled', (registry.match(/formalAssetReady:\s*false/g) || []).length >= 4],
